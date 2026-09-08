@@ -1,0 +1,6 @@
+{
+  "name": "Let's Estimate",
+  "description": "AI-powered BOQ takeoff tool for builders in Nigeria. Upload architectural drawings, draft quantities with AI Vision, edit rates in Naira (₦), and export professional Excel and PDF bills of quantities.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
