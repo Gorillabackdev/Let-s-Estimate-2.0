@@ -7,19 +7,28 @@ import {
   CheckCircle2, 
   AlertCircle, 
   X,
-  Cpu
+  Cpu,
+  Sliders,
+  Building,
+  Check
 } from 'lucide-react';
+import { ProjectQuestionnaire } from '../types';
+import { safeFetchJson } from '../utils/api';
 
 interface DrawingUploaderProps {
   onTakeoffSuccess: (items: any[], filename: string, provider: string, summary?: string) => void;
   isProcessing: boolean;
   setIsProcessing: (val: boolean) => void;
+  questionnaire?: ProjectQuestionnaire;
+  onOpenQuestionnaire?: () => void;
 }
 
 export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
   onTakeoffSuccess,
   isProcessing,
   setIsProcessing,
+  questionnaire,
+  onOpenQuestionnaire,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -157,22 +166,36 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
         setSelectedFile(file);
         setPreviewUrl(URL.createObjectURL(blob));
 
-        // Submit to backend
+        // Submit to backend with sample questionnaire context
         const formData = new FormData();
         formData.append('drawing', file);
 
-        const response = await fetch('/api/takeoff', {
+        const sampleQuestionnaire = type === 'bungalow' ? {
+          general: { projectType: 'Residential', buildingType: 'Bungalow', numberOfFloors: 1, approximateGFA: 220, numberOfRooms: 4 },
+          substructure: { foundationType: 'Strip footing', soilCondition: 'Firm clay/laterite' },
+          superstructure: { structuralSystem: 'Load-bearing masonry', columns: 'No', suspendedSlabs: 'No' },
+          roofing: { roofType: 'Hip/Gable combination', roofCovering: 'Aluminium longspan' },
+          services: { electrical: 'Included', plumbing: 'Included' }
+        } : {
+          general: { projectType: 'Hostel', buildingType: '2-Storey', numberOfFloors: 2, approximateGFA: 1200, numberOfRooms: 100 },
+          substructure: { foundationType: 'Raft foundation', soilCondition: 'Swamp / Waterlogged' },
+          superstructure: { structuralSystem: 'Reinforced concrete frame', columns: 'Yes', suspendedSlabs: 'Yes' },
+          roofing: { roofType: 'Hip/Gable combination', roofCovering: 'Aluminium longspan' },
+          services: { electrical: 'Included', plumbing: 'Included' }
+        };
+
+        formData.append('questionnaire', JSON.stringify(sampleQuestionnaire));
+
+        const { ok, data, error } = await safeFetchJson<{ items: any[]; provider: string; drawingSummary?: string; error?: string }>('/api/takeoff', {
           method: 'POST',
           body: formData,
         });
 
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'AI Takeoff failed');
+        if (!ok || !data?.items) throw new Error(data?.error || error || 'AI Takeoff failed');
 
         onTakeoffSuccess(data.items, file.name, data.provider, data.drawingSummary);
       }, 'image/png');
     } catch (err: any) {
-      console.error(err);
       setErrorMsg(err.message || 'Failed to analyze sample drawing');
     } finally {
       setIsProcessing(false);
@@ -184,32 +207,34 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
 
     setErrorMsg(null);
     setIsProcessing(true);
-    setTakeoffProgressText('Uploading drawing and initializing Gemini 2.5 Flash Vision...');
+    setTakeoffProgressText('Uploading drawing and calibrating with project parameters...');
 
     try {
       const formData = new FormData();
       formData.append('drawing', selectedFile);
 
+      if (questionnaire) {
+        formData.append('questionnaire', JSON.stringify(questionnaire));
+      }
+
       // Simulation of progress status for better UX
       const timer = setTimeout(() => {
-        setTakeoffProgressText('Gemini detecting Walls m2, RC Slab m3, Blockwork m2, Doors, Windows, Roofing...');
+        setTakeoffProgressText('Gemini measuring Substructure, Masonry, Concrete, Roofing, Finishes & Services...');
       }, 1500);
 
-      const response = await fetch('/api/takeoff', {
+      const { ok, data, error } = await safeFetchJson<{ items: any[]; provider: string; drawingSummary?: string; error?: string }>('/api/takeoff', {
         method: 'POST',
         body: formData,
       });
 
       clearTimeout(timer);
-      const data = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.error || 'AI takeoff failed.');
+      if (!ok || !data?.items) {
+        throw new Error(data?.error || error || 'AI takeoff failed.');
       }
 
       onTakeoffSuccess(data.items, selectedFile.name, data.provider, data.drawingSummary);
     } catch (err: any) {
-      console.error(err);
       setErrorMsg(err.message || 'An error occurred during AI Takeoff. Please verify your file or try again.');
     } finally {
       setIsProcessing(false);
@@ -220,27 +245,56 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
     <div id="drawing-uploader-card" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-7">
       
       {/* Section Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <div className="flex items-center space-x-2">
             <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 font-bold text-xs flex items-center justify-center">
               1
             </span>
             <h2 className="text-lg sm:text-xl font-bold text-slate-900">
-              Upload Architectural Drawing
+              Architectural Drawing & Pre-Estimation Setup
             </h2>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Accepts floor plans, elevations, sections (.jpg, .png, .pdf). Google Gemini Vision automatically measures and extracts core BOQ items.
+            Accepts floor plans, elevations, sections (.jpg, .png, .pdf). Gemini Vision extracts all trades matching your questionnaire specs.
           </p>
         </div>
 
         {/* AI Engine Badge */}
         <div className="flex items-center space-x-2 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200 self-start sm:self-auto text-xs font-semibold text-emerald-800">
           <Cpu className="w-4 h-4 text-emerald-600" />
-          <span>Google Gemini 2.5 Flash Vision</span>
+          <span>Dynamic BESMM4 Vision Engine</span>
         </div>
       </div>
+
+      {/* Project Parameters Preview Bar */}
+      {questionnaire && (
+        <div className="mb-5 bg-slate-50 rounded-xl p-3 sm:p-4 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center space-x-3 overflow-hidden">
+            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+              <Sliders className="w-4 h-4" />
+            </div>
+            <div className="text-xs">
+              <div className="font-bold text-slate-800 flex items-center gap-1.5">
+                <span>Active Specification:</span>
+                <span className="text-emerald-700 font-semibold">{questionnaire.general?.buildingType || 'Standard'} ({questionnaire.general?.numberOfFloors || 1} Floor)</span>
+              </div>
+              <p className="text-slate-500 truncate max-w-lg mt-0.5">
+                {questionnaire.substructure?.foundationType} • {questionnaire.superstructure?.structuralSystem} • {questionnaire.roofing?.roofType}
+              </p>
+            </div>
+          </div>
+
+          {onOpenQuestionnaire && (
+            <button
+              onClick={onOpenQuestionnaire}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-emerald-700 transition-colors shrink-0 shadow-2xs"
+            >
+              Adjust Specs Questionnaire
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Hidden Native File Input */}
       <input
@@ -298,137 +352,104 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
                 </button>
               </div>
             ) : (
-              <div className="relative mb-3 p-6 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 flex flex-col items-center">
-                <FileText className="w-12 h-12 mb-2" />
-                <span className="text-xs font-bold uppercase tracking-wider">PDF Drawing Loaded</span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleClear();
-                  }}
-                  className="absolute top-2 right-2 p-1 rounded-full bg-rose-200 hover:bg-rose-600 hover:text-white transition"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+              <div className="mb-3 p-4 bg-rose-50 text-rose-600 rounded-xl flex items-center space-x-2">
+                <FileText className="w-8 h-8" />
+                <span className="font-semibold text-sm">{selectedFile.name} (PDF Document)</span>
               </div>
             )}
 
-            <div className="text-center">
-              <div className="flex items-center justify-center space-x-2 text-slate-800 font-semibold text-sm">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>{selectedFile.name}</span>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for Gemini Vision Takeoff
-              </p>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fileInputRef.current?.click();
-                }}
-                className="mt-2 text-xs text-emerald-700 hover:underline font-medium"
-              >
-                Choose another file
-              </button>
+            <div className="flex items-center space-x-2 text-sm text-slate-700 font-medium">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>{selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)</span>
             </div>
+            
+            <p className="text-xs text-slate-400 mt-1">Ready for measurement. Click below to analyze.</p>
           </div>
         ) : (
           <div className="flex flex-col items-center">
-            <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center text-emerald-800 mb-3 shadow-inner">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-100/80 text-emerald-700 flex items-center justify-center mb-3">
               <Upload className="w-7 h-7" />
             </div>
-            <h3 className="font-bold text-slate-800 text-base mb-1">
-              Click to select or drag & drop drawing here
-            </h3>
-            <p className="text-xs text-slate-500 max-w-sm mb-3">
-              Supports single architectural plans in <strong>.JPG, .PNG, or .PDF</strong> (up to 25MB)
+            <p className="text-sm font-semibold text-slate-700">
+              Drag & drop architectural blueprint here, or <span className="text-emerald-700 underline">browse files</span>
             </p>
-
-            {/* Supported Quantities Badges */}
-            <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-slate-600">
-              <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 font-medium">
-                Walls m²
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 font-medium">
-                RC Slab m³
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 font-medium">
-                Blockwork m²
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 font-medium">
-                Doors No
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 font-medium">
-                Windows No
-              </span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded bg-slate-100 font-medium">
-                Roofing m²
-              </span>
-            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Supports JPEG, PNG, WEBP, and PDF floor plans up to 25MB
+            </p>
           </div>
         )}
       </div>
 
-      {/* Quick Test Preset Drawings */}
-      <div className="mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
-        <span className="text-slate-500 font-medium">Don't have a blueprint file handy? Try a demo plan:</span>
-        <div className="flex items-center space-x-2">
-          <button
-            type="button"
-            disabled={isProcessing}
-            onClick={() => handleLoadSampleDrawing('bungalow')}
-            className="px-2.5 py-1 rounded bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-slate-700 font-medium border border-slate-200 transition disabled:opacity-50"
-          >
-            Demo: 4-Bedroom Bungalow
-          </button>
-          <button
-            type="button"
-            disabled={isProcessing}
-            onClick={() => handleLoadSampleDrawing('hostel')}
-            className="px-2.5 py-1 rounded bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 text-slate-700 font-medium border border-slate-200 transition disabled:opacity-50"
-          >
-            Demo: Student Hostel Block
-          </button>
-        </div>
-      </div>
-
       {/* Error Message */}
       {errorMsg && (
-        <div className="mt-4 p-3.5 bg-rose-50 border border-rose-200 rounded-xl flex items-center space-x-2 text-xs text-rose-700">
+        <div className="mt-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center space-x-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{errorMsg}</span>
         </div>
       )}
 
-      {/* BIG "Upload Drawing & Run AI Takeoff" Action Button */}
-      <div className="mt-5">
-        <button
-          id="run-takeoff-btn"
-          type="button"
-          disabled={!selectedFile || isProcessing}
-          onClick={handleUploadAndRunTakeoff}
-          className={`w-full py-3.5 px-6 rounded-xl font-bold text-base shadow-md transition flex items-center justify-center space-x-3 ${
-            !selectedFile || isProcessing
-              ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-              : 'bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white active:scale-[0.99]'
-          }`}
-        >
-          {isProcessing ? (
-            <>
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              <span>{takeoffProgressText}</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-5 h-5 text-emerald-200" />
-              <span>Run AI Takeoff with Google Gemini 2.5 Flash</span>
-            </>
-          )}
-        </button>
-      </div>
+      {/* Action Buttons */}
+      <div className="mt-5 flex flex-col sm:flex-row items-center justify-between gap-3">
+        {/* Sample Drawing Fast-Test Buttons */}
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <span className="text-xs text-slate-600 font-bold block sm:inline">Try Sample Blueprint:</span>
+          <button
+            type="button"
+            disabled={isProcessing}
+            onClick={() => handleLoadSampleDrawing('bungalow')}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800 transition disabled:opacity-50"
+          >
+            4-Bed Bungalow (Lekki)
+          </button>
+          <button
+            type="button"
+            disabled={isProcessing}
+            onClick={() => handleLoadSampleDrawing('hostel')}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800 transition disabled:opacity-50"
+          >
+            2-Storey 100-Room Hostel (PH)
+          </button>
+        </div>
 
+        {/* Execute Button */}
+        <div className="w-full sm:w-auto flex items-center space-x-3">
+          {selectedFile && (
+            <button
+              type="button"
+              onClick={handleClear}
+              disabled={isProcessing}
+              className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 transition disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          )}
+
+          <button
+            type="button"
+            id="run-takeoff-button"
+            onClick={handleUploadAndRunTakeoff}
+            disabled={!selectedFile || isProcessing}
+            className={`w-full sm:w-auto flex items-center justify-center space-x-2 px-6 py-2.5 rounded-xl font-bold text-sm text-white shadow-md transition ${
+              !selectedFile || isProcessing
+                ? 'bg-slate-300 cursor-not-allowed text-slate-500 shadow-none'
+                : 'bg-emerald-600 hover:bg-emerald-700 active:scale-98 cursor-pointer'
+            }`}
+          >
+            {isProcessing ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs font-medium">{takeoffProgressText}</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                <span>Run Dynamic AI Takeoff</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
+

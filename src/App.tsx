@@ -1,32 +1,64 @@
 /**
  * Let's Estimate - AI-Powered BOQ Takeoff Tool for Nigerian Builders
- * Main Application Component
+ * Master Refactored Application Component
  */
 
 import React, { useState, useEffect } from 'react';
-import { Project, BoqItem, StandardRate } from './types';
+import { 
+  Project, 
+  BoqItem, 
+  StandardRate, 
+  AppGlobalView, 
+  EstimatingSubView, 
+  ProjectControlsSubView, 
+  UserSubscriptionInfo, 
+  ProjectQuestionnaire 
+} from './types';
 import { calculateBoqTotals } from './utils/format';
-import { Header } from './components/Header';
-import { ProjectDashboard } from './components/ProjectDashboard';
-import { ProjectMetaCard } from './components/ProjectMetaCard';
+import { Sidebar } from './components/navigation/Sidebar';
+import { AppHeader } from './components/navigation/AppHeader';
+import { DashboardView } from './components/dashboard/DashboardView';
+import { ProjectsView } from './components/projects/ProjectsView';
+import { ProjectWorkspaceView } from './components/workspace/ProjectWorkspaceView';
+import { CalculatorsHubView } from './components/calculators/CalculatorsHubView';
+import { EstimatingHubView } from './components/estimating/EstimatingHubView';
+import { ProjectControlsView } from './components/controls/ProjectControlsView';
+import { DocumentsReportsView } from './components/documents/DocumentsReportsView';
+import { TeamClientsView } from './components/team/TeamClientsView';
+import { SettingsView } from './components/settings/SettingsView';
+import { HelpSupportView } from './components/help/HelpSupportView';
 import { DrawingUploader } from './components/DrawingUploader';
 import { BoqTable } from './components/BoqTable';
 import { FinancialSummary } from './components/FinancialSummary';
 import { ExportActions } from './components/ExportActions';
 import { NigerianRatesModal } from './components/NigerianRatesModal';
-import { Sparkles, CheckCircle2 } from 'lucide-react';
-
-/* ========================================================================
-   NICE TO HAVE: USER AUTHENTICATION WITH JWT (COMMENTED OUT FOR LATER PHASE)
-   ------------------------------------------------------------------------
-   interface UserAuth {
-     token: string;
-     user: { id: string; email: string; fullName: string; company: string };
-   }
-   const useAuth = () => {
-     // Ready for JWT login flow
-   };
-   ======================================================================== */
+import { EstimateVersionsModal } from './components/EstimateVersionsModal';
+import { ProjectVariationsModal } from './components/ProjectVariationsModal';
+import { ProjectValuationsModal } from './components/ProjectValuationsModal';
+import { ProjectAuditDrawer } from './components/ProjectAuditDrawer';
+import { MaterialScheduleModal } from './components/MaterialScheduleModal';
+import { ProjectDocumentsModal } from './components/ProjectDocumentsModal';
+import { ProjectShareModal } from './components/ProjectShareModal';
+import { SharedTenderView } from './components/SharedTenderView';
+import { CashFlowModal } from './components/CashFlowModal';
+import { TenderComparisonModal } from './components/TenderComparisonModal';
+import { RiskAuditModal } from './components/RiskAuditModal';
+import { SubscriptionBillingModal } from './components/SubscriptionBillingModal';
+import { FinalAccountModal } from './components/FinalAccountModal';
+import { ExecutiveDossierModal } from './components/ExecutiveDossierModal';
+import { ProjectQuestionnaireModal } from './components/ProjectQuestionnaireModal';
+import { LandingPage } from './components/landing/LandingPage';
+import { generateDeterministicBoq } from './utils/constructionKnowledgeBase';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthModal } from './components/auth/AuthModal';
+import { UserProfileModal } from './components/auth/UserProfileModal';
+import { safeFetchJson } from './utils/api';
+import { 
+  CheckCircle2, 
+  AlertTriangle, 
+  CreditCard, 
+  ShieldCheck 
+} from 'lucide-react';
 
 const DEFAULT_NEW_PROJECT: Project = {
   id: '',
@@ -34,6 +66,8 @@ const DEFAULT_NEW_PROJECT: Project = {
   location: 'Lagos, Nigeria',
   client_name: '',
   drawing_filename: '',
+  status: 'Draft',
+  currency: 'NGN',
   po_percent: 15.0,            // 15% Profit & Overheads
   vat_percent: 7.5,             // 7.5% Nigerian VAT
   swamp_premium_percent: 0.0,   // Swamp / Terrain Multiplier
@@ -44,21 +78,129 @@ const DEFAULT_NEW_PROJECT: Project = {
   items: [],
 };
 
-export default function App() {
-  const [currentView, setCurrentView] = useState<'dashboard' | 'editor'>('dashboard');
+function MainApp() {
+  const { user, token, refreshStats, openAuthModal } = useAuth();
+  
+  // Navigation state
+  const [currentView, setCurrentView] = useState<AppGlobalView>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      if (hash === '#landing' || hash === '#home' || hash === '#pricing' || hash === '#standards') {
+        return 'landing';
+      }
+      if (hash === '#projects') return 'projects';
+      if (hash === '#calculators') return 'calculators';
+      if (hash === '#estimating') return 'estimating';
+      if (hash === '#controls') return 'controls';
+      if (hash === '#documents') return 'documents';
+      if (hash === '#team') return 'team';
+      if (hash === '#settings') return 'settings';
+      if (hash === '#help') return 'help';
+    }
+    return 'dashboard';
+  });
+
+  const [activeSubView, setActiveSubView] = useState<string | undefined>();
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  // Projects and active work
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [activeProject, setActiveProject] = useState<Project>(DEFAULT_NEW_PROJECT);
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isProcessingTakeoff, setIsProcessingTakeoff] = useState(false);
+
+  // Modals state
   const [isRatesModalOpen, setIsRatesModalOpen] = useState(false);
+  const [isVersionsModalOpen, setIsVersionsModalOpen] = useState(false);
+  const [isVariationsModalOpen, setIsVariationsModalOpen] = useState(false);
+  const [isValuationsModalOpen, setIsValuationsModalOpen] = useState(false);
+  const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
+  const [isMaterialModalOpen, setIsMaterialModalOpen] = useState(false);
+  const [isDocumentsModalOpen, setIsDocumentsModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isCashFlowModalOpen, setIsCashFlowModalOpen] = useState(false);
+  const [isTenderModalOpen, setIsTenderModalOpen] = useState(false);
+  const [isRiskAuditModalOpen, setIsRiskAuditModalOpen] = useState(false);
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [isFinalAccountModalOpen, setIsFinalAccountModalOpen] = useState(false);
+  const [isExecutiveDossierModalOpen, setIsExecutiveDossierModalOpen] = useState(false);
+  const [isQuestionnaireModalOpen, setIsQuestionnaireModalOpen] = useState(false);
+  const [subscriptionInfo, setSubscriptionInfo] = useState<UserSubscriptionInfo | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Fetch all projects on mount
+  // Check if viewing a public shared client tender link (e.g. /share/:token)
+  const [sharedToken, setSharedToken] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const match = window.location.pathname.match(/\/share\/([a-zA-Z0-9_-]+)/);
+      return match ? match[1] : null;
+    }
+    return null;
+  });
+
+  const navigateView = (view: AppGlobalView, subView?: string) => {
+    setCurrentView(view);
+    if (subView) {
+      setActiveSubView(subView);
+    }
+    if (typeof window !== 'undefined') {
+      if (view === 'landing') {
+        window.location.hash = '#home';
+      } else {
+        window.location.hash = '#' + view;
+      }
+    }
+  };
+
+  // Sync with browser hash navigation
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.toLowerCase().replace('#', '');
+      if (hash === 'landing' || hash === 'home' || hash === 'pricing') {
+        setCurrentView('landing');
+      } else if (hash === 'dashboard' || hash === 'workspace') {
+        setCurrentView('dashboard');
+      } else if (hash === 'projects') {
+        setCurrentView('projects');
+      } else if (hash === 'calculators') {
+        setCurrentView('calculators');
+      } else if (hash === 'estimating') {
+        setCurrentView('estimating');
+      } else if (hash === 'controls') {
+        setCurrentView('controls');
+      } else if (hash === 'documents') {
+        setCurrentView('documents');
+      } else if (hash === 'team') {
+        setCurrentView('team');
+      } else if (hash === 'settings') {
+        setCurrentView('settings');
+      } else if (hash === 'help') {
+        setCurrentView('help');
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  // Fetch all projects & subscription status on mount & whenever auth token changes
   useEffect(() => {
     loadProjects();
-  }, []);
+    loadSubscription();
+  }, [token]);
+
+  const loadSubscription = async () => {
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const { ok, data } = await safeFetchJson<{ subscription: UserSubscriptionInfo }>('/api/subscription/status', { headers });
+      if (ok && data?.subscription) {
+        setSubscriptionInfo(data.subscription);
+      }
+    } catch {
+      // Gracefully continue with local defaults
+    }
+  };
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -68,13 +210,31 @@ export default function App() {
   const loadProjects = async () => {
     try {
       setLoadingProjects(true);
-      const res = await fetch('/api/projects');
-      const data = await res.json();
-      if (data.projects) {
-        setProjects(data.projects);
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
-    } catch (err) {
-      console.error('Failed to load projects:', err);
+      const { ok, data } = await safeFetchJson<{ projects: Project[] }>('/api/projects', { headers });
+      if (ok && data?.projects) {
+        const safeProjects = data.projects.map((p) => ({
+          ...p,
+          items: Array.isArray(p.items) ? p.items : []
+        }));
+        setProjects(safeProjects);
+        if (!activeProject.id && safeProjects.length > 0) {
+          const first = safeProjects[0];
+          setActiveProject({
+            ...first,
+            status: first.status || 'Draft',
+            po_percent: first.po_percent ?? 15,
+            vat_percent: first.vat_percent ?? 7.5,
+            swamp_premium_percent: first.swamp_premium_percent ?? 0,
+            items: first.items || [],
+          });
+        }
+      }
+    } catch {
+      // Handled gracefully
     } finally {
       setLoadingProjects(false);
     }
@@ -83,35 +243,40 @@ export default function App() {
   // Switch to or create a new project
   const handleNewProject = () => {
     const newId = 'proj-' + Date.now();
-    setActiveProject({
+    const newProj: Project = {
       ...DEFAULT_NEW_PROJECT,
       id: newId,
       title: 'New Building Estimate ' + new Date().toLocaleDateString('en-GB'),
       items: [],
-    });
+    };
+    setActiveProject(newProj);
     setHasUnsavedChanges(true);
-    setCurrentView('editor');
+    navigateView('project-workspace');
+    showToast('Created new project workspace.');
   };
 
   // Open an existing project by ID
   const handleOpenProject = async (projectId: string) => {
     try {
-      const res = await fetch(`/api/projects/${projectId}`);
-      const data = await res.json();
-      if (data.project) {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const { ok, data, error } = await safeFetchJson<{ project: Project; error?: string }>(`/api/projects/${projectId}`, { headers });
+      if (ok && data?.project) {
         setActiveProject({
           ...data.project,
+          status: data.project.status || 'Draft',
           po_percent: data.project.po_percent ?? 15,
           vat_percent: data.project.vat_percent ?? 7.5,
           swamp_premium_percent: data.project.swamp_premium_percent ?? 0,
           items: data.project.items || [],
         });
         setHasUnsavedChanges(false);
-        setCurrentView('editor');
+        navigateView('project-workspace');
+      } else {
+        alert(error || 'Could not open project.');
       }
-    } catch (err) {
-      console.error('Error opening project:', err);
-      alert('Could not open project.');
+    } catch (err: any) {
+      alert('Could not open project: ' + (err?.message || 'Network error'));
     }
   };
 
@@ -120,16 +285,62 @@ export default function App() {
     if (!confirm(`Are you sure you want to delete "${title}"?`)) return;
 
     try {
-      const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
-      if (res.ok) {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const { ok } = await safeFetchJson(`/api/projects/${projectId}`, { 
+        method: 'DELETE',
+        headers
+      });
+      if (ok) {
         setProjects((prev) => prev.filter((p) => p.id !== projectId));
         if (activeProject.id === projectId) {
           setActiveProject(DEFAULT_NEW_PROJECT);
         }
         showToast('Project deleted successfully.');
+        refreshStats();
       }
     } catch (err) {
       console.error('Delete failed:', err);
+    }
+  };
+
+  // Duplicate an estimate
+  const handleDuplicateProject = async (projectId: string, title: string) => {
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const { ok, data, error } = await safeFetchJson<{ project: Project; error?: string }>(`/api/projects/${projectId}/duplicate`, {
+        method: 'POST',
+        headers
+      });
+      if (ok) {
+        showToast(`Cloned "${title}" as a new draft estimate!`);
+        loadProjects();
+        refreshStats();
+      } else {
+        alert(data?.error || error || 'Could not duplicate project');
+      }
+    } catch (err: any) {
+      alert('Error duplicating estimate: ' + err.message);
+    }
+  };
+
+  // Update status directly from dashboard or editor
+  const handleUpdateStatus = async (projectId: string, status: string) => {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const { ok } = await safeFetchJson(`/api/projects/${projectId}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ status })
+      });
+      if (ok) {
+        showToast(`Project marked as ${status}`);
+        loadProjects();
+      }
+    } catch {
+      // Handled cleanly
     }
   };
 
@@ -163,6 +374,39 @@ export default function App() {
     showToast(`AI Takeoff completed using ${provider}! ${formattedItems.length} items detected.`);
   };
 
+  // Handle Questionnaire save and optional deterministic generation
+  const handleSaveQuestionnaire = (questionnaire: ProjectQuestionnaire, mode: 'deterministic' | 'save_only') => {
+    setActiveProject((prev) => ({
+      ...prev,
+      questionnaire,
+    }));
+    setHasUnsavedChanges(true);
+
+    if (mode === 'deterministic') {
+      const generated = generateDeterministicBoq(questionnaire, activeProject.location);
+      const totals = calculateBoqTotals(
+        generated, 
+        activeProject.po_percent, 
+        activeProject.vat_percent, 
+        activeProject.swamp_premium_percent
+      );
+      setActiveProject((prev) => ({
+        ...prev,
+        questionnaire,
+        items: generated,
+        subtotal: totals.subtotal,
+        po_amount: totals.poAmount,
+        vat_amount: totals.vatAmount,
+        grand_total: totals.grandTotal,
+      }));
+      setIsQuestionnaireModalOpen(false);
+      showToast(`Generated ${generated.length} BESMM4 standard BOQ items based on your specs!`);
+    } else {
+      setIsQuestionnaireModalOpen(false);
+      showToast('Project specification parameters saved successfully.');
+    }
+  };
+
   // Update a line item in the BOQ
   const handleUpdateItem = (index: number, field: keyof BoqItem, value: any) => {
     setActiveProject((prev) => {
@@ -182,19 +426,22 @@ export default function App() {
   };
 
   // Add a new row to BOQ
-  const handleAddItem = () => {
+  const handleAddItem = (customItem?: Partial<BoqItem>) => {
     setActiveProject((prev) => {
       const newNumber = prev.items.length + 1;
+      const q = customItem?.qty !== undefined ? customItem.qty : 100;
+      const r = customItem?.rate !== undefined ? customItem.rate : 14500;
       const newItem: BoqItem = {
         id: `item-${Date.now()}-${newNumber}`,
         project_id: prev.id,
         item_number: newNumber,
-        item: 'Blockwork',
-        description: '225mm sandcrete hollow blockwork in cement mortar',
-        unit: 'm2',
-        qty: 100,
-        rate: 14500,
-        amount: 1450000,
+        section: customItem?.section || 'Reinforced Concrete Frame',
+        item: customItem?.item || 'Blockwork',
+        description: customItem?.description || '225mm sandcrete hollow blockwork in cement mortar',
+        unit: customItem?.unit || 'm2',
+        qty: q,
+        rate: r,
+        amount: q * r,
       };
       return {
         ...prev,
@@ -208,7 +455,6 @@ export default function App() {
   const handleDeleteItem = (index: number) => {
     setActiveProject((prev) => {
       const updated = prev.items.filter((_, i) => i !== index);
-      // Renumber
       const renumbered = updated.map((it, i) => ({ ...it, item_number: i + 1 }));
       return { ...prev, items: renumbered };
     });
@@ -305,146 +551,501 @@ export default function App() {
         grand_total: totals.grandTotal,
       };
 
-      const res = await fetch('/api/projects', {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const { ok, data, error } = await safeFetchJson<{ project: Project; error?: string }>('/api/projects', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save');
+      if (!ok || !data?.project) {
+        throw new Error(data?.error || error || 'Failed to save project');
+      }
 
-      setActiveProject(data.project);
+      setActiveProject({
+        ...data.project,
+        items: data.project.items || activeProject.items || []
+      });
       setHasUnsavedChanges(false);
       showToast('Project saved successfully to SQLite database!');
       loadProjects();
+      refreshStats();
     } catch (err: any) {
-      console.error(err);
       alert('Failed to save project: ' + err.message);
     } finally {
       setIsSaving(false);
     }
   };
 
+  // Export Excel trigger
+  const handleExportExcel = () => {
+    const jsonStr = JSON.stringify(activeProject.items || [], null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(activeProject.title || 'Project').replace(/\s+/g, '_')}_BOQ.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Exported BOQ data schedule.');
+  };
+
   // Calculate dynamic totals for active project
   const calculatedTotals = calculateBoqTotals(
-    activeProject.items,
-    activeProject.po_percent,
-    activeProject.vat_percent,
-    activeProject.swamp_premium_percent
+    activeProject?.items,
+    activeProject?.po_percent,
+    activeProject?.vat_percent,
+    activeProject?.swamp_premium_percent
   );
 
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col antialiased selection:bg-emerald-100 selection:text-emerald-900">
-      
-      {/* App Header with Brand & Navigation */}
-      <Header
-        currentView={currentView}
-        onNavigate={(view) => setCurrentView(view)}
-        onNewProject={handleNewProject}
-        onOpenRatesModal={() => setIsRatesModalOpen(true)}
-        activeProjectTitle={activeProject.title}
+  // If user navigated to a public shared client tender link (e.g. /share/:token)
+  if (sharedToken) {
+    return (
+      <SharedTenderView
+        shareToken={sharedToken}
+        onBackToApp={() => {
+          if (typeof window !== 'undefined') {
+            window.history.pushState({}, '', '/');
+          }
+          setSharedToken(null);
+        }}
       />
+    );
+  }
 
-      {/* Floating Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-emerald-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center space-x-2 text-sm border border-emerald-700 animate-bounce">
-          <CheckCircle2 className="w-5 h-5 text-emerald-300 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
+  // If user navigated to public marketing landing page
+  if (currentView === 'landing') {
+    return (
+      <LandingPage
+        onOpenApp={() => navigateView('dashboard')}
+        onOpenAuth={(mode) => openAuthModal(mode)}
+        onOpenQuestionnaireDemo={() => {
+          navigateView('project-workspace');
+          setIsQuestionnaireModalOpen(true);
+        }}
+      />
+    );
+  }
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        
-        {currentView === 'dashboard' ? (
-          /* Feature 1: Project Dashboard */
-          <ProjectDashboard
+  // RENDER APP VIEW CONTENT
+  const renderCurrentViewContent = () => {
+    switch (currentView) {
+      case 'dashboard':
+        return (
+          <DashboardView
+            projects={projects}
+            onOpenProject={handleOpenProject}
+            onNewProject={handleNewProject}
+            onNavigate={navigateView}
+            onOpenTakeoff={() => {
+              navigateView('estimating', 'takeoff');
+            }}
+            onOpenRates={() => setIsRatesModalOpen(true)}
+            onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+          />
+        );
+
+      case 'projects':
+        return (
+          <ProjectsView
             projects={projects}
             loading={loadingProjects}
             onOpenProject={handleOpenProject}
             onNewProject={handleNewProject}
             onDeleteProject={handleDeleteProject}
+            onDuplicateProject={handleDuplicateProject}
+            onUpdateStatus={handleUpdateStatus}
           />
-        ) : (
-          /* Takeoff & BOQ Editor Workspace */
+        );
+
+      case 'project-workspace':
+      case 'editor':
+        return (
+          <ProjectWorkspaceView
+            project={activeProject}
+            onUpdateProject={(upd) => {
+              setActiveProject((prev) => ({ ...prev, ...upd }));
+              setHasUnsavedChanges(true);
+            }}
+            onUpdateBoqItem={handleUpdateItem}
+            onAddBoqItem={handleAddItem}
+            onDeleteBoqItem={handleDeleteItem}
+            onApplyMarketRates={handleApplyMarketRates}
+            onOpenAiTakeoff={() => navigateView('estimating', 'takeoff')}
+            onOpenRateLibrary={() => setIsRatesModalOpen(true)}
+            onOpenQuestionnaire={() => setIsQuestionnaireModalOpen(true)}
+            onExportExcel={handleExportExcel}
+            onOpenDossier={() => setIsExecutiveDossierModalOpen(true)}
+            onBackToProjects={() => navigateView('projects')}
+            onOpenVersionsModal={() => setIsVersionsModalOpen(true)}
+            onOpenAuditDrawer={() => setIsAuditDrawerOpen(true)}
+          />
+        );
+
+      case 'calculators':
+        return (
+          <CalculatorsHubView
+            onApplyToBoq={(calcItem) => {
+              handleAddItem({
+                item: calcItem.item,
+                description: calcItem.description,
+                qty: calcItem.qty,
+                unit: calcItem.unit,
+                rate: 16500,
+                amount: calcItem.qty * 16500,
+                section: calcItem.section || 'Superstructure'
+              });
+              showToast(`Applied ${calcItem.item} to active BOQ!`);
+            }}
+          />
+        );
+
+      case 'estimating':
+        return (
           <div className="space-y-6">
-            
-            {/* Project Details Meta Card */}
-            <ProjectMetaCard
+            {activeSubView === 'takeoff' && (
+              <DrawingUploader
+                onTakeoffSuccess={handleTakeoffSuccess}
+                isProcessing={isProcessingTakeoff}
+                setIsProcessing={setIsProcessingTakeoff}
+                questionnaire={activeProject.questionnaire}
+                onOpenQuestionnaire={() => setIsQuestionnaireModalOpen(true)}
+              />
+            )}
+            <EstimatingHubView
               project={activeProject}
-              onChange={(field, val) => {
-                setActiveProject((prev) => ({ ...prev, [field]: val }));
-                setHasUnsavedChanges(true);
+              projects={projects}
+              initialSubView={(activeSubView as EstimatingSubView) || 'boq'}
+              onOpenAiTakeoff={() => {
+                setActiveSubView('takeoff');
               }}
-            />
-
-            {/* Feature 2 & 3: Drawing Upload & AI Takeoff Engine */}
-            <DrawingUploader
-              onTakeoffSuccess={handleTakeoffSuccess}
-              isProcessing={isProcessingTakeoff}
-              setIsProcessing={setIsProcessingTakeoff}
-            />
-
-            {/* Feature 4 & 5: Editable BOQ Spreadsheet Table */}
-            <BoqTable
-              items={activeProject.items}
-              onUpdateItem={handleUpdateItem}
-              onAddItem={handleAddItem}
-              onDeleteItem={handleDeleteItem}
+              onOpenRateLibrary={() => setIsRatesModalOpen(true)}
+              onUpdateBoqItem={handleUpdateItem}
+              onAddBoqItem={handleAddItem}
+              onDeleteBoqItem={handleDeleteItem}
               onApplyMarketRates={handleApplyMarketRates}
+              onExportExcel={handleExportExcel}
             />
+          </div>
+        );
 
-            {/* Feature 6: Subtotal, 15% P&O, 7.5% VAT, Terrain Multiplier & Grand Total */}
-            <FinancialSummary
-              subtotal={calculatedTotals.subtotal}
-              poPercent={activeProject.po_percent}
-              setPoPercent={(val) => {
-                setActiveProject((prev) => ({ ...prev, po_percent: val }));
-                setHasUnsavedChanges(true);
-              }}
-              vatPercent={activeProject.vat_percent}
-              setVatPercent={(val) => {
-                setActiveProject((prev) => ({ ...prev, vat_percent: val }));
-                setHasUnsavedChanges(true);
-              }}
-              swampPremiumPercent={activeProject.swamp_premium_percent}
-              setSwampPremiumPercent={(val) => {
-                setActiveProject((prev) => ({ ...prev, swamp_premium_percent: val }));
-                setHasUnsavedChanges(true);
-              }}
-              grandTotal={calculatedTotals.grandTotal}
-            />
+      case 'controls':
+        return (
+          <ProjectControlsView
+            project={activeProject}
+            projects={projects}
+            initialSubView={(activeSubView as ProjectControlsSubView) || 'budget'}
+            onSelectProject={handleOpenProject}
+          />
+        );
 
-            {/* Feature 7 & 8: Export Excel, Export PDF, Save to SQLite */}
-            <ExportActions
-              project={activeProject}
-              items={activeProject.items}
-              onSaveProject={handleSaveProject}
-              isSaving={isSaving}
-              hasUnsavedChanges={hasUnsavedChanges}
-            />
+      case 'documents':
+        return (
+          <DocumentsReportsView
+            projects={projects}
+            activeProject={activeProject}
+            onOpenDossier={() => setIsExecutiveDossierModalOpen(true)}
+            onExportExcel={handleExportExcel}
+          />
+        );
 
+      case 'team':
+        return (
+          <TeamClientsView
+            onOpenTenderPortal={() => setIsTenderModalOpen(true)}
+          />
+        );
+
+      case 'settings':
+        return (
+          <SettingsView
+            onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+          />
+        );
+
+      case 'help':
+        return (
+          <HelpSupportView
+            onNavigate={navigateView}
+          />
+        );
+
+      default:
+        return (
+          <DashboardView
+            projects={projects}
+            onOpenProject={handleOpenProject}
+            onNewProject={handleNewProject}
+            onNavigate={navigateView}
+            onOpenTakeoff={() => navigateView('estimating', 'takeoff')}
+            onOpenRates={() => setIsRatesModalOpen(true)}
+            onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+          />
+        );
+    }
+  };
+
+  return (
+    <div className="flex h-screen bg-slate-100 text-slate-900 overflow-hidden font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
+      
+      {/* 1. Global Left Sidebar */}
+      <Sidebar
+        currentView={currentView}
+        onNavigate={navigateView}
+        activeProject={activeProject}
+        projectsCount={projects.length}
+        isOpenMobile={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        pendingActionsCount={2}
+        unreadNotificationsCount={1}
+      />
+
+      {/* 2. Main Content Layout Container */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        
+        {/* Top Header */}
+        <AppHeader
+          currentView={currentView}
+          onNavigate={navigateView}
+          onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
+          projects={projects}
+          activeProject={activeProject}
+          onSelectProject={handleOpenProject}
+          onNewProject={handleNewProject}
+          onNewBoq={() => {
+            handleNewProject();
+            navigateView('estimating', 'boq');
+          }}
+          onNewEstimate={() => {
+            handleNewProject();
+            navigateView('estimating', 'estimate');
+          }}
+          onAiTakeoff={() => {
+            navigateView('estimating', 'takeoff');
+          }}
+          onNewValuation={() => {
+            navigateView('controls', 'valuations');
+          }}
+          onNewCertificate={() => {
+            navigateView('controls', 'certificates');
+          }}
+          onNewVariation={() => {
+            navigateView('controls', 'variations');
+          }}
+          onNewCalculation={() => {
+            navigateView('calculators');
+          }}
+          onUploadDocument={() => {
+            setIsDocumentsModalOpen(true);
+          }}
+          onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+        />
+
+        {/* 7-Day Trial & Subscription Notice Bar */}
+        {subscriptionInfo && (
+          <div className={`border-b text-xs px-4 py-2 transition shrink-0 ${
+            subscriptionInfo.trialExpired
+              ? 'bg-rose-50 border-rose-200 text-rose-950'
+              : subscriptionInfo.isTrial
+              ? 'bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 text-amber-950'
+              : 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 text-emerald-950'
+          }`}>
+            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+              <div className="flex items-center space-x-2">
+                {subscriptionInfo.trialExpired ? (
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                ) : subscriptionInfo.isTrial ? (
+                  <CreditCard className="w-4 h-4 text-amber-700 shrink-0" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                )}
+                <span>
+                  {subscriptionInfo.trialExpired ? (
+                    <span><strong>7-Day Trial Expired:</strong> Activate license via bank transfer to <strong>Isaac Emmanuel at Access Bank (081515121)</strong>.</span>
+                  ) : subscriptionInfo.isTrial ? (
+                    <span><strong>Complimentary 7-Day Trial:</strong> {subscriptionInfo.trialDaysRemaining} days left. Access full features, AI Takeoffs and NIQS reports.</span>
+                  ) : (
+                    <span><strong>Active Subscription:</strong> {subscriptionInfo.tier === 'lifetime_license' ? 'Enterprise Lifetime License' : subscriptionInfo.tier === 'yearly' ? 'Corporate Annual Plan' : 'Professional Monthly'} &bull; Verified QS Account</span>
+                  )}
+                </span>
+              </div>
+
+              <button
+                onClick={() => setIsSubscriptionModalOpen(true)}
+                className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-md text-xs font-bold bg-white hover:bg-slate-50 border border-slate-300 shadow-2xs text-slate-900 shrink-0 transition cursor-pointer"
+              >
+                <span>{subscriptionInfo.trialExpired ? 'Renew License' : 'Bank Details & Plans'}</span>
+              </button>
+            </div>
           </div>
         )}
 
-      </main>
+        {/* Scrollable Main Area */}
+        <main className="flex-1 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6">
+          {renderCurrentViewContent()}
+        </main>
 
-      {/* NICE TO HAVE: Standard Nigerian Cost & Rate Index Modal */}
+        {/* System Footer */}
+        <footer className="border-t border-slate-200 bg-white py-3 px-6 text-xs text-slate-500 shrink-0">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px]">
+            <span>Let&apos;s Estimate &bull; AI Quantity Surveying &amp; Construction Cost Management</span>
+            <span className="text-slate-400">NIQS / BESMM4 Standard Compliance</span>
+          </div>
+        </footer>
+
+      </div>
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center space-x-2 text-xs border border-slate-700 animate-fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
+      {/* ALL MODALS PRESERVED & FUNCTIONAL */}
       <NigerianRatesModal
         isOpen={isRatesModalOpen}
         onClose={() => setIsRatesModalOpen(false)}
+        activeProjectItems={activeProject.items}
+        projectLocation={activeProject.location}
         onSelectRate={handleSelectRateFromModal}
       />
 
-      {/* Footer */}
-      <footer className="mt-auto border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Let's Estimate - AI Bill of Quantities (BOQ) Tool for Builders in Nigeria</span>
-          <span className="text-slate-400">Powered by Google Gemini 2.5 Flash Vision & SQLite</span>
-        </div>
-      </footer>
+      <MaterialScheduleModal
+        isOpen={isMaterialModalOpen}
+        onClose={() => setIsMaterialModalOpen(false)}
+        projectId={activeProject.id}
+        projectTitle={activeProject.title}
+        items={activeProject.items}
+      />
+
+      <ProjectDocumentsModal
+        isOpen={isDocumentsModalOpen}
+        onClose={() => setIsDocumentsModalOpen(false)}
+        projectId={activeProject.id}
+        projectTitle={activeProject.title}
+        onSelectDrawingForTakeoff={(doc) => {
+          setActiveProject(prev => ({
+            ...prev,
+            drawing_filename: doc.file_name
+          }));
+          showToast(`Attached drawing "${doc.title}" for AI takeoff.`);
+        }}
+      />
+
+      <ProjectShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        projectId={activeProject.id}
+        projectTitle={activeProject.title}
+      />
+
+      <EstimateVersionsModal
+        projectId={activeProject.id}
+        activeVersion={activeProject.active_version}
+        isOpen={isVersionsModalOpen}
+        onClose={() => setIsVersionsModalOpen(false)}
+        onRestoreVersion={(restored) => {
+          setActiveProject(restored);
+          setHasUnsavedChanges(false);
+          showToast(`Restored estimate version "${restored.active_version || 'V1'}"`);
+        }}
+        token={token}
+        currentProject={activeProject}
+      />
+
+      <ProjectVariationsModal
+        projectId={activeProject.id}
+        contractSum={calculatedTotals.grandTotal}
+        isOpen={isVariationsModalOpen}
+        onClose={() => setIsVariationsModalOpen(false)}
+        token={token}
+      />
+
+      <ProjectValuationsModal
+        project={activeProject}
+        isOpen={isValuationsModalOpen}
+        onClose={() => setIsValuationsModalOpen(false)}
+        token={token}
+      />
+
+      <CashFlowModal
+        isOpen={isCashFlowModalOpen}
+        onClose={() => setIsCashFlowModalOpen(false)}
+        projectId={activeProject.id}
+        projectName={activeProject.title}
+        projectTotal={calculatedTotals.grandTotal}
+      />
+
+      <TenderComparisonModal
+        isOpen={isTenderModalOpen}
+        onClose={() => setIsTenderModalOpen(false)}
+        projectId={activeProject.id}
+        projectName={activeProject.title}
+        projectSubtotal={calculatedTotals.subtotal}
+        boqItems={activeProject.items}
+      />
+
+      <RiskAuditModal
+        isOpen={isRiskAuditModalOpen}
+        onClose={() => setIsRiskAuditModalOpen(false)}
+        projectId={activeProject.id}
+        projectName={activeProject.title}
+        projectLocation={activeProject.location}
+        projectTotal={calculatedTotals.grandTotal}
+        boqItems={activeProject.items}
+      />
+
+      <SubscriptionBillingModal
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => {
+          setIsSubscriptionModalOpen(false);
+          loadSubscription();
+        }}
+      />
+
+      <FinalAccountModal
+        isOpen={isFinalAccountModalOpen}
+        onClose={() => setIsFinalAccountModalOpen(false)}
+        project={activeProject}
+        token={token}
+      />
+
+      <ExecutiveDossierModal
+        isOpen={isExecutiveDossierModalOpen}
+        onClose={() => setIsExecutiveDossierModalOpen(false)}
+        projectId={activeProject.id}
+        projectName={activeProject.title}
+        token={token}
+      />
+
+      <ProjectAuditDrawer
+        projectId={activeProject.id}
+        isOpen={isAuditDrawerOpen}
+        onClose={() => setIsAuditDrawerOpen(false)}
+      />
+
+      <ProjectQuestionnaireModal
+        isOpen={isQuestionnaireModalOpen}
+        onClose={() => setIsQuestionnaireModalOpen(false)}
+        onSaveAndGenerate={handleSaveQuestionnaire}
+        initialData={activeProject.questionnaire}
+      />
+
+      <AuthModal />
+      <UserProfileModal />
 
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainApp />
+    </AuthProvider>
   );
 }

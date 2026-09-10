@@ -19,16 +19,17 @@ export function formatNumber(value: number | string | undefined | null, decimals
 }
 
 export function calculateBoqTotals(
-  items: Array<{ qty: number; rate: number }>,
+  items?: Array<{ qty: number; rate: number }> | null,
   poPercent: number = 15.0,
   vatPercent: number = 7.5,
   swampPremiumPercent: number = 0.0
 ) {
-  const subtotal = items.reduce((acc, it) => acc + (Number(it.qty || 0) * Number(it.rate || 0)), 0);
-  const swampAmount = subtotal * (swampPremiumPercent / 100);
+  const safeItems = Array.isArray(items) ? items : [];
+  const subtotal = safeItems.reduce((acc, it) => acc + (Number(it?.qty || 0) * Number(it?.rate || 0)), 0);
+  const swampAmount = subtotal * ((Number(swampPremiumPercent) || 0) / 100);
   const adjustedSubtotal = subtotal + swampAmount;
-  const poAmount = adjustedSubtotal * (poPercent / 100);
-  const vatAmount = (adjustedSubtotal + poAmount) * (vatPercent / 100);
+  const poAmount = adjustedSubtotal * ((Number(poPercent) || 0) / 100);
+  const vatAmount = (adjustedSubtotal + poAmount) * ((Number(vatPercent) || 0) / 100);
   const grandTotal = adjustedSubtotal + poAmount + vatAmount;
 
   return {
