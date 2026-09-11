@@ -17,7 +17,8 @@ import {
   SlidersHorizontal,
   DollarSign,
   ShieldCheck,
-  Award
+  Award,
+  BookOpen
 } from 'lucide-react';
 import { Project, AppGlobalView } from '../../types';
 import { formatNaira } from '../../utils/format';
@@ -74,6 +75,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Quick actions group on top */}
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => window.open('/api/guide/pdf', '_blank')}
+            className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs transition active:scale-95 cursor-pointer"
+            title="Download PDF User Manual"
+          >
+            <BookOpen className="w-4 h-4 text-emerald-600" />
+            <span>User Guide (PDF)</span>
+          </button>
           <button
             type="button"
             onClick={onNewProject}

@@ -459,3 +459,240 @@ export function generatePdfBuffer(data: ExportData): Promise<Buffer> {
     }
   });
 }
+
+/**
+ * Generate a comprehensive, professional User Guide & Onboarding Manual PDF for new users
+ */
+export function generateUserGuidePdfBuffer(): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: 40,
+        info: {
+          Title: "Let's Estimate 2.0 - Complete User Guide & Manual",
+          Author: "Let's Estimate Engineering Team",
+          Subject: 'Comprehensive User Guide for Nigerian Construction Professionals',
+        },
+      });
+
+      const buffers: Buffer[] = [];
+      doc.on('data', (chunk) => buffers.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', (err) => reject(err));
+
+      // PAGE 1: COVER & OVERVIEW
+      doc.rect(0, 0, 595, 842).fill('#064e3b'); // Emerald-900 background accent
+
+      // Inner white card
+      doc.rect(30, 30, 535, 782).fill('#ffffff');
+
+      // Header Banner
+      doc.rect(30, 30, 535, 110).fill('#047857');
+      doc.fillColor('#ffffff').fontSize(24).font('Helvetica-Bold')
+        .text("LET'S ESTIMATE 2.0", 50, 55, { characterSpacing: 1.5 });
+      doc.fontSize(11).font('Helvetica')
+        .text('AI-POWERED BILL OF QUANTITIES (BOQ) & QUANTITY SURVEYING PLATFORM', 50, 88);
+      doc.fontSize(9).font('Helvetica-Oblique').fillColor('#a7f3d0')
+        .text('Official User Guide, BESMM4 Standards & Field Manual for Nigerian Construction', 50, 106);
+
+      let y = 160;
+      doc.fillColor('#064e3b').fontSize(14).font('Helvetica-Bold').text('1. Welcome to Let\'s Estimate 2.0', 50, y);
+      y += 20;
+
+      doc.fillColor('#334155').fontSize(9).font('Helvetica').lineGap(4).text(
+        "Let's Estimate is an enterprise-grade Quantity Surveying and Cost Engineering platform engineered specifically for Nigerian construction professionals—Architects, Builders, Registered Quantity Surveyors (NIQS), and General Contractors.\n\n" +
+        "Powered by Google Gemini 2.5 Flash Vision AI and aligned with the Building & Engineering Standard Method of Measurement (BESMM4), the system transforms complex architectural drawings into deterministic, audit-proof Bills of Quantities in seconds.",
+        50, y, { width: 495, align: 'justify' }
+      );
+
+      y += 75;
+      doc.fillColor('#064e3b').fontSize(14).font('Helvetica-Bold').text('2. Core Platform Capabilities', 50, y);
+      y += 20;
+
+      const features = [
+        {
+          title: "AI Architectural Drawing Takeoff",
+          desc: "Upload PDFs, CAD floor plans, or scanned blueprints. Gemini Vision extracts structural members, concrete volumes, blockwork m², and finishes."
+        },
+        {
+          title: "Live Nigerian Rate Library & Multipliers",
+          desc: "Instant pricing for Lagos, Abuja, Port Harcourt, and Regional hubs. Custom market rate breakdowns for materials, labor, and plant."
+        },
+        {
+          title: "BESMM4 Standard Item Organization",
+          desc: "Automatic categorization into Preliminaries, Substructure, RC Frame, Blockwork, Roofing, Doors/Windows, Finishes, and MEP."
+        },
+        {
+          title: "Terrain & Statutory Tax Engine",
+          desc: "Configurable 7.5% Nigerian VAT, 15% Profit & Overhead, and specialized Niger Delta Swamp Terrain premiums (5% - 25%)."
+        },
+        {
+          title: "Interim Payment Certificates (IPC)",
+          desc: "Issue progressive contractor valuations with automated retention deductions, advance payment recovery, and net certificates."
+        },
+        {
+          title: "Executive Export & Multi-Format Reports",
+          desc: "Generate stamp-ready NIQS Bill of Quantities PDFs, multi-tab Excel workbooks, and comprehensive client audit dossiers."
+        }
+      ];
+
+      features.forEach((feat, idx) => {
+        const col = idx % 2 === 0 ? 50 : 305;
+        const rowY = y + Math.floor(idx / 2) * 65;
+
+        doc.rect(col, rowY, 240, 56).fill('#f8fafc').stroke('#e2e8f0');
+        doc.fillColor('#047857').fontSize(9).font('Helvetica-Bold').text(feat.title, col + 10, rowY + 8, { width: 220 });
+        doc.fillColor('#475569').fontSize(7.5).font('Helvetica').lineGap(2).text(feat.desc, col + 10, rowY + 22, { width: 220 });
+      });
+
+      y += 215;
+      doc.rect(50, y, 495, 80).fill('#f0fdf4').stroke('#86efac');
+      doc.fillColor('#166534').fontSize(10).font('Helvetica-Bold').text('Professional Accreditation Notice', 65, y + 10);
+      doc.fillColor('#334155').fontSize(8).font('Helvetica').lineGap(3).text(
+        "All calculations and schedules follow the standards codified by the Nigerian Institute of Quantity Surveyors (NIQS) and the Quantity Surveyors Registration Board of Nigeria (QSRBN). Rates reflect prevailing market surveys conducted across Lagos State, Rivers State, and the Federal Capital Territory (FCT).",
+        65, y + 26, { width: 465 }
+      );
+
+      // Footer of Page 1
+      doc.fillColor('#94a3b8').fontSize(7).text("Page 1 of 3 - Let's Estimate 2.0 User Manual - https://estimate.ng", 50, 790, { align: 'center', width: 495 });
+
+      // PAGE 2: 5-STEP WORKFLOW GUIDE
+      doc.addPage();
+      doc.rect(30, 30, 535, 782).stroke('#e2e8f0');
+
+      // Top bar
+      doc.rect(30, 30, 535, 45).fill('#064e3b');
+      doc.fillColor('#ffffff').fontSize(14).font('Helvetica-Bold').text("Step-by-Step User Workflow", 50, 46);
+      doc.fontSize(8.5).font('Helvetica').text("From Architectural Upload to Contract Award in 5 Simple Steps", 300, 49, { align: 'right', width: 245 });
+
+      y = 95;
+
+      const steps = [
+        {
+          step: "STEP 1",
+          title: "Create or Open a Project",
+          detail: "Click '+ Create' in the top navigation bar or 'New Project' on the Dashboard. Provide the Project Title, Location (e.g., Lekki Lagos, Port Harcourt, or Abuja), and Client Name. Location automatically sets the initial material cost baseline."
+        },
+        {
+          step: "STEP 2",
+          title: "Upload Drawings or Architectural Plans",
+          detail: "Navigate to the 'AI Takeoff' tab or click the drawing dropzone. Upload high-resolution architectural plans (PDF or image). Gemini 2.5 Flash inspects title blocks, dimension grids, elevation heights, and wall schedules."
+        },
+        {
+          step: "STEP 3",
+          title: "Review & Confirm Extracted Quantities",
+          detail: "The AI Takeoff drawer extracts concrete slabs (m³), perimeter blockwork (m²), plastering (m²), roofing trusses, doors, and windows. Inspect detected quantities, adjust any dimensions if needed, and click 'Confirm & Insert into BOQ'."
+        },
+        {
+          step: "STEP 4",
+          title: "Customize Rates & Statutory Tax Percentages",
+          detail: "In the BOQ Table editor, adjust unit rates from the built-in Nigerian Rate Library. Use the bottom summary sliders to calibrate Profit & Overheads (default 15%), VAT (7.5%), or Swamp Premium (for riverine/marshy terrain)."
+        },
+        {
+          step: "STEP 5",
+          title: "Export Stamp-Ready Documents",
+          detail: "Click 'Export PDF' for a formal, branded contractor tender BOQ with signature and stamp blocks. Click 'Export Excel' for a structured multi-tab workbook with Material Procurement schedules (cement bags, sand tonnes, granite, rebar)."
+        }
+      ];
+
+      steps.forEach((s) => {
+        doc.rect(50, y, 495, 72).fill('#ffffff').stroke('#cbd5e1');
+        doc.rect(50, y, 65, 72).fill('#047857');
+        doc.fillColor('#ffffff').fontSize(11).font('Helvetica-Bold').text(s.step, 50, y + 28, { width: 65, align: 'center' });
+
+        doc.fillColor('#0f172a').fontSize(10).font('Helvetica-Bold').text(s.title, 125, y + 10);
+        doc.fillColor('#475569').fontSize(8).font('Helvetica').lineGap(2).text(s.detail, 125, y + 26, { width: 405 });
+
+        y += 82;
+      });
+
+      // Practical Completion & Valuations highlight
+      y += 10;
+      doc.rect(50, y, 495, 125).fill('#fefce8').stroke('#fde047');
+      doc.fillColor('#854d0e').fontSize(11).font('Helvetica-Bold').text('Contract Administration & Interim Valuations (IPC)', 65, y + 12);
+      doc.fillColor('#713f12').fontSize(8).font('Helvetica').lineGap(3).text(
+        "During construction, use the 'Project Controls' view to certify progress payments:\n" +
+        "• Interim Payment Certificate (IPC): Track cumulative work executed against contract milestones.\n" +
+        "• Retention Withholding: Automatically deduct 5% or 10% retention until the Defects Liability Period.\n" +
+        "• Variation Orders: Log approved additions and omissions with instant contract sum re-calculation.\n" +
+        "• Cash Flow Forecasts: Visual S-curve projections comparing planned vs. actual cash drawdowns.\n" +
+        "• Tender Bid Equalization: Compare sub-contractor bids against the engineering benchmark.",
+        65, y + 30, { width: 465 }
+      );
+
+      // Footer of Page 2
+      doc.fillColor('#94a3b8').fontSize(7).text("Page 2 of 3 - Let's Estimate 2.0 User Manual - https://estimate.ng", 50, 790, { align: 'center', width: 495 });
+
+      // PAGE 3: TIPS, BEST PRACTICES & FAQ
+      doc.addPage();
+      doc.rect(30, 30, 535, 782).stroke('#e2e8f0');
+
+      doc.rect(30, 30, 535, 45).fill('#064e3b');
+      doc.fillColor('#ffffff').fontSize(14).font('Helvetica-Bold').text("Best Practices & Expert Tips", 50, 46);
+      doc.fontSize(8.5).font('Helvetica').text("Maximizing Accuracy with Gemini AI & BESMM4 Rules", 300, 49, { align: 'right', width: 245 });
+
+      y = 95;
+
+      const tips = [
+        {
+          q: "How do I get the highest AI takeoff accuracy?",
+          a: "Upload drawings that clearly display dimension strings and title blocks with a defined scale bar (e.g. 1:100 or 1:50). Ensure text labels like 'Master Bedroom', 'Living Room', and elevation heights (e.g. +3.000m) are legible."
+        },
+        {
+          q: "What is the Swamp / Terrain Premium?",
+          a: "For construction projects in the Niger Delta (Rivers, Bayelsa, Delta) or coastal Lagos (Lekki, Epe, Badagry), foundation dewatering, timber piling, and sand-filling inflate costs. Set the Swamp Premium slider (10% - 25%) to compensate."
+        },
+        {
+          q: "Can I use custom prices instead of the Nigerian Rate Library?",
+          a: "Yes! Simply edit the unit rate column in the BOQ table directly. You can also add your company's proprietary supplier quotes under 'Custom Rates' in the Library view."
+        },
+        {
+          q: "How does the Material Procurement breakdown work?",
+          a: "When you export to Excel, the platform automatically calculates physical material quantities based on Nigerian structural mix ratios: 7.2 bags of cement per m³ of Grade 25 concrete, 0.45 tonnes of granite, 0.5 tonnes of sharp sand, and rebar tonnage."
+        },
+        {
+          q: "Can I share a live read-only tender link with my Client or Subcontractors?",
+          a: "Yes. In the project menu, select 'Share Project' to generate an encrypted public link. Clients can review the BOQ without requiring a login or modifying existing items."
+        }
+      ];
+
+      tips.forEach((t) => {
+        doc.fillColor('#064e3b').fontSize(9.5).font('Helvetica-Bold').text("Q: " + t.q, 50, y, { width: 495 });
+        y += 14;
+        doc.fillColor('#334155').fontSize(8.5).font('Helvetica').lineGap(2).text(t.a, 50, y, { width: 495, align: 'justify' });
+        y += 38;
+      });
+
+      // Quick Keyboard & UI Shortcuts
+      y += 10;
+      doc.rect(50, y, 495, 95).fill('#f1f5f9').stroke('#cbd5e1');
+      doc.fillColor('#0f172a').fontSize(10).font('Helvetica-Bold').text('Essential Platform Navigation & Shortcuts', 65, y + 10);
+
+      doc.fillColor('#334155').fontSize(8).font('Helvetica').lineGap(3).text(
+        "• Universal '+ Create' Button: Located in the top header—instantly spawn Projects, BOQs, Estimates, or Valuations.\n" +
+        "• Global Search Bar: Press or click search to jump instantly to any project, bill item, or engineering calculator.\n" +
+        "• Section Filters: In the BOQ Table, filter items by 'Substructure', 'Superstructure', 'Finishes', or 'MEP'.\n" +
+        "• Preset Items: Use the '+ Add Item' dropdown to insert pre-measured BESMM4 clauses with standardized descriptions.",
+        65, y + 26, { width: 465 }
+      );
+
+      // Support contact info
+      y += 115;
+      doc.rect(50, y, 495, 65).fill('#ecfdf5').stroke('#6ee7b7');
+      doc.fillColor('#065f46').fontSize(10).font('Helvetica-Bold').text('Need Help or Custom Enterprise Deployment?', 65, y + 10);
+      doc.fillColor('#047857').fontSize(8).font('Helvetica').text(
+        "Email Support: support@estimate.ng  |  WhatsApp Hotline: +234 815 151 2100  |  Website: https://estimate.ng\n" +
+        "Built with pride for Quantity Surveyors, Civil Engineers, and Builders across Nigeria.",
+        65, y + 26, { width: 465 }
+      );
+
+      // Footer of Page 3
+      doc.fillColor('#94a3b8').fontSize(7).text("Page 3 of 3 - Let's Estimate 2.0 User Manual - https://estimate.ng", 50, 790, { align: 'center', width: 495 });
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}

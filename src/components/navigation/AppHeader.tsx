@@ -23,7 +23,8 @@ import {
   Receipt,
   Users,
   CheckCircle2,
-  X
+  X,
+  BookOpen
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AppGlobalView, Project, BoqItem, StandardRate } from '../../types';
@@ -437,6 +438,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             )}
           </div>
 
+          {/* User Guide PDF Quick Action */}
+          <button
+            id="header-user-guide-btn"
+            type="button"
+            onClick={() => {
+              window.open('/api/guide/pdf', '_blank');
+            }}
+            className="hidden sm:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-emerald-50 hover:text-emerald-900 hover:border-emerald-300 text-slate-700 text-xs font-bold transition shadow-2xs cursor-pointer"
+            title="Download Let's Estimate 2.0 User Manual (PDF)"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
+            <span>User Guide (PDF)</span>
+          </button>
+
           {/* Notifications Button */}
           <button
             type="button"
@@ -504,6 +519,18 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   >
                     <CreditCard className="w-3.5 h-3.5 text-slate-400" />
                     <span>Billing &amp; Bank Transfer Plans</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileOpen(false);
+                      window.open('/api/guide/pdf', '_blank');
+                    }}
+                    className="w-full flex items-center space-x-2 px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 text-left transition"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>User Guide &amp; Field Manual (PDF)</span>
                   </button>
 
                   {/* Section 2: Visit Public Website option placed in profile menu */}

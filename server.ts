@@ -81,7 +81,7 @@ import {
   AuthRequest 
 } from './server/auth.js';
 import { performAiTakeoff, estimateFromDescription, analyzeBoqItems, auditValueEngineeringAndRisks } from './server/ai.js';
-import { generateExcelBuffer, generatePdfBuffer, calculateMaterialRequirements, ExportData } from './server/export.js';
+import { generateExcelBuffer, generatePdfBuffer, generateUserGuidePdfBuffer, calculateMaterialRequirements, ExportData } from './server/export.js';
 import { getRateLibrary, getUserCustomRates, saveUserCustomRate, deleteUserCustomRate } from './server/rates.js';
 
 dotenv.config();
@@ -756,6 +756,19 @@ app.post('/api/export/pdf', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('PDF export error:', error);
     res.status(500).json({ error: 'Failed to generate PDF document: ' + error.message });
+  }
+});
+
+// 3b. Download User Guide & Manual PDF for new users
+app.get('/api/guide/pdf', async (req: Request, res: Response) => {
+  try {
+    const buffer = await generateUserGuidePdfBuffer();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="Lets_Estimate_2.0_User_Guide.pdf"');
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('User guide PDF export error:', error);
+    res.status(500).json({ error: 'Failed to generate User Guide PDF: ' + error.message });
   }
 });
 
