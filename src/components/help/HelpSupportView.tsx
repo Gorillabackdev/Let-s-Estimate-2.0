@@ -11,7 +11,8 @@ import {
   Mail,
   Download,
   CheckCircle,
-  Loader2
+  Loader2,
+  FolderArchive
 } from 'lucide-react';
 import { AppGlobalView } from '../../types';
 
@@ -62,6 +63,18 @@ export const HelpSupportView: React.FC<HelpSupportViewProps> = ({ onNavigate }) 
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
+          {/* Download Project Source ZIP Button */}
+          <button
+            id="download-project-zip-btn"
+            type="button"
+            onClick={() => window.open('/api/download/project-zip', '_blank')}
+            className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold inline-flex items-center space-x-2 shadow-xs transition active:scale-95 cursor-pointer"
+            title="Download Complete Source Code (ZIP)"
+          >
+            <FolderArchive className="w-4 h-4 text-amber-400" />
+            <span>Download Project (ZIP)</span>
+          </button>
+
           {/* Download User Guide PDF Button */}
           <button
             id="download-user-guide-btn"

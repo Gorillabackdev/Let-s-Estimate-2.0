@@ -49,6 +49,18 @@ export interface ProjectRecord {
   grand_total: number;
   active_version?: string;
   notes: string;
+  reference?: string;
+  contractor?: string;
+  questionnaire_json?: string;
+  location_details_json?: string;
+  drawings_json?: string;
+  takeoff_json?: string;
+  library_json?: string;
+  questionnaire?: any;
+  location_details?: any;
+  drawings?: any[];
+  takeoff?: any;
+  library?: any[];
   items?: BoqItemRecord[];
 }
 
@@ -139,6 +151,13 @@ export async function getDb(): Promise<Database> {
     "ALTER TABLE users ADD COLUMN subscription_expires_at TEXT DEFAULT ''",
     "ALTER TABLE users ADD COLUMN boq_credits INTEGER DEFAULT 0",
     "ALTER TABLE users ADD COLUMN license_key TEXT DEFAULT ''",
+    "ALTER TABLE projects ADD COLUMN questionnaire_json TEXT DEFAULT '{}'",
+    "ALTER TABLE projects ADD COLUMN location_details_json TEXT DEFAULT '{}'",
+    "ALTER TABLE projects ADD COLUMN drawings_json TEXT DEFAULT '[]'",
+    "ALTER TABLE projects ADD COLUMN takeoff_json TEXT DEFAULT '{}'",
+    "ALTER TABLE projects ADD COLUMN library_json TEXT DEFAULT '[]'",
+    "ALTER TABLE projects ADD COLUMN reference TEXT DEFAULT ''",
+    "ALTER TABLE projects ADD COLUMN contractor TEXT DEFAULT ''",
   ];
 
   for (const alterSql of safeAlterColumns) {
@@ -653,6 +672,25 @@ function seedSampleProject(database: Database): void {
   }
 }
 
+function parseProjectExtras(proj: any): ProjectRecord {
+  if (proj.questionnaire_json) {
+    try { proj.questionnaire = JSON.parse(proj.questionnaire_json); } catch {}
+  }
+  if (proj.location_details_json) {
+    try { proj.location_details = JSON.parse(proj.location_details_json); } catch {}
+  }
+  if (proj.drawings_json) {
+    try { proj.drawings = JSON.parse(proj.drawings_json); } catch {}
+  }
+  if (proj.takeoff_json) {
+    try { proj.takeoff = JSON.parse(proj.takeoff_json); } catch {}
+  }
+  if (proj.library_json) {
+    try { proj.library = JSON.parse(proj.library_json); } catch {}
+  }
+  return proj as ProjectRecord;
+}
+
 /**
  * Query all projects (optionally filtered by authenticated user)
  */
@@ -693,7 +731,7 @@ export async function getAllProjects(userId?: string): Promise<ProjectRecord[]> 
       obj[col] = row[idx];
     });
     obj.items = itemsByProject[obj.id] || [];
-    return obj as ProjectRecord;
+    return parseProjectExtras(obj);
   });
 
   return projects;
@@ -728,7 +766,7 @@ export async function getProjectById(id: string): Promise<ProjectRecord | null> 
   }
 
   project.items = items;
-  return project as ProjectRecord;
+  return parseProjectExtras(project);
 }
 
 /**
@@ -738,8 +776,12 @@ export async function saveProject(data: Partial<ProjectRecord> & { id: string; i
   const database = await getDb();
   const existing = await getProjectById(data.id);
 
-  const safeItems = Array.isArray(data.items) ? data.items : (existing?.items || []);
-  const subtotal = safeItems.reduce((acc, curr) => acc + (Number(curr.qty || 0) * Number(curr.rate || 0)), 0);
+  const hasProvidedItems = Array.isArray(data.items);
+  const safeItems = hasProvidedItems ? data.items! : (existing?.items || []);
+  const subtotal = hasProvidedItems
+    ? safeItems.reduce((acc, curr) => acc + (Number(curr.qty || 0) * Number(curr.rate || 0)), 0)
+    : (data.subtotal !== undefined ? Number(data.subtotal) : (existing?.subtotal ?? 0));
+
   const poPercent = data.po_percent ?? (existing?.po_percent ?? 15.0);
   const vatPercent = data.vat_percent ?? (existing?.vat_percent ?? 7.5);
   const swampPercent = data.swamp_premium_percent ?? (existing?.swamp_premium_percent ?? 0.0);
@@ -753,6 +795,12 @@ export async function saveProject(data: Partial<ProjectRecord> & { id: string; i
   const vatAmount = (adjustedSub + poAmount) * (vatPercent / 100);
   const grandTotal = adjustedSub + poAmount + vatAmount;
 
+  const qJson = data.questionnaire ? JSON.stringify(data.questionnaire) : (data.questionnaire_json || existing?.questionnaire_json || '{}');
+  const locJson = data.location_details ? JSON.stringify(data.location_details) : (data.location_details_json || existing?.location_details_json || '{}');
+  const drawJson = data.drawings ? JSON.stringify(data.drawings) : (data.drawings_json || existing?.drawings_json || '[]');
+  const takeJson = data.takeoff ? JSON.stringify(data.takeoff) : (data.takeoff_json || existing?.takeoff_json || '{}');
+  const libJson = data.library ? JSON.stringify(data.library) : (data.library_json || existing?.library_json || '[]');
+
   if (existing) {
     database.run(
       `UPDATE projects SET 
@@ -762,7 +810,8 @@ export async function saveProject(data: Partial<ProjectRecord> & { id: string; i
         subtotal = ?, po_amount = ?, vat_amount = ?, grand_total = ?, notes = ?,
         project_type = ?, client_contact = ?, state = ?, country = ?, description = ?,
         gfa = ?, number_of_floors = ?, status = ?, start_date = ?, target_completion_date = ?,
-        active_version = ?,
+        active_version = ?, questionnaire_json = ?, location_details_json = ?, drawings_json = ?,
+        takeoff_json = ?, library_json = ?, reference = ?, contractor = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
@@ -793,20 +842,31 @@ export async function saveProject(data: Partial<ProjectRecord> & { id: string; i
         data.start_date ?? existing.start_date ?? '',
         data.target_completion_date ?? existing.target_completion_date ?? '',
         data.active_version ?? existing.active_version ?? 'V1',
+        qJson,
+        locJson,
+        drawJson,
+        takeJson,
+        libJson,
+        data.reference ?? existing.reference ?? '',
+        data.contractor ?? existing.contractor ?? '',
         data.id
       ]
     );
 
-    // Replace items
-    database.run(`DELETE FROM boq_items WHERE project_id = '${data.id.replace(/'/g, "''")}'`);
+    if (hasProvidedItems) {
+      // Replace items only when explicitly supplied
+      database.run(`DELETE FROM boq_items WHERE project_id = '${data.id.replace(/'/g, "''")}'`);
+    }
   } else {
     database.run(
       `INSERT INTO projects (
         id, user_id, title, location, client_name, client_contact, drawing_filename, drawing_url,
         po_percent, vat_percent, swamp_premium_percent, waste_percent, contingency_percent, inflation_percent,
         subtotal, po_amount, vat_amount, grand_total, notes, project_type, state, country, description,
-        gfa, number_of_floors, status, start_date, target_completion_date, active_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        gfa, number_of_floors, status, start_date, target_completion_date, active_version,
+        questionnaire_json, location_details_json, drawings_json, takeoff_json, library_json,
+        reference, contractor
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.user_id || '',
@@ -836,47 +896,66 @@ export async function saveProject(data: Partial<ProjectRecord> & { id: string; i
         data.status || 'In Progress',
         data.start_date || '',
         data.target_completion_date || '',
-        data.active_version || 'V1'
+        data.active_version || 'V1',
+        qJson,
+        locJson,
+        drawJson,
+        takeJson,
+        libJson,
+        data.reference || '',
+        data.contractor || ''
       ]
     );
   }
 
-  // Insert all items
-  let itemNum = 1;
-  for (const item of data.items) {
-    const qty = Number(item.qty || 0);
-    const rate = Number(item.rate || 0);
-    const amount = qty * rate;
-    const itemId = item.id || `item-${Date.now()}-${itemNum}`;
+  // Insert items if new project or if items were provided
+  if (hasProvidedItems || !existing) {
+    let itemNum = 1;
+    for (const item of safeItems) {
+      const qty = Number(item.qty || 0);
+      const rate = Number(item.rate || 0);
+      const amount = qty * rate;
+      const itemId = item.id || `item-${Date.now()}-${itemNum}`;
 
-    database.run(
-      `INSERT INTO boq_items (
-        id, project_id, version_id, section, subsection, item_number, item, description, unit, qty, rate, amount, notes, is_ai_generated, is_confirmed
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        itemId,
-        data.id,
-        item.version_id || data.active_version || 'V1',
-        item.section || 'Superstructure',
-        item.subsection || '',
-        item.item_number || itemNum,
-        item.item || 'Item',
-        item.description || '',
-        item.unit || 'm2',
-        qty,
-        rate,
-        amount,
-        item.notes || '',
-        item.is_ai_generated ? 1 : 0,
-        item.is_confirmed !== undefined ? (item.is_confirmed ? 1 : 0) : 1
-      ]
-    );
-    itemNum++;
+      database.run(
+        `INSERT INTO boq_items (
+          id, project_id, version_id, section, subsection, item_number, item, description, unit, qty, rate, amount, notes, is_ai_generated, is_confirmed
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          itemId,
+          data.id,
+          item.version_id || data.active_version || 'V1',
+          item.section || 'Superstructure',
+          item.subsection || '',
+          item.item_number || itemNum,
+          item.item || 'Item',
+          item.description || '',
+          item.unit || 'm2',
+          qty,
+          rate,
+          amount,
+          item.notes || '',
+          item.is_ai_generated ? 1 : 0,
+          item.is_confirmed !== undefined ? (item.is_confirmed ? 1 : 0) : 1
+        ]
+      );
+      itemNum++;
+    }
   }
 
   saveDbToDisk();
   const updated = await getProjectById(data.id);
   return updated!;
+}
+
+/**
+ * Rename project directly in SQLite
+ */
+export async function renameProject(id: string, newTitle: string): Promise<ProjectRecord | null> {
+  const database = await getDb();
+  database.run(`UPDATE projects SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [newTitle.trim(), id]);
+  saveDbToDisk();
+  return getProjectById(id);
 }
 
 /**
@@ -961,12 +1040,33 @@ export async function getProjectActivities(projectId?: string, userId?: string):
  */
 export async function deleteProject(id: string): Promise<boolean> {
   const database = await getDb();
-  database.run(`DELETE FROM boq_items WHERE project_id = '${id.replace(/'/g, "''")}'`);
-  database.run(`DELETE FROM estimate_versions WHERE project_id = '${id.replace(/'/g, "''")}'`);
-  database.run(`DELETE FROM project_documents WHERE project_id = '${id.replace(/'/g, "''")}'`);
-  database.run(`DELETE FROM project_variations WHERE project_id = '${id.replace(/'/g, "''")}'`);
-  database.run(`DELETE FROM project_valuations WHERE project_id = '${id.replace(/'/g, "''")}'`);
-  database.run(`DELETE FROM projects WHERE id = '${id.replace(/'/g, "''")}'`);
+  const safeId = id.replace(/'/g, "''");
+  const childTables = [
+    'boq_items',
+    'estimate_versions',
+    'project_documents',
+    'project_variations',
+    'project_valuations',
+    'project_activities',
+    'project_collaborators',
+    'project_shares',
+    'project_cash_flow_milestones',
+    'tender_bidders',
+    'tender_bid_items',
+    'project_fluctuations',
+    'project_final_accounts',
+    'project_dossiers'
+  ];
+
+  for (const table of childTables) {
+    try {
+      database.run(`DELETE FROM ${table} WHERE project_id = '${safeId}'`);
+    } catch {
+      // Table may not have project_id or not exist, safe to ignore
+    }
+  }
+
+  database.run(`DELETE FROM projects WHERE id = '${safeId}'`);
   saveDbToDisk();
   return true;
 }

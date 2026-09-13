@@ -24,7 +24,8 @@ import {
   Users,
   CheckCircle2,
   X,
-  BookOpen
+  BookOpen,
+  FolderArchive
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AppGlobalView, Project, BoqItem, StandardRate } from '../../types';
@@ -452,6 +453,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
             <span>User Guide (PDF)</span>
           </button>
 
+          {/* Download Project ZIP Quick Action */}
+          <button
+            id="header-download-zip-btn"
+            type="button"
+            onClick={() => {
+              window.open('/api/download/project-zip', '_blank');
+            }}
+            className="hidden md:inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition shadow-2xs cursor-pointer"
+            title="Download Full Project Source Code (.zip)"
+          >
+            <FolderArchive className="w-3.5 h-3.5 text-amber-400" />
+            <span>Download ZIP</span>
+          </button>
+
           {/* Notifications Button */}
           <button
             type="button"
@@ -525,25 +540,24 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                     type="button"
                     onClick={() => {
                       setIsProfileOpen(false);
+                      window.open('/api/download/project-zip', '_blank');
+                    }}
+                    className="w-full flex items-center space-x-2 px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 text-left transition"
+                  >
+                    <FolderArchive className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Download Full Project (ZIP)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileOpen(false);
                       window.open('/api/guide/pdf', '_blank');
                     }}
                     className="w-full flex items-center space-x-2 px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 text-left transition"
                   >
                     <BookOpen className="w-3.5 h-3.5 text-emerald-600" />
                     <span>User Guide &amp; Field Manual (PDF)</span>
-                  </button>
-
-                  {/* Section 2: Visit Public Website option placed in profile menu */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsProfileOpen(false);
-                      onNavigate('landing');
-                    }}
-                    className="w-full flex items-center space-x-2 px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 text-left transition"
-                  >
-                    <Globe className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Visit Public Website</span>
                   </button>
                 </div>
 

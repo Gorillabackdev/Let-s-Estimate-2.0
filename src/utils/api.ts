@@ -41,7 +41,23 @@ export async function safeFetchJson<T = any>(
   options?: RequestInit
 ): Promise<ApiResponse<T>> {
   try {
-    const res = await fetch(url, options);
+    const opts = options ? { ...options } : {};
+    const headers = new Headers(opts.headers || {});
+
+    // Automatically attach stored session token if Authorization header not provided
+    if (typeof window !== 'undefined' && !headers.has('Authorization')) {
+      const token = localStorage.getItem('lets_estimate_session_token');
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+      }
+    }
+
+    if (opts.body && typeof opts.body === 'string' && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+    opts.headers = headers;
+
+    const res = await fetch(url, opts);
     const parsed = await safeParseJson<T>(res);
 
     return {

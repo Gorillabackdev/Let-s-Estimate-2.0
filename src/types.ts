@@ -45,7 +45,21 @@ export type QuantitySource =
   | 'ESTIMATED'
   | 'ASSUMED'
   | 'NOT DETERMINABLE'
-  | 'REQUIRES CONFIRMATION';
+  | 'REQUIRES CONFIRMATION'
+  | 'AI_TAKEOFF'
+  | 'MANUAL_TAKEOFF'
+  | 'QUESTIONNAIRE'
+  | 'PARAMETRIC'
+  | 'MANUAL_ENTRY';
+
+export type QsVerificationStatus =
+  | 'AI Suggested'
+  | 'Requires Verification'
+  | 'QS Verified'
+  | 'User Adjusted'
+  | 'Imported'
+  | 'Historical'
+  | 'Preliminary Parametric Estimate';
 
 export interface BoqItem {
   id: string;
@@ -61,8 +75,16 @@ export interface BoqItem {
   qty: number;           // Quantity
   rate: number;          // Unit rate in Nigerian Naira (₦)
   amount: number;        // Calculated: qty * rate
-  source?: QuantitySource;
+  source?: QuantitySource | string;
   source_note?: string;
+  evidence?: string;
+  source_drawing?: string;       // Original drawing filename e.g. "Ground_Floor_Plan.pdf"
+  page_or_sheet?: string;        // Sheet or page e.g. "Sheet A-101" or "Page 1"
+  measurement_method?: string;   // e.g. "Calibrated Manual Takeoff", "Direct Perimeter Takeoff", "Schedule Count"
+  calculation_formula?: string;  // Explicit formula showing how the quantity was derived
+  drawing_evidence_id?: string;  // Link to measurement ID or drawing element
+  confidence?: number;
+  verification_status?: QsVerificationStatus;
   requires_confirmation?: boolean;
   notes?: string;
   is_ai_generated?: number | boolean;
@@ -193,6 +215,61 @@ export interface DrawingConflict {
   chosenAction?: 'use_drawing' | 'keep_input' | 'reviewed';
 }
 
+export interface DrawingSheet {
+  id: string;
+  project_id: string;
+  sheetNumber?: string;
+  title: string;
+  discipline: 'Architectural' | 'Structural' | 'Mechanical' | 'Electrical' | 'Civil' | 'Other';
+  drawingType?: 'Floor Plan' | 'Elevation' | 'Section' | 'Foundation Plan' | 'Roof Plan' | 'Site Plan' | 'Detail' | 'Other';
+  floor?: string;
+  scale?: string;
+  revision?: string;
+  fileName: string;
+  fileUrl: string;
+  uploadedAt: string;
+}
+
+export interface ManualMeasurement {
+  id: string;
+  sheetId?: string;
+  sheetName?: string;
+  toolType: 'linear' | 'polyline' | 'area' | 'count' | 'volume' | 'wall' | 'annotation';
+  label: string;
+  tradeSection: string;
+  measuredQuantity: number;
+  unit: string;
+  scaleRatio: number; // e.g. 100 for 1:100
+  dimensions: {
+    length?: number;
+    width?: number;
+    height?: number;
+    depth?: number;
+    area?: number;
+    count?: number;
+    deductions?: number; // e.g. openings in wall
+  };
+  points?: Array<{ x: number; y: number }>;
+  notes?: string;
+  createdAt: string;
+  addedToBoq?: boolean;
+  boqItemId?: string;
+}
+
+export interface TakeoffSession {
+  analysisId?: string;
+  timestamp?: string;
+  engineUsed?: string;
+  confidenceScore?: number;
+  sheetsAnalyzed?: string[];
+  measurements?: ManualMeasurement[];
+  missingInformation?: Array<{
+    field: string;
+    description: string;
+    recommendedAction: string;
+  }>;
+}
+
 export interface Project {
   id: string;
   user_id?: string;
@@ -205,6 +282,12 @@ export interface Project {
   location: string;
   state?: string;
   country?: string;
+  location_details?: {
+    state: string;
+    city: string;
+    siteAddress: string;
+    terrain?: string;
+  };
   client_name: string;
   client_contact?: string;
   description?: string;
@@ -237,6 +320,9 @@ export interface Project {
   questionnaire?: ProjectQuestionnaire;
   conflicts?: DrawingConflict[];
   library?: ProjectLibraryItem[];
+  drawings?: DrawingSheet[];
+  takeoff?: TakeoffSession;
+  manual_measurements?: ManualMeasurement[];
 }
 
 export interface RateItem {
@@ -746,8 +832,10 @@ export type AppGlobalView =
 export type EstimatingSubView = 
   | 'boq' 
   | 'takeoff' 
+  | 'manual-takeoff'
   | 'rates' 
   | 'analysis' 
+  | 'qs-assistant'
   | 'estimate';
 
 export type ProjectControlsSubView = 
@@ -760,6 +848,12 @@ export type ProjectControlsSubView =
 
 export type ProjectWorkspaceTab = 
   | 'overview' 
+  | 'questionnaire'
+  | 'drawings'
+  | 'takeoff'
+  | 'boq'
+  | 'rates'
+  | 'summary'
   | 'estimate' 
   | 'cost-control' 
   | 'calculations' 

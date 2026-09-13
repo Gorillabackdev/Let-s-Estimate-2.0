@@ -47,6 +47,7 @@ import { SubscriptionBillingModal } from './components/SubscriptionBillingModal'
 import { FinalAccountModal } from './components/FinalAccountModal';
 import { ExecutiveDossierModal } from './components/ExecutiveDossierModal';
 import { ProjectQuestionnaireModal } from './components/ProjectQuestionnaireModal';
+import { DuplicateItemModal, DuplicatePromptData } from './components/estimating/DuplicateItemModal';
 import { LandingPage } from './components/landing/LandingPage';
 import { generateDeterministicBoq } from './utils/constructionKnowledgeBase';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -127,6 +128,7 @@ function MainApp() {
   const [isFinalAccountModalOpen, setIsFinalAccountModalOpen] = useState(false);
   const [isExecutiveDossierModalOpen, setIsExecutiveDossierModalOpen] = useState(false);
   const [isQuestionnaireModalOpen, setIsQuestionnaireModalOpen] = useState(false);
+  const [duplicatePromptData, setDuplicatePromptData] = useState<DuplicatePromptData | null>(null);
   const [subscriptionInfo, setSubscriptionInfo] = useState<UserSubscriptionInfo | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -241,7 +243,7 @@ function MainApp() {
   };
 
   // Switch to or create a new project
-  const handleNewProject = () => {
+  const handleNewProject = async () => {
     const newId = 'proj-' + Date.now();
     const newProj: Project = {
       ...DEFAULT_NEW_PROJECT,
@@ -250,9 +252,24 @@ function MainApp() {
       items: [],
     };
     setActiveProject(newProj);
-    setHasUnsavedChanges(true);
+    setProjects((prev) => [newProj, ...prev]);
+    setHasUnsavedChanges(false);
     navigateView('project-workspace');
     showToast('Created new project workspace.');
+
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await safeFetchJson('/api/projects', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(newProj),
+      });
+      loadProjects();
+      refreshStats();
+    } catch (e) {
+      console.warn('Initial project persist failed:', e);
+    }
   };
 
   // Open an existing project by ID
@@ -282,12 +299,10 @@ function MainApp() {
 
   // Delete project
   const handleDeleteProject = async (projectId: string, title: string) => {
-    if (!confirm(`Are you sure you want to delete "${title}"?`)) return;
-
     try {
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      const { ok } = await safeFetchJson(`/api/projects/${projectId}`, { 
+      const { ok, data, error } = await safeFetchJson<{ success?: boolean; error?: string }>(`/api/projects/${projectId}`, { 
         method: 'DELETE',
         headers
       });
@@ -295,12 +310,52 @@ function MainApp() {
         setProjects((prev) => prev.filter((p) => p.id !== projectId));
         if (activeProject.id === projectId) {
           setActiveProject(DEFAULT_NEW_PROJECT);
+          navigateView('projects');
         }
-        showToast('Project deleted successfully.');
+        showToast(`Project "${title}" deleted successfully.`);
         refreshStats();
+        loadProjects();
+      } else {
+        showToast(data?.error || error || 'Failed to delete project.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete failed:', err);
+      showToast('Error deleting project: ' + (err?.message || 'Network error'));
+    }
+  };
+
+  // Edit project details
+  const handleEditProject = async (updatedFields: Partial<Project>) => {
+    if (!updatedFields.id) return;
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const { ok, data, error } = await safeFetchJson<{ project: Project; error?: string }>(`/api/projects/${updatedFields.id}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(updatedFields),
+      });
+      if (ok && data?.project) {
+        setProjects((prev) => {
+          const exists = prev.some(p => p.id === updatedFields.id);
+          if (exists) {
+            return prev.map((p) => p.id === updatedFields.id ? { ...p, ...data.project } : p);
+          } else {
+            return [data.project, ...prev];
+          }
+        });
+        if (activeProject.id === updatedFields.id) {
+          setActiveProject((prev) => ({ ...prev, ...data.project }));
+        }
+        showToast(`Project "${data.project.title}" details updated.`);
+        loadProjects();
+        refreshStats();
+      } else {
+        showToast(data?.error || error || 'Failed to update project details.');
+      }
+    } catch (err: any) {
+      console.error('Update failed:', err);
+      showToast('Error updating project: ' + (err?.message || 'Network error'));
     }
   };
 
@@ -322,6 +377,32 @@ function MainApp() {
       }
     } catch (err: any) {
       alert('Error duplicating estimate: ' + err.message);
+    }
+  };
+
+  // Rename a project
+  const handleRenameProject = async (projectId: string, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const { ok, data, error } = await safeFetchJson<{ project: Project; error?: string }>(`/api/projects/${projectId}/rename`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ title: newTitle.trim() }),
+      });
+      if (ok) {
+        setProjects((prev) => prev.map((p) => p.id === projectId ? { ...p, title: newTitle.trim() } : p));
+        if (activeProject.id === projectId) {
+          setActiveProject((prev) => ({ ...prev, title: newTitle.trim() }));
+        }
+        showToast(`Project renamed to "${newTitle.trim()}".`);
+        loadProjects();
+      } else {
+        alert(data?.error || error || 'Failed to rename project.');
+      }
+    } catch (err: any) {
+      alert('Error renaming project: ' + (err?.message || 'Network error'));
     }
   };
 
@@ -425,29 +506,99 @@ function MainApp() {
     setHasUnsavedChanges(true);
   };
 
-  // Add a new row to BOQ
+  // Add a new row to BOQ (with duplicate item detection)
   const handleAddItem = (customItem?: Partial<BoqItem>) => {
-    setActiveProject((prev) => {
-      const newNumber = prev.items.length + 1;
-      const q = customItem?.qty !== undefined ? customItem.qty : 100;
-      const r = customItem?.rate !== undefined ? customItem.rate : 14500;
-      const newItem: BoqItem = {
-        id: `item-${Date.now()}-${newNumber}`,
-        project_id: prev.id,
-        item_number: newNumber,
-        section: customItem?.section || 'Reinforced Concrete Frame',
-        item: customItem?.item || 'Blockwork',
-        description: customItem?.description || '225mm sandcrete hollow blockwork in cement mortar',
-        unit: customItem?.unit || 'm2',
-        qty: q,
-        rate: r,
-        amount: q * r,
-      };
-      return {
-        ...prev,
-        items: [...prev.items, newItem],
-      };
-    });
+    const q = customItem?.qty !== undefined ? customItem.qty : 100;
+    const r = customItem?.rate !== undefined ? customItem.rate : 14500;
+    const section = customItem?.section || 'Reinforced Concrete Frame';
+    const item = customItem?.item || 'Blockwork';
+    const description = customItem?.description || '225mm sandcrete hollow blockwork in cement mortar';
+    const unit = customItem?.unit || 'm2';
+
+    const incomingItem: BoqItem = {
+      id: `item-${Date.now()}-${activeProject.items.length + 1}`,
+      project_id: activeProject.id,
+      item_number: activeProject.items.length + 1,
+      section,
+      item,
+      description,
+      unit,
+      qty: q,
+      rate: r,
+      amount: q * r,
+      is_ai_generated: customItem?.is_ai_generated,
+      verification_status: customItem?.verification_status || (customItem?.is_ai_generated ? 'Requires Verification' : 'QS Verified'),
+      source: customItem?.source,
+      evidence: customItem?.evidence,
+    };
+
+    // Check if a similar line item already exists (same section, same unit, and matching description/item)
+    if (customItem && (customItem.description || customItem.item)) {
+      const matchIndex = activeProject.items.findIndex((it) => {
+        const sameSection = (it.section || '').trim().toLowerCase() === section.trim().toLowerCase();
+        const sameUnit = (it.unit || '').trim().toLowerCase() === unit.trim().toLowerCase();
+        const sameDesc = (it.description || '').trim().toLowerCase() === description.trim().toLowerCase() ||
+                         (it.item || '').trim().toLowerCase() === item.trim().toLowerCase();
+        const sameSource = !customItem.source || !it.source || it.source === customItem.source;
+        return sameSection && sameUnit && sameDesc && sameSource;
+      });
+
+      if (matchIndex >= 0) {
+        const existingItem = activeProject.items[matchIndex];
+        setDuplicatePromptData({
+          existingItem,
+          incomingItem,
+          onResolve: (action) => {
+            if (action === 'merge') {
+              setActiveProject((prev) => {
+                const updatedItems = [...prev.items];
+                const current = updatedItems[matchIndex];
+                const newQty = Math.round(((current.qty || 0) + incomingItem.qty) * 100) / 100;
+                const rate = current.rate || incomingItem.rate || 0;
+                updatedItems[matchIndex] = {
+                  ...current,
+                  qty: newQty,
+                  rate: rate,
+                  amount: Math.round(newQty * rate),
+                  evidence: incomingItem.evidence
+                    ? `${current.evidence || ''} | ${incomingItem.evidence}`.replace(/^ \| /, '')
+                    : current.evidence
+                };
+                return { ...prev, items: updatedItems };
+              });
+              setHasUnsavedChanges(true);
+              showToast(`Merged ${incomingItem.qty} ${incomingItem.unit} into existing Item #${existingItem.item_number}`);
+            } else if (action === 'replace') {
+              setActiveProject((prev) => {
+                const updatedItems = [...prev.items];
+                updatedItems[matchIndex] = {
+                  ...incomingItem,
+                  item_number: existingItem.item_number,
+                  id: existingItem.id
+                };
+                return { ...prev, items: updatedItems };
+              });
+              setHasUnsavedChanges(true);
+              showToast(`Replaced Item #${existingItem.item_number} with updated measurement`);
+            } else if (action === 'keep_both') {
+              setActiveProject((prev) => ({
+                ...prev,
+                items: [...prev.items, incomingItem],
+              }));
+              setHasUnsavedChanges(true);
+              showToast('Added as separate line item in bill');
+            }
+          }
+        });
+        return;
+      }
+    }
+
+    // Direct addition
+    setActiveProject((prev) => ({
+      ...prev,
+      items: [...prev.items, incomingItem],
+    }));
     setHasUnsavedChanges(true);
   };
 
@@ -654,6 +805,8 @@ function MainApp() {
             loading={loadingProjects}
             onOpenProject={handleOpenProject}
             onNewProject={handleNewProject}
+            onRenameProject={handleRenameProject}
+            onEditProject={handleEditProject}
             onDeleteProject={handleDeleteProject}
             onDuplicateProject={handleDuplicateProject}
             onUpdateStatus={handleUpdateStatus}
@@ -669,6 +822,8 @@ function MainApp() {
               setActiveProject((prev) => ({ ...prev, ...upd }));
               setHasUnsavedChanges(true);
             }}
+            onEditProject={handleEditProject}
+            onDeleteProject={handleDeleteProject}
             onUpdateBoqItem={handleUpdateItem}
             onAddBoqItem={handleAddItem}
             onDeleteBoqItem={handleDeleteItem}
@@ -1033,6 +1188,11 @@ function MainApp() {
         onClose={() => setIsQuestionnaireModalOpen(false)}
         onSaveAndGenerate={handleSaveQuestionnaire}
         initialData={activeProject.questionnaire}
+      />
+
+      <DuplicateItemModal
+        data={duplicatePromptData}
+        onClose={() => setDuplicatePromptData(null)}
       />
 
       <AuthModal />

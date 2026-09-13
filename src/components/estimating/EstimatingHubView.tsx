@@ -12,11 +12,15 @@ import {
   ShieldCheck, 
   Check, 
   Sliders,
-  DollarSign
+  DollarSign,
+  Ruler,
+  BookOpen
 } from 'lucide-react';
 import { EstimatingSubView, Project, BoqItem, StandardRate } from '../../types';
 import { formatNaira } from '../../utils/format';
 import { BoqTable } from '../BoqTable';
+import { ManualTakeoffWorkspace } from './ManualTakeoffWorkspace';
+import { QsAssistantPanel } from './QsAssistantPanel';
 
 interface EstimatingHubViewProps {
   project?: Project | null;
@@ -105,8 +109,10 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
           {[
             { id: 'boq', label: 'BOQ & Estimates', icon: FileSpreadsheet, badge: items.length },
             { id: 'takeoff', label: 'AI Quantity Takeoff', icon: Sparkles },
+            { id: 'manual-takeoff', label: 'Manual Takeoff Workspace', icon: Ruler },
             { id: 'rates', label: 'Rate Library', icon: Database },
             { id: 'analysis', label: 'Rate Analysis', icon: Calculator },
+            { id: 'qs-assistant', label: 'QS Assistant & BESMM4', icon: BookOpen },
             { id: 'estimate', label: 'Cost Estimate Summary', icon: TrendingUp },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -322,6 +328,42 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
               <span>Insert Analyzed Rate into Active BOQ</span>
             </button>
           </div>
+        </div>
+      )}
+
+      {/* SUBVIEW: MANUAL TAKEOFF WORKSPACE */}
+      {activeSubView === 'manual-takeoff' && (
+        <div className="space-y-4">
+          <ManualTakeoffWorkspace
+            project={project}
+            onTransferToBoq={(item) => {
+              onAddBoqItem(item);
+              setActiveSubView('boq');
+            }}
+          />
+        </div>
+      )}
+
+      {/* SUBVIEW: QS ASSISTANT & BESMM4 KNOWLEDGE */}
+      {activeSubView === 'qs-assistant' && (
+        <div className="space-y-4">
+          <QsAssistantPanel
+            project={project}
+            onSelectRate={(rate) => {
+              onAddBoqItem({
+                item_code: rate.code,
+                description: rate.description,
+                unit: rate.unit,
+                rate: rate.rate,
+                quantity: 1,
+                amount: rate.rate,
+                trade_category: rate.category,
+                source: 'CALCULATED',
+                confidence: 95
+              });
+              setActiveSubView('boq');
+            }}
+          />
         </div>
       )}
 

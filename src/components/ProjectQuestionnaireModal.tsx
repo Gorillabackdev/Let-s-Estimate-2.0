@@ -99,6 +99,14 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
   const [data, setData] = useState<ProjectQuestionnaire>(initialData || DEFAULT_QUESTIONNAIRE);
   const [activeTab, setActiveTab] = useState<'general' | 'substructure' | 'superstructure' | 'roofing' | 'finishes' | 'services'>('general');
 
+  React.useEffect(() => {
+    if (isOpen && initialData) {
+      setData(JSON.parse(JSON.stringify(initialData)));
+    } else if (isOpen && !initialData) {
+      setData(DEFAULT_QUESTIONNAIRE);
+    }
+  }, [isOpen, initialData]);
+
   if (!isOpen) return null;
 
   const handleUpdate = (section: keyof ProjectQuestionnaire, field: string, value: any) => {
@@ -717,7 +725,7 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
         <div className="bg-slate-100 p-4 sm:p-5 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-xs text-slate-600 flex items-center gap-1.5">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Parameters saved will guide both deterministic calculation and Gemini Vision takeoff.</span>
+            <span>Preliminary Parametric Estimate: Generates assumed geometric quantities from questionnaire specifications (Not a Drawing Takeoff).</span>
           </div>
 
           <div className="flex items-center space-x-3 w-full sm:w-auto">
@@ -725,14 +733,15 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
               onClick={() => onSaveAndGenerate(data, 'save_only')}
               className="flex-1 sm:flex-none px-4 py-2 text-sm font-semibold rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
             >
-              Save Parameters
+              Save Parameters Only
             </button>
             <button
               onClick={() => onSaveAndGenerate(data, 'deterministic')}
-              className="flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              className="flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-xl bg-emerald-800 text-white hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              title="Generate a preliminary parametric estimate based purely on questionnaire parameters"
             >
-              <Sparkles className="w-4 h-4" />
-              <span>Generate Full BOQ with These Specs</span>
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Generate Preliminary Parametric Estimate</span>
             </button>
           </div>
         </div>

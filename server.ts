@@ -14,6 +14,7 @@ import {
   getAllProjects, 
   getProjectById, 
   saveProject, 
+  renameProject,
   deleteProject, 
   duplicateProject, 
   updateProjectStatus, 
@@ -81,6 +82,7 @@ import {
   AuthRequest 
 } from './server/auth.js';
 import { performAiTakeoff, estimateFromDescription, analyzeBoqItems, auditValueEngineeringAndRisks } from './server/ai.js';
+import { runDrawingTakeoffPipeline } from './server/takeoffPipeline.js';
 import { generateExcelBuffer, generatePdfBuffer, generateUserGuidePdfBuffer, calculateMaterialRequirements, ExportData } from './server/export.js';
 import { getRateLibrary, getUserCustomRates, saveUserCustomRate, deleteUserCustomRate } from './server/rates.js';
 
@@ -677,7 +679,7 @@ with zipfile.ZipFile('lets-estimate.zip', 'w', zipfile.ZIP_DEFLATED) as zipf:
   }
 });
 
-// 1. AI Takeoff Endpoint: Receives file -> sends to Gemini Vision -> returns JSON items
+// 1. AI Takeoff Endpoint: Receives file -> sends to Multi-Stage Takeoff Pipeline -> returns BESMM4 JSON items
 app.post('/api/takeoff', upload.single('drawing'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
@@ -696,23 +698,58 @@ app.post('/api/takeoff', upload.single('drawing'), async (req: Request, res: Res
       }
     }
 
-    console.log(`[Takeoff] Received drawing: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB), mime: ${req.file.mimetype}, questionnaire: ${Boolean(questionnaire)}`);
+    const projectId = req.body?.projectId || req.body?.project_id || 'proj-temp';
+    const location = req.body?.location || 'Lagos';
+    const state = req.body?.state || 'Lagos';
+    const drawingId = req.body?.drawingId || `dwg-${Date.now()}`;
 
-    const result = await performAiTakeoff(req.file.buffer, req.file.mimetype, questionnaire, req.file.originalname);
+    console.log(`[Takeoff] Received drawing: ${req.file.originalname} (${(req.file.size / 1024).toFixed(1)} KB), state: ${state}, mime: ${req.file.mimetype}`);
+
+    const result = await runDrawingTakeoffPipeline({
+      fileBuffer: req.file.buffer,
+      mimeType: req.file.mimetype,
+      originalFilename: req.file.originalname,
+      projectId,
+      drawingId,
+      questionnaire,
+      location,
+      state
+    });
+
+    if (projectId && projectId !== 'proj-temp') {
+      try {
+        await recordActivity(
+          projectId,
+          'sys',
+          'QS Estimator',
+          'Executed AI Takeoff',
+          `Generated ${result.items.length} BESMM4 items from ${req.file.originalname} (${result.confidenceScore}% confidence)`
+        );
+      } catch {}
+    }
 
     res.json({
       success: true,
       filename: req.file.originalname,
+      jobId: result.jobId,
+      analysisId: result.analysisId,
+      drawingHash: result.drawingHash,
       engineUsed: result.engineUsed,
       provider: result.provider,
-      drawingSummary: result.drawingSummary,
+      confidenceScore: result.confidenceScore,
+      drawingSummary: result.summary,
+      summary: result.summary,
+      sheet: result.sheet,
+      evidence: result.evidence,
+      missingInformation: result.missingInformation,
+      warnings: result.warnings,
       items: result.items,
-      detectedConflicts: result.detectedConflicts || [],
+      detectedConflicts: []
     });
   } catch (error: any) {
     console.error('Takeoff error:', error);
     res.status(500).json({
-      error: 'Failed to process drawing with AI Vision: ' + (error.message || 'Unknown error'),
+      error: 'Failed to process drawing with AI Takeoff Pipeline: ' + (error.message || 'Unknown error'),
     });
   }
 });
@@ -769,6 +806,33 @@ app.get('/api/guide/pdf', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('User guide PDF export error:', error);
     res.status(500).json({ error: 'Failed to generate User Guide PDF: ' + error.message });
+  }
+});
+
+// 3c. Direct Project Codebase ZIP Download Endpoint
+app.get('/api/download/project-zip', async (req: Request, res: Response) => {
+  try {
+    const zipPath = path.join(process.cwd(), 'dist', 'lets-estimate-2.0-source.zip');
+    
+    // Always ensure fresh zip if missing
+    if (!fs.existsSync(zipPath)) {
+      execSync('python3 scripts/create_zip.py dist/lets-estimate-2.0-source.zip', {
+        cwd: process.cwd(),
+        timeout: 15000,
+      });
+    }
+
+    if (!fs.existsSync(zipPath)) {
+      res.status(500).json({ error: 'Failed to locate generated ZIP file.' });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="Lets-Estimate-2.0-SourceCode.zip"');
+    res.sendFile(zipPath);
+  } catch (error: any) {
+    console.error('Project ZIP download error:', error);
+    res.status(500).json({ error: 'Failed to package project ZIP: ' + error.message });
   }
 });
 
@@ -894,6 +958,32 @@ app.put('/api/projects/:id', optionalAuth, async (req: AuthRequest, res: Respons
     res.json({ success: true, project: saved });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to update project: ' + error.message });
+  }
+});
+
+// 8c. Rename project endpoint
+app.patch('/api/projects/:id/rename', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { title } = req.body;
+    if (!title || !title.trim()) {
+      res.status(400).json({ error: 'New project title is required.' });
+      return;
+    }
+    const updated = await renameProject(req.params.id, title.trim());
+    if (!updated) {
+      res.status(404).json({ error: 'Project not found.' });
+      return;
+    }
+    await recordActivity(
+      req.params.id, 
+      req.user?.id || 'sys', 
+      req.user?.full_name || 'QS Estimator', 
+      'Renamed Project', 
+      `Title updated to: ${title.trim()}`
+    );
+    res.json({ success: true, project: updated, message: 'Project renamed successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to rename project: ' + error.message });
   }
 });
 

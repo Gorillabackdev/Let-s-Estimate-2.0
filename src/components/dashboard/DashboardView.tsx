@@ -18,7 +18,8 @@ import {
   DollarSign,
   ShieldCheck,
   Award,
-  BookOpen
+  BookOpen,
+  FolderArchive
 } from 'lucide-react';
 import { Project, AppGlobalView } from '../../types';
 import { formatNaira } from '../../utils/format';
@@ -75,6 +76,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
         {/* Quick actions group on top */}
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => window.open('/api/download/project-zip', '_blank')}
+            className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
+            title="Download Complete Source Code (ZIP)"
+          >
+            <FolderArchive className="w-4 h-4 text-amber-400" />
+            <span>Download Project (ZIP)</span>
+          </button>
           <button
             type="button"
             onClick={() => window.open('/api/guide/pdf', '_blank')}

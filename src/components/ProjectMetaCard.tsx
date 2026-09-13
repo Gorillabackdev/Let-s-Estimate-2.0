@@ -2,17 +2,13 @@ import React, { useState } from 'react';
 import { Building2, MapPin, User, FileText, CheckCircle2, ChevronDown, ChevronUp, Calculator, Calendar, Phone, Percent } from 'lucide-react';
 import { Project } from '../types';
 import { formatNaira } from '../utils/format';
+import { ALL_NIGERIAN_STATES, getNigerianStateData } from '../data/nigerianLocations';
 
 interface ProjectMetaCardProps {
   project: Project;
   onChange: (field: keyof Project, val: any) => void;
   grandTotal?: number;
 }
-
-const NIGERIAN_STATES = [
-  'Lagos', 'Abuja FCT', 'Rivers', 'Ogun', 'Oyo', 'Enugu', 'Anambra', 
-  'Delta', 'Edo', 'Kano', 'Kaduna', 'Akwa Ibom', 'Imo', 'Ondo', 'Abia'
-];
 
 export const ProjectMetaCard: React.FC<ProjectMetaCardProps> = ({ project, onChange, grandTotal = 0 }) => {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -95,14 +91,33 @@ export const ProjectMetaCard: React.FC<ProjectMetaCardProps> = ({ project, onCha
             />
             <select
               value={project.state || 'Lagos'}
-              onChange={(e) => onChange('state', e.target.value)}
+              onChange={(e) => {
+                const newState = e.target.value;
+                onChange('state', newState);
+                const info = getNigerianStateData(newState);
+                if (info.isSwamp && (!project.swamp_premium_percent || project.swamp_premium_percent === 0)) {
+                  onChange('swamp_premium_percent', 15);
+                }
+              }}
               className="col-span-2 px-2 py-2 text-xs font-semibold text-slate-800 bg-slate-50 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
-              {NIGERIAN_STATES.map((st) => (
+              {ALL_NIGERIAN_STATES.map((st) => (
                 <option key={st} value={st}>{st}</option>
               ))}
             </select>
           </div>
+          {/* Geopolitical Zone and Regional Index Indicator */}
+          {(() => {
+            const stData = getNigerianStateData(project.state || 'Lagos');
+            return (
+              <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+                <span>{stData.zone} Zone ({stData.capital})</span>
+                <span className="font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                  {stData.costIndex.toFixed(2)}x Cost Index
+                </span>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Client Name */}

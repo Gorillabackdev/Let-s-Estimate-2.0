@@ -10,7 +10,9 @@ import {
   Cpu,
   Sliders,
   Building,
-  Check
+  Check,
+  RotateCcw,
+  Ruler
 } from 'lucide-react';
 import { ProjectQuestionnaire } from '../types';
 import { safeFetchJson } from '../utils/api';
@@ -21,6 +23,7 @@ interface DrawingUploaderProps {
   setIsProcessing: (val: boolean) => void;
   questionnaire?: ProjectQuestionnaire;
   onOpenQuestionnaire?: () => void;
+  onOpenManualTakeoff?: () => void;
 }
 
 export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
@@ -29,16 +32,23 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
   setIsProcessing,
   questionnaire,
   onOpenQuestionnaire,
+  onOpenManualTakeoff,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [analysisFailure, setAnalysisFailure] = useState<{
+    title: string;
+    reason: string;
+    recommendation: string;
+  } | null>(null);
   const [takeoffProgressText, setTakeoffProgressText] = useState('Initializing Gemini Vision...');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (file: File) => {
     setErrorMsg(null);
+    setAnalysisFailure(null);
     const validTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
     const hasValidExt = file.name.match(/\.(jpg|jpeg|png|pdf)$/i);
 
@@ -78,136 +88,12 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
     }
   };
 
-  // Helper to load bundled architectural sample drawing for instant test
-  const handleLoadSampleDrawing = async (type: 'bungalow' | 'hostel') => {
-    setErrorMsg(null);
-    setIsProcessing(true);
-    setTakeoffProgressText(
-      type === 'bungalow' 
-        ? 'Scanning 4-Bedroom Nigerian Bungalow Drawing with Gemini 2.5 Flash Vision...' 
-        : 'Analyzing Multi-Storey Student Hostel Blueprint with Gemini 2.5 Flash Vision...'
-    );
-
-    try {
-      // Create a canvas drawing representing an authentic architectural blueprint
-      const canvas = document.createElement('canvas');
-      canvas.width = 1200;
-      canvas.height = 800;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Blueprint blue background with architectural grid
-        ctx.fillStyle = '#1e3a5f';
-        ctx.fillRect(0, 0, 1200, 800);
-        ctx.strokeStyle = '#2d5a88';
-        ctx.lineWidth = 1;
-        for (let x = 0; x < 1200; x += 40) {
-          ctx.beginPath();
-          ctx.moveTo(x, 0);
-          ctx.lineTo(x, 800);
-          ctx.stroke();
-        }
-        for (let y = 0; y < 800; y += 40) {
-          ctx.beginPath();
-          ctx.moveTo(0, y);
-          ctx.lineTo(1200, y);
-          ctx.stroke();
-        }
-
-        // Title Block
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 24px Arial';
-        ctx.fillText(
-          type === 'bungalow' ? '4-BEDROOM CONTEMPORARY BUNGALOW - LAGOS' : '2-STOREY HOSTEL BLOCK - PORT HARCOURT',
-          80,
-          70
-        );
-        ctx.font = '16px Arial';
-        ctx.fillStyle = '#94c2ed';
-        ctx.fillText('SCALE: 1:100 | SPECIFICATION: 225MM SANDCRETE BLOCKS, RC SLAB 150MM, LONGSPAN ROOFING', 80, 100);
-
-        // Building layout outline
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(100, 150, 1000, 560);
-
-        // Room partitions
-        ctx.lineWidth = 2.5;
-        // Master Bedroom
-        ctx.strokeRect(100, 150, 450, 280);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 16px Arial';
-        ctx.fillText('MASTER BEDROOM (4500 x 4200)', 140, 280);
-        ctx.font = '12px Arial';
-        ctx.fillText('WINDOW W1 (1500x1200) | DOOR D1 (900x2100)', 140, 310);
-
-        // Living Room & Dinning
-        ctx.strokeRect(550, 150, 550, 340);
-        ctx.fillText('LIVING ROOM & DINING (6500 x 5200)', 620, 300);
-
-        // Kitchen & Store
-        ctx.strokeRect(100, 430, 450, 280);
-        ctx.fillText('KITCHEN & PANTRY (4500 x 3600)', 140, 560);
-
-        // Bedroom 2 & 3
-        ctx.strokeRect(550, 490, 275, 220);
-        ctx.fillText('BEDROOM 2 (3600 x 3600)', 570, 600);
-        ctx.strokeRect(825, 490, 275, 220);
-        ctx.fillText('BEDROOM 3 (3600 x 3600)', 845, 600);
-      }
-
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          setIsProcessing(false);
-          return;
-        }
-
-        const sampleName = type === 'bungalow' ? '4_bedroom_bungalow_lekki.png' : '2_storey_hostel_portharcourt.png';
-        const file = new File([blob], sampleName, { type: 'image/png' });
-        setSelectedFile(file);
-        setPreviewUrl(URL.createObjectURL(blob));
-
-        // Submit to backend with sample questionnaire context
-        const formData = new FormData();
-        formData.append('drawing', file);
-
-        const sampleQuestionnaire = type === 'bungalow' ? {
-          general: { projectType: 'Residential', buildingType: 'Bungalow', numberOfFloors: 1, approximateGFA: 220, numberOfRooms: 4 },
-          substructure: { foundationType: 'Strip footing', soilCondition: 'Firm clay/laterite' },
-          superstructure: { structuralSystem: 'Load-bearing masonry', columns: 'No', suspendedSlabs: 'No' },
-          roofing: { roofType: 'Hip/Gable combination', roofCovering: 'Aluminium longspan' },
-          services: { electrical: 'Included', plumbing: 'Included' }
-        } : {
-          general: { projectType: 'Hostel', buildingType: '2-Storey', numberOfFloors: 2, approximateGFA: 1200, numberOfRooms: 100 },
-          substructure: { foundationType: 'Raft foundation', soilCondition: 'Swamp / Waterlogged' },
-          superstructure: { structuralSystem: 'Reinforced concrete frame', columns: 'Yes', suspendedSlabs: 'Yes' },
-          roofing: { roofType: 'Hip/Gable combination', roofCovering: 'Aluminium longspan' },
-          services: { electrical: 'Included', plumbing: 'Included' }
-        };
-
-        formData.append('questionnaire', JSON.stringify(sampleQuestionnaire));
-
-        const { ok, data, error } = await safeFetchJson<{ items: any[]; provider: string; drawingSummary?: string; error?: string }>('/api/takeoff', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!ok || !data?.items) throw new Error(data?.error || error || 'AI Takeoff failed');
-
-        onTakeoffSuccess(data.items, file.name, data.provider, data.drawingSummary);
-      }, 'image/png');
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to analyze sample drawing');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const handleUploadAndRunTakeoff = async () => {
     if (!selectedFile) return;
 
     setErrorMsg(null);
     setIsProcessing(true);
-    setTakeoffProgressText('Uploading drawing and calibrating with project parameters...');
+    setTakeoffProgressText('Uploading drawing and analyzing authentic linework with Gemini Vision...');
 
     try {
       const formData = new FormData();
@@ -229,13 +115,24 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
 
       clearTimeout(timer);
 
-      if (!ok || !data?.items) {
-        throw new Error(data?.error || error || 'AI takeoff failed.');
+      if (!ok || !data?.items || data.items.length === 0) {
+        throw new Error(data?.error || error || 'AI could not confidently measure this drawing.');
       }
 
+      setAnalysisFailure(null);
       onTakeoffSuccess(data.items, selectedFile.name, data.provider, data.drawingSummary);
     } catch (err: any) {
-      setErrorMsg(err.message || 'An error occurred during AI Takeoff. Please verify your file or try again.');
+      const isResolutionIssue = (err?.message || '').toLowerCase().includes('resolution') ||
+                                (err?.message || '').toLowerCase().includes('scanned') ||
+                                (err?.message || '').toLowerCase().includes('scale');
+      setAnalysisFailure({
+        title: isResolutionIssue ? 'Drawing analysis failed.' : 'AI could not confidently measure this drawing.',
+        reason: isResolutionIssue 
+          ? 'PDF contains scanned pages with insufficient resolution or unscaled details.'
+          : 'Drawing layout lacks legible dimensional gridlines, high contrast scale, or readable room dimensions.',
+        recommendation: 'Upload a higher-resolution drawing or use Manual Takeoff to calibrate scale and measure dimensions directly.',
+      });
+      setErrorMsg(null);
     } finally {
       setIsProcessing(false);
     }
@@ -380,6 +277,54 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
         )}
       </div>
 
+      {/* PART 48 & 49: Structured Error Handling & AI Failure Fallback */}
+      {analysisFailure && (
+        <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-300 text-slate-800 space-y-3">
+          <div className="flex items-start space-x-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-200 text-amber-900 flex items-center justify-center shrink-0">
+              <AlertCircle className="w-4 h-4 text-amber-800" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-sm font-extrabold text-amber-950">
+                {analysisFailure.title}
+              </h4>
+              <p className="text-xs text-amber-900 leading-relaxed">
+                <strong className="font-semibold">Possible reason:</strong> {analysisFailure.reason}
+              </p>
+              <p className="text-xs text-amber-900 leading-relaxed">
+                <strong className="font-semibold">Recommended action:</strong> {analysisFailure.recommendation}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-amber-200">
+            <button
+              type="button"
+              onClick={() => {
+                setAnalysisFailure(null);
+                handleUploadAndRunTakeoff();
+              }}
+              className="px-3.5 py-1.5 rounded-lg bg-amber-200 hover:bg-amber-300 text-amber-950 font-bold text-xs transition inline-flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Retry Analysis</span>
+            </button>
+            {onOpenManualTakeoff && (
+              <button
+                type="button"
+                onClick={() => {
+                  onOpenManualTakeoff();
+                }}
+                className="px-3.5 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-bold text-xs transition inline-flex items-center space-x-1.5 cursor-pointer shadow-2xs"
+              >
+                <Ruler className="w-3.5 h-3.5 text-emerald-200" />
+                <span>Open Manual Takeoff</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Error Message */}
       {errorMsg && (
         <div className="mt-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center space-x-2">
@@ -390,38 +335,34 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
 
       {/* Action Buttons */}
       <div className="mt-5 flex flex-col sm:flex-row items-center justify-between gap-3">
-        {/* Sample Drawing Fast-Test Buttons */}
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-          <span className="text-xs text-slate-600 font-bold block sm:inline">Try Sample Blueprint:</span>
-          <button
-            type="button"
-            disabled={isProcessing}
-            onClick={() => handleLoadSampleDrawing('bungalow')}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800 transition disabled:opacity-50"
-          >
-            4-Bed Bungalow (Lekki)
-          </button>
-          <button
-            type="button"
-            disabled={isProcessing}
-            onClick={() => handleLoadSampleDrawing('hostel')}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-emerald-50 hover:border-emerald-300 hover:text-emerald-800 transition disabled:opacity-50"
-          >
-            2-Storey 100-Room Hostel (PH)
-          </button>
+        <div className="flex items-center space-x-2 text-xs text-slate-500">
+          <span className="font-semibold text-slate-700">Supported Formats:</span>
+          <span>Architectural PDF, High-Res PNG, JPEG, WEBP plans</span>
         </div>
 
         {/* Execute Button */}
         <div className="w-full sm:w-auto flex items-center space-x-3">
           {selectedFile && (
-            <button
-              type="button"
-              onClick={handleClear}
-              disabled={isProcessing}
-              className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 transition disabled:opacity-50"
-            >
-              Cancel
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleClear}
+                disabled={isProcessing}
+                className="px-4 py-2 text-xs font-semibold rounded-xl text-slate-600 hover:bg-slate-100 transition disabled:opacity-50 cursor-pointer"
+              >
+                Clear
+              </button>
+
+              {onOpenManualTakeoff && (
+                <button
+                  type="button"
+                  onClick={onOpenManualTakeoff}
+                  className="px-4 py-2 text-xs font-bold rounded-xl text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition cursor-pointer"
+                >
+                  Open in Drawing Viewer
+                </button>
+              )}
+            </>
           )}
 
           <button
@@ -443,7 +384,7 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                <span>Run Dynamic AI Takeoff</span>
+                <span>Run AI Takeoff</span>
               </>
             )}
           </button>

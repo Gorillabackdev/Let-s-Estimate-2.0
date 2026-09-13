@@ -750,10 +750,14 @@ export function generateDeterministicBoq(
       qty: calculatedQty,
       rate: rate,
       amount: amount,
-      source: def.source,
-      source_note: def.sourceNote,
-      is_ai_generated: true,
+      source: 'Preliminary Parametric Estimate',
+      source_note: 'Assumed parametric quantity derived from questionnaire specifications (No drawing takeoff)',
+      evidence: 'Preliminary Parametric: Based on project questionnaire geometry assumptions',
+      confidence: 70,
+      verification_status: 'Preliminary Parametric Estimate',
+      is_ai_generated: false,
       is_confirmed: false,
+      requires_confirmation: true,
     });
 
     itemCounter++;
