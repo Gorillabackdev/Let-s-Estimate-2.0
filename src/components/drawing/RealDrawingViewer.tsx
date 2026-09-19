@@ -38,6 +38,7 @@ import {
 } from 'lucide-react';
 import { Project, ManualMeasurement, BoqItem, DrawingSheet } from '../../types';
 import { formatNaira } from '../../utils/format';
+import { safeStorage } from '../../utils/storage';
 
 // Configure local PDF.js worker
 if (typeof window !== 'undefined') {
@@ -137,7 +138,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
   // Measurements section visibility & adjustable width
   const [isMeasurementsVisible, setIsMeasurementsVisible] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('takeoff_measurements_visible');
+      const saved = safeStorage.getItem('takeoff_measurements_visible');
       if (saved !== null) return saved === 'true';
     }
     return true;
@@ -145,7 +146,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
 
   const [panelWidth, setPanelWidth] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('takeoff_measurements_width');
+      const saved = safeStorage.getItem('takeoff_measurements_width');
       if (saved) {
         const parsed = parseInt(saved, 10);
         if (!isNaN(parsed) && parsed >= 180 && parsed <= 520) return parsed;
@@ -199,9 +200,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
 
     const handleMouseUp = () => {
       setIsResizingPanel(false);
-      try {
-        localStorage.setItem('takeoff_measurements_width', panelWidth.toString());
-      } catch {}
+      safeStorage.setItem('takeoff_measurements_width', panelWidth.toString());
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -215,9 +214,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
   const toggleMeasurementsVisibility = () => {
     setIsMeasurementsVisible((prev) => {
       const next = !prev;
-      try {
-        localStorage.setItem('takeoff_measurements_visible', String(next));
-      } catch {}
+      safeStorage.setItem('takeoff_measurements_visible', String(next));
       return next;
     });
   };
@@ -354,7 +351,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
       offscreen.height = viewport.height;
       const offCtx = offscreen.getContext('2d');
       if (offCtx) {
-        await page.render({ canvasContext: offCtx, viewport }).promise;
+        await (page as any).render({ canvasContext: offCtx, viewport, canvas: offscreen }).promise;
         offscreenCanvasRef.current = offscreen;
         setDrawingDimensions({ width: viewport.width, height: viewport.height });
       }
@@ -1436,7 +1433,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
                     type="button"
                     onClick={() => {
                       setPanelWidth(200);
-                      try { localStorage.setItem('takeoff_measurements_width', '200'); } catch {}
+                      safeStorage.setItem('takeoff_measurements_width', '200');
                     }}
                     className={`px-1.5 py-0.5 rounded transition ${panelWidth <= 220 ? 'bg-emerald-700 text-white font-bold' : 'text-slate-400 hover:text-white'}`}
                     title="Compact width (200px)"
@@ -1447,7 +1444,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
                     type="button"
                     onClick={() => {
                       setPanelWidth(260);
-                      try { localStorage.setItem('takeoff_measurements_width', '260'); } catch {}
+                      safeStorage.setItem('takeoff_measurements_width', '260');
                     }}
                     className={`px-1.5 py-0.5 rounded transition ${panelWidth > 220 && panelWidth <= 300 ? 'bg-emerald-700 text-white font-bold' : 'text-slate-400 hover:text-white'}`}
                     title="Normal width (260px)"
@@ -1458,7 +1455,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
                     type="button"
                     onClick={() => {
                       setPanelWidth(360);
-                      try { localStorage.setItem('takeoff_measurements_width', '360'); } catch {}
+                      safeStorage.setItem('takeoff_measurements_width', '360');
                     }}
                     className={`px-1.5 py-0.5 rounded transition ${panelWidth > 300 ? 'bg-emerald-700 text-white font-bold' : 'text-slate-400 hover:text-white'}`}
                     title="Wide width (360px)"

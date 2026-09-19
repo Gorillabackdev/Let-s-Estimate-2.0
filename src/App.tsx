@@ -20,13 +20,15 @@ import { AppHeader } from './components/navigation/AppHeader';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { ProjectsView } from './components/projects/ProjectsView';
 import { ProjectWorkspaceView } from './components/workspace/ProjectWorkspaceView';
-import { CalculatorsHubView } from './components/calculators/CalculatorsHubView';
+import { CalculatorsHubView, TemplateBoqItem } from './components/calculators/CalculatorsHubView';
 import { EstimatingHubView } from './components/estimating/EstimatingHubView';
 import { ProjectControlsView } from './components/controls/ProjectControlsView';
 import { DocumentsReportsView } from './components/documents/DocumentsReportsView';
 import { TeamClientsView } from './components/team/TeamClientsView';
 import { SettingsView } from './components/settings/SettingsView';
 import { HelpSupportView } from './components/help/HelpSupportView';
+import { SuppliersView } from './components/library/SuppliersView';
+import { MaterialsView } from './components/library/MaterialsView';
 import { DrawingUploader } from './components/DrawingUploader';
 import { BoqTable } from './components/BoqTable';
 import { FinancialSummary } from './components/FinancialSummary';
@@ -48,12 +50,15 @@ import { FinalAccountModal } from './components/FinalAccountModal';
 import { ExecutiveDossierModal } from './components/ExecutiveDossierModal';
 import { ProjectQuestionnaireModal } from './components/ProjectQuestionnaireModal';
 import { DuplicateItemModal, DuplicatePromptData } from './components/estimating/DuplicateItemModal';
+import { BoqImportModal } from './components/estimating/BoqImportModal';
 import { LandingPage } from './components/landing/LandingPage';
 import { generateDeterministicBoq } from './utils/constructionKnowledgeBase';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthModal } from './components/auth/AuthModal';
 import { UserProfileModal } from './components/auth/UserProfileModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { safeFetchJson } from './utils/api';
+import { exportProjectToExcel, exportProjectToPdf } from './utils/excelExport';
 import { 
   CheckCircle2, 
   AlertTriangle, 
@@ -128,6 +133,7 @@ function MainApp() {
   const [isFinalAccountModalOpen, setIsFinalAccountModalOpen] = useState(false);
   const [isExecutiveDossierModalOpen, setIsExecutiveDossierModalOpen] = useState(false);
   const [isQuestionnaireModalOpen, setIsQuestionnaireModalOpen] = useState(false);
+  const [isBoqImportModalOpen, setIsBoqImportModalOpen] = useState(false);
   const [duplicatePromptData, setDuplicatePromptData] = useState<DuplicatePromptData | null>(null);
   const [subscriptionInfo, setSubscriptionInfo] = useState<UserSubscriptionInfo | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -269,6 +275,119 @@ function MainApp() {
       refreshStats();
     } catch (e) {
       console.warn('Initial project persist failed:', e);
+    }
+  };
+
+  // Handle importing BOQ items to an existing project
+  const handleImportToProject = async (targetProjectId: string, items: BoqItem[], mode: 'replace' | 'append') => {
+    try {
+      const target = projects.find(p => p.id === targetProjectId) || (activeProject.id === targetProjectId ? activeProject : null);
+      if (!target) {
+        showToast('Target project not found.');
+        return;
+      }
+
+      const existingItems = mode === 'append' ? (target.items || []) : [];
+      const startIndex = existingItems.length;
+      const mappedNewItems: BoqItem[] = items.map((it, idx) => ({
+        ...it,
+        id: `imported-${Date.now()}-${startIndex + idx + 1}-${Math.random().toString(36).substring(2, 6)}`,
+        project_id: targetProjectId,
+        item_number: startIndex + idx + 1,
+        verification_status: it.verification_status || 'Imported'
+      }));
+
+      const finalItems = [...existingItems, ...mappedNewItems];
+      const po_percent = target.po_percent ?? 15.0;
+      const vat_percent = target.vat_percent ?? 7.5;
+      const swamp_percent = target.swamp_premium_percent ?? 0.0;
+      const totals = calculateBoqTotals(finalItems, po_percent, vat_percent, swamp_percent);
+
+      const updatedProject: Project = {
+        ...target,
+        items: finalItems,
+        subtotal: totals.subtotal,
+        po_amount: totals.poAmount,
+        vat_amount: totals.vatAmount,
+        grand_total: totals.grandTotal,
+      };
+
+      setProjects(prev => prev.map(p => p.id === targetProjectId ? updatedProject : p));
+      setActiveProject(updatedProject);
+      setHasUnsavedChanges(false);
+      navigateView('project-workspace');
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await safeFetchJson(`/api/projects/${targetProjectId}`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ 
+          items: finalItems,
+          subtotal: totals.subtotal,
+          po_amount: totals.poAmount,
+          vat_amount: totals.vatAmount,
+          grand_total: totals.grandTotal
+        })
+      });
+
+      showToast(`Successfully imported ${items.length} items to "${target.title}" for manual review.`);
+      loadProjects();
+      refreshStats();
+    } catch (err: any) {
+      console.error('Import error:', err);
+      showToast('Error importing items: ' + (err?.message || 'Unknown error'));
+    }
+  };
+
+  // Handle creating a brand new project with imported BOQ
+  const handleCreateProjectWithBoq = async (projectData: Partial<Project>, items: BoqItem[]) => {
+    try {
+      const newId = 'proj-' + Date.now();
+      const mappedItems: BoqItem[] = items.map((it, idx) => ({
+        ...it,
+        id: `imported-${Date.now()}-${idx + 1}-${Math.random().toString(36).substring(2, 6)}`,
+        project_id: newId,
+        item_number: idx + 1,
+        verification_status: it.verification_status || 'Imported'
+      }));
+
+      const po_percent = projectData.po_percent ?? 15.0;
+      const vat_percent = projectData.vat_percent ?? 7.5;
+      const swamp_percent = projectData.swamp_premium_percent ?? 0.0;
+      const totals = calculateBoqTotals(mappedItems, po_percent, vat_percent, swamp_percent);
+
+      const newProj: Project = {
+        ...DEFAULT_NEW_PROJECT,
+        ...projectData,
+        id: newId,
+        title: projectData.title || 'Imported Bill of Quantities',
+        items: mappedItems,
+        subtotal: totals.subtotal,
+        po_amount: totals.poAmount,
+        vat_amount: totals.vatAmount,
+        grand_total: totals.grandTotal,
+      };
+
+      setActiveProject(newProj);
+      setProjects(prev => [newProj, ...prev]);
+      setHasUnsavedChanges(false);
+      navigateView('project-workspace');
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      await safeFetchJson('/api/projects', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(newProj),
+      });
+
+      showToast(`Created new project "${newProj.title}" with ${items.length} imported items ready for review.`);
+      loadProjects();
+      refreshStats();
+    } catch (err: any) {
+      console.error('Error creating project with BOQ:', err);
+      showToast('Failed to create project: ' + (err?.message || 'Unknown error'));
     }
   };
 
@@ -464,7 +583,7 @@ function MainApp() {
     setHasUnsavedChanges(true);
 
     if (mode === 'deterministic') {
-      const generated = generateDeterministicBoq(questionnaire, activeProject.location);
+      const generated = generateDeterministicBoq(questionnaire);
       const totals = calculateBoqTotals(
         generated, 
         activeProject.po_percent, 
@@ -656,8 +775,8 @@ function MainApp() {
   };
 
   // Insert rate from the Nigerian Rates Modal into the active BOQ
-  const handleSelectRateFromModal = (rateItem: StandardRate, region: 'lagos' | 'abuja' | 'ph') => {
-    const selectedRate = rateItem[region];
+  const handleSelectRateFromModal = (rateItem: { item: string; description: string; unit: string; rate: number }) => {
+    const selectedRate = rateItem.rate;
     setActiveProject((prev) => {
       const newNum = prev.items.length + 1;
       const newItem: BoqItem = {
@@ -665,7 +784,7 @@ function MainApp() {
         project_id: prev.id,
         item_number: newNum,
         item: rateItem.item,
-        description: rateItem.spec,
+        description: rateItem.description,
         unit: rateItem.unit,
         qty: 1,
         rate: selectedRate,
@@ -674,7 +793,7 @@ function MainApp() {
       return { ...prev, items: [...prev.items, newItem] };
     });
     setHasUnsavedChanges(true);
-    showToast(`Added ${rateItem.item} at ${region.toUpperCase()} rate (₦${selectedRate.toLocaleString()}) to BOQ.`);
+    showToast(`Added ${rateItem.item} (₦${selectedRate.toLocaleString()}) to BOQ.`);
   };
 
   // Save Project to SQLite
@@ -730,17 +849,165 @@ function MainApp() {
     }
   };
 
-  // Export Excel trigger
-  const handleExportExcel = () => {
-    const jsonStr = JSON.stringify(activeProject.items || [], null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${(activeProject.title || 'Project').replace(/\s+/g, '_')}_BOQ.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Exported BOQ data schedule.');
+  // Transfer takeoff template items directly to a project BOQ and persist to SQLite
+  const handleApplyBulkToBoq = async (
+    items: TemplateBoqItem[],
+    options?: {
+      targetProjectId?: string;
+      createAsNewProject?: boolean;
+      newProjectTitle?: string;
+      newProjectLocation?: string;
+      newProjectType?: string;
+    }
+  ) => {
+    setIsSaving(true);
+    try {
+      let targetProject: Project;
+
+      if (options?.createAsNewProject) {
+        const newProjId = `proj-${Date.now()}`;
+        const newItems: BoqItem[] = items.map((it, idx) => ({
+          id: `item-${Date.now()}-${idx + 1}`,
+          project_id: newProjId,
+          item_number: idx + 1,
+          section: it.section,
+          item: it.item,
+          description: it.description,
+          unit: it.unit,
+          qty: it.qty,
+          rate: it.rate,
+          amount: it.qty * it.rate,
+          verification_status: 'QS Verified',
+          source: 'Takeoff Template Library'
+        }));
+
+        const totals = calculateBoqTotals(newItems, 10, 7.5, 0);
+
+        targetProject = {
+          id: newProjId,
+          user_id: '',
+          title: options.newProjectTitle || (options.newProjectType === 'Community' ? 'Community Health Outreach' : 'New Takeoff Project'),
+          location: options.newProjectLocation || 'Lagos, Nigeria',
+          project_type: options.newProjectType || 'Commercial',
+          client_name: 'Takeoff Template Import',
+          subtotal: totals.subtotal,
+          po_percent: 10,
+          po_amount: totals.poAmount,
+          vat_percent: 7.5,
+          vat_amount: totals.vatAmount,
+          swamp_premium_percent: 0,
+          grand_total: totals.grandTotal,
+          items: newItems,
+          status: 'In Progress',
+          drawing_filename: '',
+          active_version: 'V1',
+          created_at: new Date().toISOString()
+        };
+      } else {
+        const projToUpdate = (options?.targetProjectId && projects.find(p => p.id === options.targetProjectId)) || activeProject;
+        const currentItems = projToUpdate.items || [];
+        const startNum = currentItems.length + 1;
+
+        const newItems: BoqItem[] = items.map((it, idx) => ({
+          id: `item-${Date.now()}-${startNum + idx}`,
+          project_id: projToUpdate.id,
+          item_number: startNum + idx,
+          section: it.section,
+          item: it.item,
+          description: it.description,
+          unit: it.unit,
+          qty: it.qty,
+          rate: it.rate,
+          amount: it.qty * it.rate,
+          verification_status: 'QS Verified',
+          source: 'Takeoff Template Library'
+        }));
+
+        const combinedItems = [...currentItems, ...newItems];
+        const totals = calculateBoqTotals(
+          combinedItems,
+          projToUpdate.po_percent || 15,
+          projToUpdate.vat_percent || 7.5,
+          projToUpdate.swamp_premium_percent || 0
+        );
+
+        targetProject = {
+          ...projToUpdate,
+          items: combinedItems,
+          subtotal: totals.subtotal,
+          po_amount: totals.poAmount,
+          vat_amount: totals.vatAmount,
+          grand_total: totals.grandTotal
+        };
+      }
+
+      // Persist to SQLite Database via POST /api/projects
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const { ok, data, error } = await safeFetchJson<{ project: Project; error?: string }>('/api/projects', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(targetProject),
+      });
+
+      if (!ok || !data?.project) {
+        throw new Error(data?.error || error || 'Failed to persist transferred project to database');
+      }
+
+      const savedProject = {
+        ...data.project,
+        items: data.project.items || targetProject.items
+      };
+
+      setActiveProject(savedProject);
+      setHasUnsavedChanges(false);
+
+      // Refresh project list and stats
+      await loadProjects();
+      await refreshStats();
+
+      // Navigate immediately to the project BOQ workspace
+      navigateView('project-workspace');
+
+      showToast(`Successfully transferred ${items.length} item(s) to "${savedProject.title}" and saved to database!`);
+    } catch (err: any) {
+      alert('Transfer to BOQ failed: ' + err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Export Excel (.xlsx) trigger - Generates genuine multi-tab workbook
+  const handleExportExcel = async () => {
+    if (!activeProject.items || activeProject.items.length === 0) {
+      alert('Please add or detect at least one BOQ item before exporting to Excel.');
+      return;
+    }
+    try {
+      showToast('Generating official 3-Tab Excel (.xlsx) workbook...');
+      await exportProjectToExcel(activeProject);
+      showToast(`Downloaded "${activeProject.title || 'Project'}" (.xlsx) successfully!`);
+    } catch (err: any) {
+      console.error('Excel export error:', err);
+      alert(err.message || 'Failed to export Excel file.');
+    }
+  };
+
+  // Export PDF trigger - Generates stamped tender Bill of Quantities
+  const handleExportPdf = async () => {
+    if (!activeProject.items || activeProject.items.length === 0) {
+      alert('Please add or detect at least one BOQ item before exporting to PDF.');
+      return;
+    }
+    try {
+      showToast('Generating official certified PDF Bill of Quantities...');
+      await exportProjectToPdf(activeProject);
+      showToast(`Downloaded "${activeProject.title || 'Project'}" (.pdf) successfully!`);
+    } catch (err: any) {
+      console.error('PDF export error:', err);
+      alert(err.message || 'Failed to export PDF file.');
+    }
   };
 
   // Calculate dynamic totals for active project
@@ -795,6 +1062,7 @@ function MainApp() {
             }}
             onOpenRates={() => setIsRatesModalOpen(true)}
             onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+            onImportBoq={() => setIsBoqImportModalOpen(true)}
           />
         );
 
@@ -810,6 +1078,7 @@ function MainApp() {
             onDeleteProject={handleDeleteProject}
             onDuplicateProject={handleDuplicateProject}
             onUpdateStatus={handleUpdateStatus}
+            onImportBoq={() => setIsBoqImportModalOpen(true)}
           />
         );
 
@@ -832,27 +1101,64 @@ function MainApp() {
             onOpenRateLibrary={() => setIsRatesModalOpen(true)}
             onOpenQuestionnaire={() => setIsQuestionnaireModalOpen(true)}
             onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
             onOpenDossier={() => setIsExecutiveDossierModalOpen(true)}
             onBackToProjects={() => navigateView('projects')}
             onOpenVersionsModal={() => setIsVersionsModalOpen(true)}
             onOpenAuditDrawer={() => setIsAuditDrawerOpen(true)}
+            onImportBoq={() => setIsBoqImportModalOpen(true)}
           />
         );
 
       case 'calculators':
         return (
           <CalculatorsHubView
+            activeProject={activeProject}
+            projects={projects}
+            onApplyBulkToBoq={handleApplyBulkToBoq}
             onApplyToBoq={(calcItem) => {
+              const r = calcItem.rate || 16500;
               handleAddItem({
                 item: calcItem.item,
                 description: calcItem.description,
                 qty: calcItem.qty,
                 unit: calcItem.unit,
-                rate: 16500,
-                amount: calcItem.qty * 16500,
+                rate: r,
+                amount: calcItem.amount || (calcItem.qty * r),
                 section: calcItem.section || 'Superstructure'
               });
               showToast(`Applied ${calcItem.item} to active BOQ!`);
+            }}
+          />
+        );
+
+      case 'suppliers':
+        return (
+          <SuppliersView
+            onNavigateToMaterials={() => navigateView('materials')}
+            onSelectSupplierForEstimate={(supplier) => {
+              showToast(`Selected ${supplier.name} (${supplier.category}) for procurement RFQ.`);
+            }}
+          />
+        );
+
+      case 'materials':
+        return (
+          <MaterialsView
+            activeProject={activeProject}
+            onNavigateToSuppliers={() => navigateView('suppliers')}
+            onApplyRateToBoq={(matRate) => {
+              handleAddItem({
+                item: matRate.item,
+                description: matRate.description,
+                unit: matRate.unit,
+                rate: matRate.rate,
+                qty: 1,
+                amount: matRate.rate,
+                section: matRate.section || 'General Materials',
+                source: 'Market Material Index'
+              });
+              showToast(`Applied Nigerian benchmark rate for ${matRate.item} (${matRate.unit}) to active BOQ!`);
             }}
           />
         );
@@ -882,6 +1188,7 @@ function MainApp() {
               onDeleteBoqItem={handleDeleteItem}
               onApplyMarketRates={handleApplyMarketRates}
               onExportExcel={handleExportExcel}
+              onImportBoq={() => setIsBoqImportModalOpen(true)}
             />
           </div>
         );
@@ -903,6 +1210,7 @@ function MainApp() {
             activeProject={activeProject}
             onOpenDossier={() => setIsExecutiveDossierModalOpen(true)}
             onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
           />
         );
 
@@ -937,6 +1245,7 @@ function MainApp() {
             onOpenTakeoff={() => navigateView('estimating', 'takeoff')}
             onOpenRates={() => setIsRatesModalOpen(true)}
             onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+            onImportBoq={() => setIsBoqImportModalOpen(true)}
           />
         );
     }
@@ -996,6 +1305,7 @@ function MainApp() {
             setIsDocumentsModalOpen(true);
           }}
           onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+          onImportBoq={() => setIsBoqImportModalOpen(true)}
         />
 
         {/* 7-Day Trial & Subscription Notice Bar */}
@@ -1195,6 +1505,15 @@ function MainApp() {
         onClose={() => setDuplicatePromptData(null)}
       />
 
+      <BoqImportModal
+        isOpen={isBoqImportModalOpen}
+        onClose={() => setIsBoqImportModalOpen(false)}
+        activeProject={activeProject}
+        projects={projects}
+        onImportToProject={handleImportToProject}
+        onCreateProjectWithBoq={handleCreateProjectWithBoq}
+      />
+
       <AuthModal />
       <UserProfileModal />
 
@@ -1204,8 +1523,10 @@ function MainApp() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
+    <ErrorBoundary fallbackTitle="Let's Estimate Workspace Error">
+      <AuthProvider>
+        <MainApp />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

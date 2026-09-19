@@ -34,14 +34,66 @@ export interface ProjectParameters {
   terrain: string;
 }
 
+export function normalizeQuestionnaire(raw?: any): ProjectQuestionnaire {
+  const def = createDefaultQuestionnaire();
+  if (!raw || typeof raw !== 'object') {
+    return def;
+  }
+
+  const general = raw.general && typeof raw.general === 'object' ? raw.general : {};
+  const substructure = raw.substructure && typeof raw.substructure === 'object' ? raw.substructure : {};
+  const superstructure = raw.superstructure && typeof raw.superstructure === 'object' ? raw.superstructure : {};
+  const roofing = raw.roofing && typeof raw.roofing === 'object' ? raw.roofing : {};
+  const finishes = raw.finishes && typeof raw.finishes === 'object' ? raw.finishes : {};
+  const services = raw.services && typeof raw.services === 'object' ? raw.services : {};
+
+  return {
+    general: {
+      ...def.general,
+      ...general,
+      buildingType: general.buildingType || def.general.buildingType,
+      numberOfFloors: Number(general.numberOfFloors || def.general.numberOfFloors),
+      approximateGFA: Number(general.approximateGFA || def.general.approximateGFA),
+      location: general.location || def.general.location,
+      terrain: general.terrain || def.general.terrain,
+    },
+    substructure: {
+      ...def.substructure,
+      ...substructure,
+      foundationType: substructure.foundationType || def.substructure.foundationType,
+    },
+    superstructure: {
+      ...def.superstructure,
+      ...superstructure,
+    },
+    roofing: {
+      ...def.roofing,
+      ...roofing,
+      features: {
+        ...def.roofing.features,
+        ...(roofing.features || {}),
+      },
+    },
+    finishes: {
+      ...def.finishes,
+      ...finishes,
+    },
+    services: {
+      ...def.services,
+      ...services,
+    },
+  };
+}
+
 /**
  * Calculates geometric proxies based on questionnaire answers
  */
-export function deriveGeometricParameters(q: ProjectQuestionnaire): ProjectParameters {
-  const gfa = Math.max(40, Number(q.general.approximateGFA) || 180);
-  const floors = Math.max(1, Number(q.general.numberOfFloors) || (q.general.buildingType === 'Bungalow' ? 1 : 2));
-  const rooms = Math.max(1, Number(q.general.numberOfRooms) || 4);
-  const isBungalow = q.general.buildingType === 'Bungalow' || floors === 1;
+export function deriveGeometricParameters(q?: ProjectQuestionnaire): ProjectParameters {
+  const safeQ = normalizeQuestionnaire(q);
+  const gfa = Math.max(40, Number(safeQ.general.approximateGFA) || 180);
+  const floors = Math.max(1, Number(safeQ.general.numberOfFloors) || (safeQ.general.buildingType === 'Bungalow' ? 1 : 2));
+  const rooms = Math.max(1, Number(safeQ.general.numberOfRooms) || 4);
+  const isBungalow = safeQ.general.buildingType === 'Bungalow' || floors === 1;
 
   // Ground footprint area = GFA / floors
   const footprintArea = gfa / floors;
@@ -55,9 +107,9 @@ export function deriveGeometricParameters(q: ProjectQuestionnaire): ProjectParam
   // Approximate pitched roof area with 30-35 degree pitch + 600mm eaves overhang
   const roofArea = Math.round(footprintArea * 1.35);
 
-  const isRcFrame = q.superstructure.structuralSystem === 'Reinforced concrete frame' || q.superstructure.columns === 'Yes';
-  const isStripFoundation = q.substructure.foundationType === 'Strip foundation' || (isBungalow && q.substructure.foundationType !== 'Raft foundation' && q.substructure.foundationType !== 'Pile foundation');
-  const isRaftFoundation = q.substructure.foundationType === 'Raft foundation' || q.general.terrain === 'Swamp' || q.general.terrain === 'Waterlogged';
+  const isRcFrame = safeQ.superstructure.structuralSystem === 'Reinforced concrete frame' || safeQ.superstructure.columns === 'Yes';
+  const isStripFoundation = safeQ.substructure.foundationType === 'Strip foundation' || (isBungalow && safeQ.substructure.foundationType !== 'Raft foundation' && safeQ.substructure.foundationType !== 'Pile foundation');
+  const isRaftFoundation = safeQ.substructure.foundationType === 'Raft foundation' || safeQ.general.terrain === 'Swamp' || safeQ.general.terrain === 'Waterlogged';
 
   return {
     gfa,
@@ -70,7 +122,7 @@ export function deriveGeometricParameters(q: ProjectQuestionnaire): ProjectParam
     isRcFrame,
     isStripFoundation,
     isRaftFoundation,
-    terrain: q.general.terrain,
+    terrain: safeQ.general.terrain || 'Normal',
   };
 }
 
@@ -721,17 +773,18 @@ export const WBS_TRADE_DEFINITIONS: GeneratedTradeItem[] = [
  * calibrated to the questionnaire and parameters.
  */
 export function generateDeterministicBoq(
-  questionnaire: ProjectQuestionnaire,
+  questionnaire?: ProjectQuestionnaire,
   customRates: Record<string, number> = {}
 ): BoqItem[] {
-  const params = deriveGeometricParameters(questionnaire);
+  const safeQ = normalizeQuestionnaire(questionnaire);
+  const params = deriveGeometricParameters(safeQ);
 
   let itemCounter = 1;
   const items: BoqItem[] = [];
 
   for (const def of WBS_TRADE_DEFINITIONS) {
     // Check conditional logic
-    if (def.condition && !def.condition(questionnaire)) {
+    if (def.condition && !def.condition(safeQ)) {
       continue;
     }
 

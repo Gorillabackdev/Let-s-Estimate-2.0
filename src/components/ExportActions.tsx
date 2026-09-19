@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileSpreadsheet, FileText, Save, Check, Loader2 } from 'lucide-react';
 import { Project, BoqItem } from '../types';
+import { exportProjectToExcel, exportProjectToPdf } from '../utils/excelExport';
 
 interface ExportActionsProps {
   project: Project;
@@ -34,36 +35,11 @@ export const ExportActions: React.FC<ExportActionsProps> = ({
 
     setIsExportingExcel(true);
     try {
-      const response = await fetch('/api/export/excel', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectTitle: project.title,
-          location: project.location,
-          clientName: project.client_name,
-          poPercent: project.po_percent,
-          vatPercent: project.vat_percent,
-          swampPremiumPercent: project.swamp_premium_percent,
-          items: items,
-        }),
-      });
-
-      if (!response.ok) throw new Error('Excel export failed.');
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const safeTitle = (project.title || 'BOQ_Estimate').replace(/[^a-zA-Z0-9_-]/g, '_');
-      a.download = `${safeTitle}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-      showFeedback('Excel spreadsheet downloaded successfully!');
+      await exportProjectToExcel({ ...project, items });
+      showFeedback('Excel spreadsheet (.xlsx) downloaded successfully!');
     } catch (err: any) {
       console.error(err);
-      alert('Failed to export Excel file. Please try again.');
+      alert(err.message || 'Failed to export Excel file. Please try again.');
     } finally {
       setIsExportingExcel(false);
     }
@@ -77,36 +53,11 @@ export const ExportActions: React.FC<ExportActionsProps> = ({
 
     setIsExportingPdf(true);
     try {
-      const response = await fetch('/api/export/pdf', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectTitle: project.title,
-          location: project.location,
-          clientName: project.client_name,
-          poPercent: project.po_percent,
-          vatPercent: project.vat_percent,
-          swampPremiumPercent: project.swamp_premium_percent,
-          items: items,
-        }),
-      });
-
-      if (!response.ok) throw new Error('PDF export failed.');
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      const safeTitle = (project.title || 'BOQ_Estimate').replace(/[^a-zA-Z0-9_-]/g, '_');
-      a.download = `${safeTitle}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      await exportProjectToPdf({ ...project, items });
       showFeedback('PDF Bill of Quantities downloaded successfully!');
     } catch (err: any) {
       console.error(err);
-      alert('Failed to export PDF document. Please try again.');
+      alert(err.message || 'Failed to export PDF document. Please try again.');
     } finally {
       setIsExportingPdf(false);
     }

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Building2, MapPin, User, FileText, CheckCircle2, ChevronDown, ChevronUp, Calculator, Calendar, Phone, Percent } from 'lucide-react';
 import { Project } from '../types';
 import { formatNaira } from '../utils/format';
+import { FormattedNumberInput } from './common/FormattedNumberInput';
 import { ALL_NIGERIAN_STATES, getNigerianStateData } from '../data/nigerianLocations';
 
 interface ProjectMetaCardProps {
@@ -95,25 +96,26 @@ export const ProjectMetaCard: React.FC<ProjectMetaCardProps> = ({ project, onCha
                 const newState = e.target.value;
                 onChange('state', newState);
                 const info = getNigerianStateData(newState);
-                if (info.isSwamp && (!project.swamp_premium_percent || project.swamp_premium_percent === 0)) {
+                if (info?.isSwamp && (!project.swamp_premium_percent || project.swamp_premium_percent === 0)) {
                   onChange('swamp_premium_percent', 15);
                 }
               }}
               className="col-span-2 px-2 py-2 text-xs font-semibold text-slate-800 bg-slate-50 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               {ALL_NIGERIAN_STATES.map((st) => (
-                <option key={st} value={st}>{st}</option>
+                <option key={st.name} value={st.name}>{st.name}</option>
               ))}
             </select>
           </div>
           {/* Geopolitical Zone and Regional Index Indicator */}
           {(() => {
             const stData = getNigerianStateData(project.state || 'Lagos');
+            if (!stData) return null;
             return (
               <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
                 <span>{stData.zone} Zone ({stData.capital})</span>
                 <span className="font-semibold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                  {stData.costIndex.toFixed(2)}x Cost Index
+                  {(stData.costIndex ?? stData.regionalCostIndex ?? 1.0).toFixed(2)}x Cost Index
                 </span>
               </div>
             );
@@ -183,13 +185,11 @@ export const ProjectMetaCard: React.FC<ProjectMetaCardProps> = ({ project, onCha
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 Gross Floor Area (GFA m²)
               </label>
-              <input
-                type="number"
-                min="0"
-                step="any"
+              <FormattedNumberInput
                 value={project.gfa || ''}
-                onChange={(e) => onChange('gfa', Number(e.target.value))}
+                onChange={(val) => onChange('gfa', val)}
                 placeholder="e.g. 420"
+                maxDecimals={2}
                 className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
               />
             </div>

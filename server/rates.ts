@@ -293,7 +293,7 @@ export const NIGERIAN_RATE_LIBRARY: RateItem[] = [
 /**
  * Filter library by query or category
  */
-export function getRateLibrary(query = '', category = '', location = 'lagos'): RateItem[] {
+export function getRateLibrary(query = '', category = '', location = 'lagos'): any[] {
   let filtered = NIGERIAN_RATE_LIBRARY;
 
   if (category && category !== 'All') {
@@ -307,27 +307,78 @@ export function getRateLibrary(query = '', category = '', location = 'lagos'): R
     );
   }
 
-  return filtered;
+  return filtered.map(item => ({
+    ...item,
+    spec: item.description,
+    lagos: item.lagosRate,
+    abuja: item.abujaRate,
+    ph: item.portHarcourtRate,
+    lagosRate: item.lagosRate,
+    abujaRate: item.abujaRate,
+    portHarcourtRate: item.portHarcourtRate,
+  }));
 }
 
 /**
- * Retrieve user's custom rates
+ * Retrieve user's custom rates with regional rates (Lagos, Abuja, Port Harcourt, Northern)
  */
 export async function getUserCustomRates(userId: string): Promise<any[]> {
   const database = await getDb();
-  const safeUser = userId.replace(/'/g, "''");
-  const res = database.exec(`SELECT * FROM user_rates WHERE user_id = '${safeUser}' ORDER BY created_at DESC`);
-  if (res.length === 0) return [];
-  const cols = res[0].columns;
-  return res[0].values.map(row => {
-    const obj: any = {};
-    cols.forEach((col, idx) => { obj[col] = row[idx]; });
-    return obj;
-  });
+  const safeUser = (userId || 'guest-user').replace(/'/g, "''");
+  
+  // First query custom rates from library_rates
+  const res = database.exec(`SELECT * FROM library_rates WHERE is_custom = 1 OR user_id = '${safeUser}' ORDER BY created_at DESC`);
+  if (res.length > 0 && res[0].values.length > 0) {
+    const cols = res[0].columns;
+    return res[0].values.map(row => {
+      const obj: any = {};
+      cols.forEach((col, idx) => { obj[col] = row[idx]; });
+      return {
+        id: obj.id,
+        item: obj.item,
+        category: obj.category,
+        description: obj.specification || '',
+        unit: obj.unit,
+        rate: Number(obj.lagos_rate || 0),
+        lagosRate: Number(obj.lagos_rate || 0),
+        abujaRate: Number(obj.abuja_rate || 0),
+        portHarcourtRate: Number(obj.port_harcourt_rate || 0),
+        northernRate: Number(obj.northern_rate || 0),
+        source: 'Custom Rate Library',
+        createdAt: obj.created_at
+      };
+    });
+  }
+
+  // Fallback to user_rates if any
+  const ures = database.exec(`SELECT * FROM user_rates WHERE user_id = '${safeUser}' OR user_id = 'guest-user' OR user_id = 'system' ORDER BY created_at DESC`);
+  if (ures.length > 0 && ures[0].values.length > 0) {
+    const cols = ures[0].columns;
+    return ures[0].values.map(row => {
+      const obj: any = {};
+      cols.forEach((col, idx) => { obj[col] = row[idx]; });
+      const rateVal = Number(obj.rate || 0);
+      return {
+        id: obj.id,
+        item: obj.item,
+        category: obj.category,
+        description: obj.description || '',
+        unit: obj.unit,
+        rate: rateVal,
+        lagosRate: rateVal,
+        abujaRate: Math.round(rateVal * 1.05),
+        portHarcourtRate: Math.round(rateVal * 1.09),
+        northernRate: Math.round(rateVal * 0.96),
+        source: obj.source || 'User Custom',
+        createdAt: obj.created_at
+      };
+    });
+  }
+  return [];
 }
 
 /**
- * Save user custom rate
+ * Save user custom rate with Lagos, Abuja, Port Harcourt, and Northern regional rates
  */
 export async function saveUserCustomRate(rate: {
   userId: string;
@@ -336,19 +387,76 @@ export async function saveUserCustomRate(rate: {
   description: string;
   unit: string;
   rate: number;
+  lagosRate?: number;
+  abujaRate?: number;
+  portHarcourtRate?: number;
+  northernRate?: number;
   location?: string;
 }): Promise<any> {
   const database = await getDb();
   const id = 'urate-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
+  const lRate = Number(rate.lagosRate || rate.rate || 0);
+  const aRate = Number(rate.abujaRate || Math.round(lRate * 1.05));
+  const phRate = Number(rate.portHarcourtRate || Math.round(lRate * 1.09));
+  const nRate = Number(rate.northernRate || Math.round(lRate * 0.96));
 
+  try {
+    database.run(
+      `INSERT INTO user_rates (id, user_id, category, item, item_name, description, specification, unit, rate, composite_rate, lagos_rate, abuja_rate, port_harcourt_rate, northern_rate, location)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, rate.userId, rate.category, rate.item, rate.item, rate.description || '', rate.description || '', rate.unit, lRate, lRate, lRate, aRate, phRate, nRate, rate.location || 'Nigeria']
+    );
+  } catch (uErr) {
+    try {
+      database.run(
+        `INSERT INTO user_rates (id, user_id, category, item_name, specification, unit, composite_rate, location)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, rate.userId, rate.category, rate.item, rate.description || '', rate.unit, lRate, rate.location || 'Nigeria']
+      );
+    } catch {}
+  }
+
+  // Also persist to library_rates with complete regional benchmark columns
   database.run(
-    `INSERT INTO user_rates (id, user_id, category, item, description, unit, rate, location)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, rate.userId, rate.category, rate.item, rate.description, rate.unit, rate.rate, rate.location || 'Nigeria']
+    `INSERT INTO library_rates (
+      id, type, category, item, specification, unit,
+      lagos_rate, abuja_rate, port_harcourt_rate, northern_rate,
+      material_component, labour_component, plant_component, overhead_profit_percent,
+      trend, trend_percent, key_suppliers_json, last_updated, is_custom, user_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+    [
+      id,
+      'Material',
+      rate.category,
+      rate.item,
+      rate.description || '',
+      rate.unit,
+      lRate,
+      aRate,
+      phRate,
+      nRate,
+      lRate,
+      0,
+      0,
+      15,
+      'stable',
+      0,
+      '[]',
+      new Date().toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' }),
+      rate.userId
+    ]
   );
 
   saveDbToDisk();
-  return { id, ...rate };
+  return { 
+    id, 
+    ...rate, 
+    rate: lRate, 
+    lagosRate: lRate, 
+    abujaRate: aRate, 
+    portHarcourtRate: phRate, 
+    northernRate: nRate 
+  };
 }
 
 /**
@@ -356,7 +464,114 @@ export async function saveUserCustomRate(rate: {
  */
 export async function deleteUserCustomRate(id: string, userId: string): Promise<boolean> {
   const database = await getDb();
-  database.run(`DELETE FROM user_rates WHERE id = '${id.replace(/'/g, "''")}' AND user_id = '${userId.replace(/'/g, "''")}'`);
+  database.run(`DELETE FROM user_rates WHERE id = ?`, [id]);
+  database.run(`DELETE FROM library_rates WHERE id = ?`, [id]);
   saveDbToDisk();
   return true;
+}
+
+/**
+ * Update user custom rate (with regional rates: Lagos, Abuja, Port Harcourt, Northern)
+ */
+export async function updateUserCustomRate(id: string, updates: {
+  category?: string;
+  item?: string;
+  description?: string;
+  unit?: string;
+  rate?: number;
+  lagosRate?: number;
+  abujaRate?: number;
+  portHarcourtRate?: number;
+  northernRate?: number;
+}): Promise<any> {
+  const database = await getDb();
+  const lRate = Number(updates.lagosRate !== undefined ? updates.lagosRate : (updates.rate || 0));
+  const aRate = Number(updates.abujaRate !== undefined ? updates.abujaRate : Math.round(lRate * 1.05));
+  const phRate = Number(updates.portHarcourtRate !== undefined ? updates.portHarcourtRate : Math.round(lRate * 1.09));
+  const nRate = Number(updates.northernRate !== undefined ? updates.northernRate : Math.round(lRate * 0.96));
+
+  // Update in user_rates if exists
+  try {
+    database.run(
+      `UPDATE user_rates SET
+         category = COALESCE(?, category),
+         item = COALESCE(?, item),
+         item_name = COALESCE(?, item_name),
+         description = COALESCE(?, description),
+         specification = COALESCE(?, specification),
+         unit = COALESCE(?, unit),
+         rate = ?,
+         composite_rate = ?,
+         lagos_rate = ?,
+         abuja_rate = ?,
+         port_harcourt_rate = ?,
+         northern_rate = ?
+       WHERE id = ?`,
+      [
+        updates.category || null,
+        updates.item || null,
+        updates.item || null,
+        updates.description || null,
+        updates.description || null,
+        updates.unit || null,
+        lRate,
+        lRate,
+        lRate,
+        aRate,
+        phRate,
+        nRate,
+        id
+      ]
+    );
+  } catch {
+    try {
+      database.run(
+        `UPDATE user_rates SET
+           category = COALESCE(?, category),
+           item_name = COALESCE(?, item_name),
+           unit = COALESCE(?, unit),
+           composite_rate = ?
+         WHERE id = ?`,
+        [updates.category || null, updates.item || null, updates.unit || null, lRate, id]
+      );
+    } catch {}
+  }
+
+  // Update in library_rates
+  database.run(
+    `UPDATE library_rates SET
+       category = COALESCE(?, category),
+       item = COALESCE(?, item),
+       specification = COALESCE(?, specification),
+       unit = COALESCE(?, unit),
+       lagos_rate = ?,
+       abuja_rate = ?,
+       port_harcourt_rate = ?,
+       northern_rate = ?,
+       last_updated = ?
+     WHERE id = ?`,
+    [
+      updates.category || null,
+      updates.item || null,
+      updates.description || null,
+      updates.unit || null,
+      lRate,
+      aRate,
+      phRate,
+      nRate,
+      new Date().toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' }),
+      id
+    ]
+  );
+
+  saveDbToDisk();
+  return {
+    id,
+    ...updates,
+    rate: lRate,
+    lagosRate: lRate,
+    abujaRate: aRate,
+    portHarcourtRate: phRate,
+    northernRate: nRate
+  };
 }

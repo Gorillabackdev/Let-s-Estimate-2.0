@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BoqItem, BESMM4_SECTIONS, QsVerificationStatus } from '../types';
-import { formatNaira } from '../utils/format';
+import { formatNaira, formatNumber } from '../utils/format';
+import { FormattedNumberInput } from './common/FormattedNumberInput';
 import { 
   Plus, 
   Trash2, 
@@ -16,6 +17,8 @@ import {
   HelpCircle,
   FileText,
   Eye,
+  FileSpreadsheet,
+  Upload,
   X
 } from 'lucide-react';
 
@@ -26,6 +29,7 @@ interface BoqTableProps {
   onDeleteItem: (index: number) => void;
   onApplyMarketRates: () => void;
   onViewOnDrawing?: (item: BoqItem) => void;
+  onImportBoq?: () => void;
 }
 
 // BESMM4 Standard Nigerian Trade Presets
@@ -143,6 +147,7 @@ export const BoqTable: React.FC<BoqTableProps> = ({
   onDeleteItem,
   onApplyMarketRates,
   onViewOnDrawing,
+  onImportBoq,
 }) => {
   const [selectedSection, setSelectedSection] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
@@ -203,6 +208,20 @@ export const BoqTable: React.FC<BoqTableProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Import BOQ Button */}
+          {onImportBoq && (
+            <button
+              id="import-boq-toolbar-btn"
+              type="button"
+              onClick={onImportBoq}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-800 hover:bg-emerald-700 text-white shadow-xs transition active:scale-95 cursor-pointer"
+              title="Import BOQ from Excel (.xlsx, .xls), CSV, or clipboard to review manually"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
+              <span>Import BOQ</span>
+            </button>
+          )}
+
           {/* Preset Insertion Dropdown */}
           <div className="relative">
             <button
@@ -353,12 +372,45 @@ export const BoqTable: React.FC<BoqTableProps> = ({
           <tbody className="divide-y divide-slate-200 text-sm">
             {filteredIndices.length === 0 ? (
               <tr>
-                <td colSpan={10} className="py-12 text-center text-slate-400">
-                  <Calculator className="w-8 h-8 mx-auto mb-2 text-slate-300" />
-                  <p className="text-sm font-medium">No items found matching the current filters.</p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    Click "Add Row" or "Insert BESMM4 Preset" to add items.
-                  </p>
+                <td colSpan={10} className="py-14 text-center text-slate-500">
+                  <div className="max-w-md mx-auto space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center mx-auto shadow-2xs">
+                      <FileSpreadsheet className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">
+                        {safeItems.length === 0 ? 'No Bill of Quantities Items Yet' : 'No items match filter criteria'}
+                      </h4>
+                      <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                        {safeItems.length === 0
+                          ? 'Import an existing Excel (.xlsx, .csv) BOQ to review manually, load standard BESMM4 presets, or click "Add Row".'
+                          : 'Try adjusting the section filter above or add new rows to this section.'}
+                      </p>
+                    </div>
+
+                    {safeItems.length === 0 && (
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                        {onImportBoq && (
+                          <button
+                            type="button"
+                            onClick={onImportBoq}
+                            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
+                          >
+                            <FileSpreadsheet className="w-4 h-4 text-emerald-200" />
+                            <span>Import BOQ to Review</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => onAddItem()}
+                          className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold shadow-2xs cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4 text-slate-600" />
+                          <span>Add Blank Row</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -515,13 +567,11 @@ export const BoqTable: React.FC<BoqTableProps> = ({
 
                     {/* Quantity */}
                     <td className="py-2 px-2 border-r border-slate-100 text-right">
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        value={item.qty === 0 ? '' : item.qty}
-                        onChange={(e) => onUpdateItem(idx, 'qty', parseFloat(e.target.value) || 0)}
+                      <FormattedNumberInput
+                        value={item.qty}
+                        onChange={(val) => onUpdateItem(idx, 'qty', val)}
                         placeholder="0"
+                        maxDecimals={3}
                         className="w-full px-2 py-1.5 text-xs font-mono font-medium text-right text-slate-900 rounded border border-transparent hover:border-slate-300 focus:border-emerald-500 focus:bg-white focus:outline-none transition"
                       />
                     </td>
@@ -529,14 +579,12 @@ export const BoqTable: React.FC<BoqTableProps> = ({
                     {/* Rate in Naira (₦) */}
                     <td className="py-2 px-2 border-r border-slate-100 text-right">
                       <div className="relative flex items-center">
-                        <span className="absolute left-2 text-xs text-slate-400 font-bold">₦</span>
-                        <input
-                          type="number"
-                          step="any"
-                          min="0"
-                          value={item.rate === 0 ? '' : item.rate}
-                          onChange={(e) => onUpdateItem(idx, 'rate', parseFloat(e.target.value) || 0)}
+                        <span className="absolute left-2 text-xs text-slate-400 font-bold pointer-events-none">₦</span>
+                        <FormattedNumberInput
+                          value={item.rate}
+                          onChange={(val) => onUpdateItem(idx, 'rate', val)}
                           placeholder="0"
+                          maxDecimals={2}
                           className="w-full pl-5 pr-2 py-1.5 text-xs font-mono font-semibold text-right text-slate-900 rounded border border-transparent hover:border-slate-300 focus:border-emerald-500 focus:bg-white focus:outline-none transition"
                         />
                       </div>
@@ -633,7 +681,7 @@ export const BoqTable: React.FC<BoqTableProps> = ({
                 <div>
                   <span className="text-[10px] text-slate-400 uppercase font-bold">Derived Quantity</span>
                   <p className="font-mono font-black text-emerald-700 text-sm">
-                    {evidenceModalItem.qty} {evidenceModalItem.unit}
+                    {formatNumber(evidenceModalItem.qty)} {evidenceModalItem.unit}
                   </p>
                 </div>
               </div>

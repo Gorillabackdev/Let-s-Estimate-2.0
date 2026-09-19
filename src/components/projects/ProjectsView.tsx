@@ -20,7 +20,8 @@ import {
   HeartPulse,
   HeartHandshake,
   Pencil,
-  Edit3
+  Edit3,
+  FileSpreadsheet
 } from 'lucide-react';
 import { Project } from '../../types';
 import { formatNaira } from '../../utils/format';
@@ -38,6 +39,7 @@ interface ProjectsViewProps {
   onDeleteProject?: (projectId: string, title: string) => Promise<void> | void;
   onArchiveProject?: (projectId: string) => void;
   onUpdateStatus?: (projectId: string, status: string) => void;
+  onImportBoq?: () => void;
 }
 
 type ProjectFilterTab = 'all' | 'active' | 'draft' | 'completed' | 'archived';
@@ -53,6 +55,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onDeleteProject,
   onArchiveProject,
   onUpdateStatus,
+  onImportBoq,
 }) => {
   const [activeTab, setActiveTab] = useState<ProjectFilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -126,14 +129,28 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onNewProject}
-          className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition active:scale-95 self-start sm:self-auto cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Project</span>
-        </button>
+        <div className="flex items-center space-x-2.5 self-start sm:self-auto">
+          {onImportBoq && (
+            <button
+              type="button"
+              onClick={onImportBoq}
+              className="inline-flex items-center space-x-2 px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-xs font-bold shadow-2xs transition active:scale-95 cursor-pointer"
+              title="Import external BOQ spreadsheet (.xlsx, .csv) to review manually"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              <span>Import BOQ</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onNewProject}
+            className="inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Project</span>
+          </button>
+        </div>
       </div>
 
       {/* Tabs & Search Filter Bar */}

@@ -13,17 +13,55 @@ import {
   FileSpreadsheet,
   ArrowRight
 } from 'lucide-react';
-import { CalculatorCategory } from '../../types';
-import { formatNaira } from '../../utils/format';
+import { CalculatorCategory, Project } from '../../types';
+import { formatNaira, formatNumber } from '../../utils/format';
+import { FormattedNumberInput } from '../common/FormattedNumberInput';
 
-interface CalculatorsHubViewProps {
-  onApplyToBoq?: (item: { item: string; description: string; qty: number; unit: string; section?: string }) => void;
+export interface TemplateBoqItem {
+  item: string;
+  description: string;
+  qty: number;
+  unit: string;
+  rate: number;
+  amount: number;
+  section: string;
 }
 
-export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyToBoq }) => {
+interface CalculatorsHubViewProps {
+  onApplyToBoq?: (item: { item: string; description: string; qty: number; unit: string; rate?: number; amount?: number; section?: string }) => void;
+  onApplyBulkToBoq?: (
+    items: TemplateBoqItem[],
+    options?: {
+      targetProjectId?: string;
+      createAsNewProject?: boolean;
+      newProjectTitle?: string;
+      newProjectLocation?: string;
+      newProjectType?: string;
+    }
+  ) => Promise<void> | void;
+  activeProject?: Project;
+  projects?: Project[];
+}
+
+export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ 
+  onApplyToBoq, 
+  onApplyBulkToBoq,
+  activeProject,
+  projects = []
+}) => {
   const [selectedCategory, setSelectedCategory] = useState<CalculatorCategory>('construction');
   const [activeCalcId, setActiveCalcId] = useState<string>('concrete_volume');
   const [copied, setCopied] = useState(false);
+
+  // Transfer to BOQ Modal state
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferTarget, setTransferTarget] = useState<'active' | 'new'>('active');
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(activeProject?.id || '');
+  const [newProjectTitle, setNewProjectTitle] = useState('');
+  const [newProjectLocation, setNewProjectLocation] = useState('Lagos, Nigeria');
+  const [newProjectType, setNewProjectType] = useState('NGO / Healthcare Outreach');
+  const [transferDetailLevel, setTransferDetailLevel] = useState<'detailed' | 'consolidated'>('detailed');
+  const [isTransferring, setIsTransferring] = useState(false);
 
   // Construction calculator state
   const [length, setLength] = useState<number>(10);
@@ -143,6 +181,326 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
     { id: 'budgeting', label: 'Project Budgeting / NGO', count: 9, icon: HeartHandshake },
   ];
 
+  // Helper to compile items for transfer to BOQ
+  const getCalculatedItems = (): TemplateBoqItem[] => {
+    if (selectedCategory === 'budgeting') {
+      if (transferDetailLevel === 'detailed') {
+        const items: TemplateBoqItem[] = [];
+        if (medicalPersonnelCount > 0) {
+          items.push({
+            item: `Medical Doctors & Nurses (${medicalPersonnelCount} Staff)`,
+            description: `Provision of professional medical staff for ${outreachDays} days outreach at ${outreachLocation}`,
+            qty: medicalPersonnelCount * outreachDays,
+            unit: 'man-day',
+            rate: medicalPersonnelDailyRate,
+            amount: medicalPersonnelCount * medicalPersonnelDailyRate * outreachDays,
+            section: 'Personnel & Medical Staff'
+          });
+        }
+        if (volunteersCount > 0) {
+          items.push({
+            item: `Community Field Volunteers (${volunteersCount} Volunteers)`,
+            description: `Field coordination, crowd orientation and patient ushering for ${outreachDays} days`,
+            qty: volunteersCount * outreachDays,
+            unit: 'volunteer-day',
+            rate: volunteersDailyStipend,
+            amount: volunteersCount * volunteersDailyStipend * outreachDays,
+            section: 'Personnel & Medical Staff'
+          });
+        }
+        if (medicalConsumablesCost > 0) {
+          items.push({
+            item: 'Essential Drugs & Diagnostic Test Kits',
+            description: 'Procurement of antimalarials, antibiotics, rapid malaria test kits, glucometers, and diagnostic consumables',
+            qty: 1,
+            unit: 'sum',
+            rate: medicalConsumablesCost,
+            amount: medicalConsumablesCost,
+            section: 'Medical Supplies & Consumables'
+          });
+        }
+        if (ppeCost > 0) {
+          items.push({
+            item: 'PPE & Infection Control Consumables',
+            description: 'Latex gloves, surgical face masks, alcohol hand sanitizers, and antiseptic dressings',
+            qty: 1,
+            unit: 'sum',
+            rate: ppeCost,
+            amount: ppeCost,
+            section: 'Medical Supplies & Consumables'
+          });
+        }
+        if (venueHireCost > 0) {
+          items.push({
+            item: 'Venue Canopy, Seating & Registration Desk Hire',
+            description: 'Erection of canopies, seating chairs, tables and consultation partitions',
+            qty: 1,
+            unit: 'sum',
+            rate: venueHireCost,
+            amount: venueHireCost,
+            section: 'Venue, Logistics & Power'
+          });
+        }
+        if (powerCost > 0) {
+          items.push({
+            item: 'Primary & Standby Generator Power Supply',
+            description: 'Generator plant hire and diesel/petrol fueling for cold chain vaccine/drug refrigeration and lighting',
+            qty: 1,
+            unit: 'sum',
+            rate: powerCost,
+            amount: powerCost,
+            section: 'Venue, Logistics & Power'
+          });
+        }
+        if (securityCost > 0) {
+          items.push({
+            item: 'Site Security & Crowd Marshalling',
+            description: 'Local policing and community security detail for crowd safety and queue management',
+            qty: 1,
+            unit: 'sum',
+            rate: securityCost,
+            amount: securityCost,
+            section: 'Venue, Logistics & Power'
+          });
+        }
+        if (wasteDisposalCost > 0) {
+          items.push({
+            item: 'Biohazard Medical Waste Collection & Incineration',
+            description: 'Sharps boxes, biohazard containment bags and certified medical incinerator disposal service',
+            qty: 1,
+            unit: 'sum',
+            rate: wasteDisposalCost,
+            amount: wasteDisposalCost,
+            section: 'Venue, Logistics & Power'
+          });
+        }
+        if (communicationCost > 0) {
+          items.push({
+            item: 'Community Sensitization & Public Address (PA)',
+            description: 'Pre-outreach town crier, publicity banners, flyers and site public address sound system',
+            qty: 1,
+            unit: 'sum',
+            rate: communicationCost,
+            amount: communicationCost,
+            section: 'Venue, Logistics & Power'
+          });
+        }
+        if (transportationCost > 0) {
+          items.push({
+            item: 'Logistics, Ambulance Standby & Field Transportation',
+            description: 'Personnel commuting bus hire, logistics vehicles and standby emergency evacuation vehicle',
+            qty: 1,
+            unit: 'sum',
+            rate: transportationCost,
+            amount: transportationCost,
+            section: 'Travel, Lodging & Catering'
+          });
+        }
+        if (accommodationCost > 0) {
+          items.push({
+            item: 'Non-Local Medical Team Field Lodging',
+            description: 'Hotel accommodation and field lodging for non-resident medical personnel',
+            qty: 1,
+            unit: 'sum',
+            rate: accommodationCost,
+            amount: accommodationCost,
+            section: 'Travel, Lodging & Catering'
+          });
+        }
+        if (feedingCost > 0) {
+          items.push({
+            item: 'Team Catering, Potable Bottled Water & Refreshments',
+            description: 'Breakfast, lunch, safe drinking water and hydration for medical personnel and volunteers',
+            qty: 1,
+            unit: 'sum',
+            rate: feedingCost,
+            amount: feedingCost,
+            section: 'Travel, Lodging & Catering'
+          });
+        }
+        if (administrationCost > 0) {
+          items.push({
+            item: 'Administrative Oversight, Local Permits & Reporting',
+            description: 'Stakeholder clearance permits, ID badges, printing patient cards and post-intervention report',
+            qty: 1,
+            unit: 'sum',
+            rate: administrationCost,
+            amount: administrationCost,
+            section: 'Administration & Contingency'
+          });
+        }
+        if (contingencyAmount > 0) {
+          items.push({
+            item: `Unforeseen Contingency Provision (${contingencyPercent}%)`,
+            description: 'Emergency contingency allowance for unpredictable site requirements',
+            qty: 1,
+            unit: 'sum',
+            rate: contingencyAmount,
+            amount: contingencyAmount,
+            section: 'Administration & Contingency'
+          });
+        }
+        return items;
+      } else {
+        return [{
+          item: `Community Healthcare Outreach (${outreachDays} Days)`,
+          description: `Complete healthcare intervention at ${outreachLocation} serving ${beneficiaries} beneficiaries. Full personnel, drug consumables, venue, logistics and ${contingencyPercent}% contingency.`,
+          qty: beneficiaries,
+          unit: 'beneficiary',
+          rate: costPerBeneficiary,
+          amount: totalOutreachBudget,
+          section: 'Healthcare Outreach Budget'
+        }];
+      }
+    }
+
+    if (selectedCategory === 'construction') {
+      if (transferDetailLevel === 'detailed') {
+        return [
+          {
+            item: 'Grade 42.5R Ordinary Portland Cement (1:2:4 Concrete)',
+            description: `CEM I 42.5R Portland cement for ${concreteVolumeM3} m³ concrete slab/beams`,
+            qty: cementBags,
+            unit: 'bag',
+            rate: 9500,
+            amount: cementBags * 9500,
+            section: 'Reinforced Concrete Superstructure'
+          },
+          {
+            item: 'Clean Sharp Concrete River Sand',
+            description: 'Clean sharp washed concrete aggregate sand free from clay silt',
+            qty: sandTonnes,
+            unit: 'tonne',
+            rate: 6500,
+            amount: Math.round(sandTonnes * 6500),
+            section: 'Reinforced Concrete Superstructure'
+          },
+          {
+            item: 'Crushed Blue Granite Aggregate 20mm (3/4")',
+            description: 'Machine-crushed angular igneous granite aggregate for structural concrete',
+            qty: graniteTonnes,
+            unit: 'tonne',
+            rate: 11500,
+            amount: Math.round(graniteTonnes * 11500),
+            section: 'Reinforced Concrete Superstructure'
+          },
+          {
+            item: 'Concrete Batching, Placing & Curing Labor',
+            description: 'Mechanical mixing, pouring, poker vibrator compaction and water curing',
+            qty: concreteVolumeM3,
+            unit: 'm3',
+            rate: 18500,
+            amount: Math.round(concreteVolumeM3 * 18500),
+            section: 'Labor & Plant'
+          }
+        ];
+      } else {
+        const totalCost = (cementBags * 9500) + (sandTonnes * 6500) + (graniteTonnes * 11500) + (concreteVolumeM3 * 18500);
+        const unitRate = Math.round(totalCost / (concreteVolumeM3 || 1));
+        return [{
+          item: 'Reinforced Concrete Grade 20/25 (1:2:4)',
+          description: `Vibrated reinforced concrete Grade 20/25 in beams and suspended slabs including cement, aggregates, and batching labor. Total volume: ${concreteVolumeM3} m³ (${mixRatio} mix).`,
+          qty: concreteVolumeM3,
+          unit: 'm3',
+          rate: unitRate,
+          amount: totalCost,
+          section: 'Reinforced Concrete Superstructure'
+        }];
+      }
+    }
+
+    if (selectedCategory === 'civil') {
+      const excavationCost = Math.round(excavatedVolume * 4200);
+      return [{
+        item: 'Excavation of Foundation Trenches',
+        description: `Excavate trench not exceeding 1.5m deep in normal soil, width ${trenchWidth}m, length ${trenchLength}m; including levelling, ramming bottom, and carting away surplus soil (${looseSoilVolume}m³ loose, ~${tipperLoads} tipper trips).`,
+        qty: excavatedVolume,
+        unit: 'm3',
+        rate: 4200,
+        amount: excavationCost,
+        section: 'Substructure Earthworks'
+      }];
+    }
+
+    if (selectedCategory === 'structural') {
+      return [{
+        item: `High-Yield Deformed Steel Rebar Y${barDiameter}`,
+        description: `High-yield deformed rebar Y${barDiameter} (fy >= 460 N/mm²) including cutting, bending, lifting and fixing in place with binding wire. Total length ${totalBarLength}m (${standardLengths12m} standard 12m lengths).`,
+        qty: totalRebarTonnes,
+        unit: 'tonne',
+        rate: steelPricePerTonne,
+        amount: steelEstimatedCost,
+        section: 'Reinforced Concrete Frame'
+      }];
+    }
+
+    if (selectedCategory === 'qs') {
+      return [{
+        item: 'Prime Cost & Preliminaries with QS Markups',
+        description: `Comprehensive project tender pricing including ${wastePercent}% waste, ${overheadsPercent}% overheads, ${profitPercent}% profit, and ${vatPercent}% VAT.`,
+        qty: 1,
+        unit: 'sum',
+        rate: Math.round(grossTenderSum),
+        amount: Math.round(grossTenderSum),
+        section: 'Preliminaries & General Summary'
+      }];
+    }
+
+    return [];
+  };
+
+  const handleOpenTransferModal = () => {
+    if (selectedCategory === 'budgeting') {
+      setNewProjectTitle(`Community Health Outreach - ${outreachLocation.split(',')[0]}`);
+      setNewProjectLocation(outreachLocation);
+      setNewProjectType('Community');
+    } else if (selectedCategory === 'construction') {
+      setNewProjectTitle(`Concrete Superstructure (${concreteVolumeM3} m³) Takeoff Project`);
+      setNewProjectLocation('Lagos, Nigeria');
+      setNewProjectType('Residential');
+    } else if (selectedCategory === 'civil') {
+      setNewProjectTitle(`Civil Earthworks & Foundation Trenches Project`);
+      setNewProjectLocation('Lagos, Nigeria');
+      setNewProjectType('Infrastructure');
+    } else {
+      setNewProjectTitle(`${selectedCategory.toUpperCase()} Estimation Project`);
+      setNewProjectLocation('Lagos, Nigeria');
+      setNewProjectType('Commercial');
+    }
+    setIsTransferModalOpen(true);
+  };
+
+  const handleExecuteTransfer = async () => {
+    const items = getCalculatedItems();
+    if (items.length === 0) {
+      alert('No line items to transfer.');
+      return;
+    }
+
+    setIsTransferring(true);
+    try {
+      if (onApplyBulkToBoq) {
+        await onApplyBulkToBoq(items, {
+          targetProjectId: transferTarget === 'active' ? (selectedProjectId || activeProject?.id) : undefined,
+          createAsNewProject: transferTarget === 'new',
+          newProjectTitle: newProjectTitle.trim(),
+          newProjectLocation: newProjectLocation.trim(),
+          newProjectType: newProjectType
+        });
+      } else if (onApplyToBoq) {
+        items.forEach(it => onApplyToBoq(it));
+      }
+      setIsTransferModalOpen(false);
+    } catch (err: any) {
+      alert('Transfer failed: ' + err.message);
+    } finally {
+      setIsTransferring(false);
+    }
+  };
+
+  const transferPreviewItems = getCalculatedItems();
+  const transferTotalSum = transferPreviewItems.reduce((acc, it) => acc + it.amount, 0);
+
   return (
     <div id="calculators-tools-hub" className="space-y-6 max-w-7xl mx-auto pb-12">
       
@@ -219,8 +577,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   <input
                     type="number"
                     step="0.05"
-                    value={length}
-                    onChange={(e) => setLength(Number(e.target.value))}
+                    value={length === 0 ? '' : length}
+                    placeholder="0"
+                    onChange={(e) => setLength(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -229,8 +588,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   <input
                     type="number"
                     step="0.05"
-                    value={width}
-                    onChange={(e) => setWidth(Number(e.target.value))}
+                    value={width === 0 ? '' : width}
+                    placeholder="0"
+                    onChange={(e) => setWidth(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -239,8 +599,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   <input
                     type="number"
                     step="0.01"
-                    value={thickness}
-                    onChange={(e) => setThickness(Number(e.target.value))}
+                    value={thickness === 0 ? '' : thickness}
+                    placeholder="0"
+                    onChange={(e) => setThickness(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                   <span className="text-[10px] text-slate-400">e.g. 0.15 for 150mm slab</span>
@@ -254,8 +615,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                     <label className="font-bold text-slate-700 block mb-1">Total Wall Length (m)</label>
                     <input
                       type="number"
-                      value={wallLength}
-                      onChange={(e) => setWallLength(Number(e.target.value))}
+                      value={wallLength === 0 ? '' : wallLength}
+                      placeholder="0"
+                      onChange={(e) => setWallLength(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                     />
                   </div>
@@ -264,8 +626,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                     <input
                       type="number"
                       step="0.1"
-                      value={wallHeight}
-                      onChange={(e) => setWallHeight(Number(e.target.value))}
+                      value={wallHeight === 0 ? '' : wallHeight}
+                      placeholder="0"
+                      onChange={(e) => setWallHeight(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                     />
                   </div>
@@ -302,8 +665,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   <label className="font-bold text-slate-700 block mb-1">Trench Length (m)</label>
                   <input
                     type="number"
-                    value={trenchLength}
-                    onChange={(e) => setTrenchLength(Number(e.target.value))}
+                    value={trenchLength === 0 ? '' : trenchLength}
+                    placeholder="0"
+                    onChange={(e) => setTrenchLength(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -312,8 +676,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   <input
                     type="number"
                     step="0.025"
-                    value={trenchWidth}
-                    onChange={(e) => setTrenchWidth(Number(e.target.value))}
+                    value={trenchWidth === 0 ? '' : trenchWidth}
+                    placeholder="0"
+                    onChange={(e) => setTrenchWidth(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -322,8 +687,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   <input
                     type="number"
                     step="0.1"
-                    value={trenchDepth}
-                    onChange={(e) => setTrenchDepth(Number(e.target.value))}
+                    value={trenchDepth === 0 ? '' : trenchDepth}
+                    placeholder="0"
+                    onChange={(e) => setTrenchDepth(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -361,20 +727,21 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Total Metres Required</label>
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={totalBarLength}
-                    onChange={(e) => setTotalBarLength(Number(e.target.value))}
+                    placeholder="0"
+                    maxDecimals={2}
+                    onChange={(val) => setTotalBarLength(val)}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Tonne Market Rate (₦)</label>
-                  <input
-                    type="number"
-                    step="50000"
+                  <FormattedNumberInput
                     value={steelPricePerTonne}
-                    onChange={(e) => setSteelPricePerTonne(Number(e.target.value))}
+                    placeholder="0"
+                    maxDecimals={0}
+                    onChange={(val) => setSteelPricePerTonne(val)}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -394,10 +761,11 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
                 <div>
                   <label className="font-bold text-slate-700 block mb-1">Net Prime Cost (₦)</label>
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={primeCost}
-                    onChange={(e) => setPrimeCost(Number(e.target.value))}
+                    placeholder="0"
+                    maxDecimals={0}
+                    onChange={(val) => setPrimeCost(val)}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -405,8 +773,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   <label className="font-bold text-slate-700 block mb-1">Overheads (%)</label>
                   <input
                     type="number"
-                    value={overheadsPercent}
-                    onChange={(e) => setOverheadsPercent(Number(e.target.value))}
+                    value={overheadsPercent === 0 ? '' : overheadsPercent}
+                    placeholder="0"
+                    onChange={(e) => setOverheadsPercent(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -414,8 +783,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   <label className="font-bold text-slate-700 block mb-1">Profit (%)</label>
                   <input
                     type="number"
-                    value={profitPercent}
-                    onChange={(e) => setProfitPercent(Number(e.target.value))}
+                    value={profitPercent === 0 ? '' : profitPercent}
+                    placeholder="0"
+                    onChange={(e) => setProfitPercent(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -455,10 +825,11 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   </div>
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Target Beneficiaries</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={beneficiaries}
-                      onChange={(e) => setBeneficiaries(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setBeneficiaries(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
@@ -466,8 +837,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                     <label className="font-semibold text-slate-700 block mb-1">Number of Days</label>
                     <input
                       type="number"
-                      value={outreachDays}
-                      onChange={(e) => setOutreachDays(Number(e.target.value))}
+                      value={outreachDays === 0 ? '' : outreachDays}
+                      placeholder="0"
+                      onChange={(e) => setOutreachDays(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
@@ -484,17 +856,19 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                     <label className="font-semibold text-slate-700 block mb-1">Medical Personnel</label>
                     <input
                       type="number"
-                      value={medicalPersonnelCount}
-                      onChange={(e) => setMedicalPersonnelCount(Number(e.target.value))}
+                      value={medicalPersonnelCount === 0 ? '' : medicalPersonnelCount}
+                      placeholder="0"
+                      onChange={(e) => setMedicalPersonnelCount(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Daily Rate (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={medicalPersonnelDailyRate}
-                      onChange={(e) => setMedicalPersonnelDailyRate(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setMedicalPersonnelDailyRate(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
@@ -502,17 +876,19 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                     <label className="font-semibold text-slate-700 block mb-1">Volunteers</label>
                     <input
                       type="number"
-                      value={volunteersCount}
-                      onChange={(e) => setVolunteersCount(Number(e.target.value))}
+                      value={volunteersCount === 0 ? '' : volunteersCount}
+                      placeholder="0"
+                      onChange={(e) => setVolunteersCount(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Volunteer Stipend (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={volunteersDailyStipend}
-                      onChange={(e) => setVolunteersDailyStipend(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setVolunteersDailyStipend(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
@@ -527,19 +903,21 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Medical Consumables &amp; Drugs (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={medicalConsumablesCost}
-                      onChange={(e) => setMedicalConsumablesCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setMedicalConsumablesCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">PPE &amp; Protective Gear (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={ppeCost}
-                      onChange={(e) => setPpeCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setPpeCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
@@ -554,46 +932,51 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Venue Rental / Canopies (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={venueHireCost}
-                      onChange={(e) => setVenueHireCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setVenueHireCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Power / Generator &amp; Diesel (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={powerCost}
-                      onChange={(e) => setPowerCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setPowerCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Security / Policing (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={securityCost}
-                      onChange={(e) => setSecurityCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setSecurityCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Clinical Waste Disposal (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={wasteDisposalCost}
-                      onChange={(e) => setWasteDisposalCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setWasteDisposalCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
                   <div className="sm:col-span-2">
                     <label className="font-semibold text-slate-700 block mb-1">Communication / PA System / Banners (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={communicationCost}
-                      onChange={(e) => setCommunicationCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setCommunicationCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
@@ -608,28 +991,31 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Transportation &amp; Haulage (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={transportationCost}
-                      onChange={(e) => setTransportationCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setTransportationCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Accommodation / Lodging (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={accommodationCost}
-                      onChange={(e) => setAccommodationCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setAccommodationCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Feeding &amp; Refreshments (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={feedingCost}
-                      onChange={(e) => setFeedingCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setFeedingCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
@@ -644,10 +1030,11 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">Administration / Documentation (₦)</label>
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={administrationCost}
-                      onChange={(e) => setAdministrationCost(Number(e.target.value))}
+                      placeholder="0"
+                      maxDecimals={0}
+                      onChange={(val) => setAdministrationCost(val)}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
@@ -655,8 +1042,9 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                     <label className="font-semibold text-slate-700 block mb-1">Contingency Reserve (%)</label>
                     <input
                       type="number"
-                      value={contingencyPercent}
-                      onChange={(e) => setContingencyPercent(Number(e.target.value))}
+                      value={contingencyPercent === 0 ? '' : contingencyPercent}
+                      placeholder="0"
+                      onChange={(e) => setContingencyPercent(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
                   </div>
@@ -683,26 +1071,26 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
               <div className="space-y-3 text-xs">
                 <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200">
                   <div className="text-slate-600">Net Concrete Volume:</div>
-                  <div className="text-2xl font-extrabold text-emerald-950 mt-0.5">{concreteVolumeM3} m³</div>
+                  <div className="text-2xl font-extrabold text-emerald-950 mt-0.5">{formatNumber(concreteVolumeM3)} m³</div>
                   <div className="text-[11px] text-emerald-800 mt-1">Grade 20/25 (1:2:4 batch ratio)</div>
                 </div>
 
                 <div className="space-y-1.5 pt-2">
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600">Cement (50kg bags):</span>
-                    <span className="font-bold text-slate-900">{cementBags} bags</span>
+                    <span className="font-bold text-slate-900">{formatNumber(cementBags)} bags</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600">Sharp Sand:</span>
-                    <span className="font-bold text-slate-900">{sandTonnes} tonnes</span>
+                    <span className="font-bold text-slate-900">{formatNumber(sandTonnes)} tonnes</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600">Crushed Granite (20mm):</span>
-                    <span className="font-bold text-slate-900">{graniteTonnes} tonnes</span>
+                    <span className="font-bold text-slate-900">{formatNumber(graniteTonnes)} tonnes</span>
                   </div>
                   <div className="flex justify-between py-1 text-slate-500 text-[11px]">
                     <span>Sandcrete Blocks (9&quot;):</span>
-                    <span className="font-bold text-slate-700">{blocksCount} pcs</span>
+                    <span className="font-bold text-slate-700">{formatNumber(blocksCount)} pcs</span>
                   </div>
                 </div>
               </div>
@@ -712,18 +1100,18 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
               <div className="space-y-3 text-xs">
                 <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200">
                   <div className="text-slate-600">Solid Excavation Volume:</div>
-                  <div className="text-2xl font-extrabold text-blue-950 mt-0.5">{excavatedVolume} m³</div>
+                  <div className="text-2xl font-extrabold text-blue-950 mt-0.5">{formatNumber(excavatedVolume)} m³</div>
                   <div className="text-[11px] text-blue-800 mt-1">In-situ trench cut</div>
                 </div>
 
                 <div className="space-y-1.5 pt-2">
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600">Loose Bulked Volume (+25%):</span>
-                    <span className="font-bold text-slate-900">{looseSoilVolume} m³</span>
+                    <span className="font-bold text-slate-900">{formatNumber(looseSoilVolume)} m³</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600">Tipper Trips (5m³ body):</span>
-                    <span className="font-bold text-slate-900">{tipperLoads} trips</span>
+                    <span className="font-bold text-slate-900">{formatNumber(tipperLoads)} trips</span>
                   </div>
                 </div>
               </div>
@@ -733,18 +1121,18 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
               <div className="space-y-3 text-xs">
                 <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200">
                   <div className="text-slate-600">Total Steel Tonnage:</div>
-                  <div className="text-2xl font-extrabold text-amber-950 mt-0.5">{totalRebarTonnes} Tonnes</div>
+                  <div className="text-2xl font-extrabold text-amber-950 mt-0.5">{formatNumber(totalRebarTonnes)} Tonnes</div>
                   <div className="text-[11px] text-amber-800 mt-1">Y{barDiameter} High Yield Deformed Bars</div>
                 </div>
 
                 <div className="space-y-1.5 pt-2">
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600">Total Weight:</span>
-                    <span className="font-bold text-slate-900">{totalRebarWeightKg} kg</span>
+                    <span className="font-bold text-slate-900">{formatNumber(totalRebarWeightKg)} kg</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600">Standard 12m Lengths:</span>
-                    <span className="font-bold text-slate-900">{standardLengths12m} lengths</span>
+                    <span className="font-bold text-slate-900">{formatNumber(standardLengths12m)} lengths</span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100">
                     <span className="text-slate-600">Estimated Rebar Sum:</span>
@@ -785,7 +1173,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
                   <div className="text-slate-600 font-semibold">TOTAL PROJECT BUDGET:</div>
                   <div className="text-xl font-black text-amber-950 mt-0.5">{formatNaira(totalOutreachBudget)}</div>
                   <div className="flex items-center justify-between text-[11px] text-amber-900 mt-1 font-medium">
-                    <span>{outreachDays} Days &bull; {beneficiaries} Beneficiaries</span>
+                    <span>{outreachDays} Days &bull; {formatNumber(beneficiaries)} Beneficiaries</span>
                     <span className="font-bold bg-amber-200/60 px-2 py-0.5 rounded">{formatNaira(costPerBeneficiary)} / person</span>
                   </div>
                 </div>
@@ -826,50 +1214,14 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
 
           {/* Action buttons */}
           <div className="pt-5 border-t border-slate-100 space-y-2">
-            {onApplyToBoq && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedCategory === 'construction') {
-                    onApplyToBoq({
-                      item: 'Reinforced Concrete Grade 20/25',
-                      description: `Vibrated reinforced concrete Grade 20/25 in beams/slabs. Mix 1:2:4 (${cementBags} bags cement)`,
-                      qty: concreteVolumeM3,
-                      unit: 'm3',
-                      section: 'Reinforced Concrete Frame'
-                    });
-                  } else if (selectedCategory === 'civil') {
-                    onApplyToBoq({
-                      item: 'Excavation in Foundation Trenches',
-                      description: `Excavation not exceeding 1.5m deep in trenches, width ${trenchWidth}m`,
-                      qty: excavatedVolume,
-                      unit: 'm3',
-                      section: 'Substructure'
-                    });
-                  } else if (selectedCategory === 'structural') {
-                    onApplyToBoq({
-                      item: `High Yield Steel Rebar Y${barDiameter}`,
-                      description: `High yield deformed steel rebar Y${barDiameter} including cutting, bending & placing`,
-                      qty: totalRebarWeightKg,
-                      unit: 'kg',
-                      section: 'Reinforced Concrete Frame'
-                    });
-                  } else if (selectedCategory === 'budgeting') {
-                    onApplyToBoq({
-                      item: `Community Health Outreach (${outreachDays} Days)`,
-                      description: `Outreach at ${outreachLocation} targeting ${beneficiaries} beneficiaries. Includes personnel, consumables, logistics, lodging and ${contingencyPercent}% contingency.`,
-                      qty: beneficiaries,
-                      unit: 'beneficiary',
-                      section: 'Project Outreach Budget'
-                    });
-                  }
-                }}
-                className="w-full py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs flex items-center justify-center space-x-2 cursor-pointer"
-              >
-                <FileSpreadsheet className="w-3.5 h-3.5" />
-                <span>{selectedCategory === 'budgeting' ? 'Apply Outreach Budget to Project' : 'Apply Quantity to Active BOQ'}</span>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleOpenTransferModal}
+              className="w-full py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs flex items-center justify-center space-x-2 cursor-pointer"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>{selectedCategory === 'budgeting' ? 'Transfer Outreach Budget to Project BOQ' : 'Transfer Template Takeoff to BOQ'}</span>
+            </button>
 
             <button
               type="button"
@@ -888,6 +1240,228 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ onApplyT
 
       </div>
 
+      {/* MODAL: TRANSFER TAKEOFF TEMPLATE TO BOQ */}
+      {isTransferModalOpen && (
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
+                  Transfer Takeoff Template to BOQ
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Persists calculated takeoff quantities and rates directly into your project bill of quantities in SQLite.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTransferModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Step 1: Destination Selection */}
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                1. Target Destination
+              </label>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTransferTarget('active')}
+                  className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                    transferTarget === 'active'
+                      ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900">Add to Existing Project</span>
+                    {transferTarget === 'active' && <Check className="w-4 h-4 text-emerald-700" />}
+                  </div>
+                  <span className="text-[11px] text-slate-500 block mt-1 truncate">
+                    {activeProject ? activeProject.title : 'Active Project'}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTransferTarget('new')}
+                  className={`p-3 rounded-xl border text-left transition cursor-pointer ${
+                    transferTarget === 'new'
+                      ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900">Create Brand New Project</span>
+                    {transferTarget === 'new' && <Check className="w-4 h-4 text-emerald-700" />}
+                  </div>
+                  <span className="text-[11px] text-slate-500 block mt-1">
+                    Start a fresh standalone project BOQ
+                  </span>
+                </button>
+              </div>
+
+              {transferTarget === 'active' && projects.length > 0 && (
+                <div className="mt-2">
+                  <label className="block text-[11px] font-bold text-slate-600 mb-1">Select Project:</label>
+                  <select
+                    value={selectedProjectId}
+                    onChange={(e) => setSelectedProjectId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-slate-50 border border-slate-200 font-medium text-slate-800"
+                  >
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.title} ({p.location})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {transferTarget === 'new' && (
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">New Project Title *</label>
+                    <input
+                      type="text"
+                      value={newProjectTitle}
+                      onChange={(e) => setNewProjectTitle(e.target.value)}
+                      placeholder="e.g. Community Health Outreach - Ikorodu"
+                      className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Location</label>
+                      <input
+                        type="text"
+                        value={newProjectLocation}
+                        onChange={(e) => setNewProjectLocation(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Project Classification</label>
+                      <input
+                        type="text"
+                        value={newProjectType}
+                        onChange={(e) => setNewProjectType(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-medium"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Line Item Structure */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                2. Itemization Detail Level
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTransferDetailLevel('detailed')}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    transferDetailLevel === 'detailed'
+                      ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="text-xs font-bold text-slate-900 block">Itemized Activity Schedule</span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    Transfers individual constituent line items ({transferPreviewItems.length} lines)
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTransferDetailLevel('consolidated')}
+                  className={`p-2.5 rounded-xl border text-left transition cursor-pointer ${
+                    transferDetailLevel === 'consolidated'
+                      ? 'border-emerald-600 bg-emerald-50/50 ring-1 ring-emerald-600'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="text-xs font-bold text-slate-900 block">Consolidated Summary Item</span>
+                  <span className="text-[10px] text-slate-500 block mt-0.5">
+                    Transfers single summary line item with exact calculated budget
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* Step 3: Preview Table */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  3. Line Items to be Added ({transferPreviewItems.length})
+                </label>
+                <span className="text-xs font-bold text-emerald-800">
+                  Total: {formatNaira(transferTotalSum)}
+                </span>
+              </div>
+
+              <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50">
+                <table className="w-full text-left text-[11px]">
+                  <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-600 font-bold sticky top-0">
+                    <tr>
+                      <th className="py-2 px-3">Item &amp; Description</th>
+                      <th className="py-2 px-2 text-right">Qty</th>
+                      <th className="py-2 px-2">Unit</th>
+                      <th className="py-2 px-2 text-right">Rate</th>
+                      <th className="py-2 px-3 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200/60 font-medium">
+                    {transferPreviewItems.map((it, idx) => (
+                      <tr key={idx} className="hover:bg-white transition">
+                        <td className="py-1.5 px-3">
+                          <span className="font-bold text-slate-800 block">{it.item}</span>
+                          <span className="text-[10px] text-slate-500 block truncate max-w-xs">{it.description}</span>
+                        </td>
+                        <td className="py-1.5 px-2 text-right font-mono text-slate-700">{formatNumber(it.qty)}</td>
+                        <td className="py-1.5 px-2 text-slate-500">{it.unit}</td>
+                        <td className="py-1.5 px-2 text-right font-mono text-slate-700">{formatNaira(it.rate)}</td>
+                        <td className="py-1.5 px-3 text-right font-mono font-bold text-emerald-800">{formatNaira(it.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setIsTransferModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={isTransferring}
+                onClick={handleExecuteTransfer}
+                className="px-6 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+              >
+                <ArrowRight className="w-4 h-4" />
+                <span>{isTransferring ? 'Saving to Database...' : 'Confirm & Transfer to BOQ'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
+

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Award, Plus, Trash2, X, CheckCircle2, Printer, Building2, Calendar, DollarSign, FileCheck } from 'lucide-react';
 import { ProjectValuation, Project } from '../types';
 import { formatNaira } from '../utils/format';
+import { FormattedNumberInput } from './common/FormattedNumberInput';
 
 interface ProjectValuationsModalProps {
   project: Project;
@@ -370,11 +371,10 @@ export const ProjectValuationsModal: React.FC<ProjectValuationsModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Previous Valuation (₦)
                   </label>
-                  <input
-                    type="number"
-                    step="any"
+                  <FormattedNumberInput
                     value={prevValuation}
-                    onChange={(e) => setPrevValuation(Number(e.target.value))}
+                    onChange={(val) => setPrevValuation(val)}
+                    placeholder="0"
                     className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300"
                   />
                 </div>
@@ -383,14 +383,10 @@ export const ProjectValuationsModal: React.FC<ProjectValuationsModalProps> = ({
                   <label className="block text-xs font-semibold text-emerald-800 mb-1">
                     Current Period Work (₦) *
                   </label>
-                  <input
-                    type="number"
-                    step="any"
-                    required
-                    min="1"
+                  <FormattedNumberInput
                     value={currentValuation}
-                    onChange={(e) => setCurrentValuation(Number(e.target.value))}
-                    placeholder="e.g. 8500000"
+                    onChange={(val) => setCurrentValuation(val)}
+                    placeholder="8,500,000"
                     className="w-full px-3 py-1.5 text-xs font-bold rounded-lg border border-emerald-300 bg-emerald-50/40 text-emerald-900"
                   />
                 </div>
@@ -412,11 +408,10 @@ export const ProjectValuationsModal: React.FC<ProjectValuationsModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Advance Payment Recovery (₦)
                   </label>
-                  <input
-                    type="number"
-                    step="any"
+                  <FormattedNumberInput
                     value={advanceDeduction}
-                    onChange={(e) => setAdvanceDeduction(Number(e.target.value))}
+                    onChange={(val) => setAdvanceDeduction(val)}
+                    placeholder="0"
                     className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300"
                   />
                 </div>

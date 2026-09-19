@@ -48,6 +48,7 @@ interface AppHeaderProps {
   onNewCalculation: () => void;
   onUploadDocument: () => void;
   onOpenSubscriptionModal: () => void;
+  onImportBoq?: () => void;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
@@ -67,6 +68,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   onNewCalculation,
   onUploadDocument,
   onOpenSubscriptionModal,
+  onImportBoq,
 }) => {
   const { user, openAuthModal, openProfileModal, logout } = useAuth();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -347,6 +349,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                   <span>New BOQ</span>
                 </button>
+
+                {onImportBoq && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCreateOpen(false);
+                      onImportBoq();
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50 hover:text-emerald-900 transition text-left cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4 text-emerald-600" />
+                    <span>Import BOQ (Excel / CSV)</span>
+                  </button>
+                )}
 
                 <button
                   type="button"

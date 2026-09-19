@@ -189,8 +189,8 @@ export const ExecutiveDossierModal: React.FC<ExecutiveDossierModalProps> = ({
                         <tr key={idx} className="hover:bg-slate-50">
                           <td className="px-3 py-2 font-semibold text-slate-900">{t.section}</td>
                           <td className="px-3 py-2 text-center text-slate-500">{t.itemCount}</td>
-                          <td className="px-3 py-2 text-right font-mono font-medium">₦{t.amount.toLocaleString()}</td>
-                          <td className="px-3 py-2 text-right font-mono font-bold text-emerald-800">{t.percent}%</td>
+                          <td className="px-3 py-2 text-right font-mono font-medium">₦{(t.totalAmount ?? (t as any).amount ?? 0).toLocaleString()}</td>
+                          <td className="px-3 py-2 text-right font-mono font-bold text-emerald-800">{t.percentage ?? (t as any).percent ?? 0}%</td>
                         </tr>
                       ))}
                     </tbody>

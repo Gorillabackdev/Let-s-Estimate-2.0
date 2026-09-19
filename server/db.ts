@@ -7,6 +7,7 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
+import { SEED_PLANT_LABOUR_PRELIM_SUPPLIERS, DEFAULT_LIBRARY_RATES } from './defaultRatesData.js';
 
 let SQL: SqlJsStatic | null = null;
 let db: Database | null = null;
@@ -158,6 +159,13 @@ export async function getDb(): Promise<Database> {
     "ALTER TABLE projects ADD COLUMN library_json TEXT DEFAULT '[]'",
     "ALTER TABLE projects ADD COLUMN reference TEXT DEFAULT ''",
     "ALTER TABLE projects ADD COLUMN contractor TEXT DEFAULT ''",
+    "ALTER TABLE user_rates ADD COLUMN item TEXT DEFAULT ''",
+    "ALTER TABLE user_rates ADD COLUMN rate REAL DEFAULT 0.0",
+    "ALTER TABLE user_rates ADD COLUMN description TEXT DEFAULT ''",
+    "ALTER TABLE user_rates ADD COLUMN lagos_rate REAL DEFAULT 0.0",
+    "ALTER TABLE user_rates ADD COLUMN abuja_rate REAL DEFAULT 0.0",
+    "ALTER TABLE user_rates ADD COLUMN port_harcourt_rate REAL DEFAULT 0.0",
+    "ALTER TABLE user_rates ADD COLUMN northern_rate REAL DEFAULT 0.0",
   ];
 
   for (const alterSql of safeAlterColumns) {
@@ -166,6 +174,18 @@ export async function getDb(): Promise<Database> {
     } catch {
       // Column already exists, safe to ignore
     }
+  }
+
+  try {
+    db.run(`UPDATE user_rates SET item = item_name WHERE (item IS NULL OR item = '') AND item_name IS NOT NULL;`);
+    db.run(`UPDATE user_rates SET rate = composite_rate WHERE (rate IS NULL OR rate = 0) AND composite_rate IS NOT NULL;`);
+    db.run(`UPDATE user_rates SET description = specification WHERE (description IS NULL OR description = '') AND specification IS NOT NULL;`);
+    db.run(`UPDATE user_rates SET lagos_rate = rate WHERE (lagos_rate IS NULL OR lagos_rate = 0) AND rate > 0;`);
+    db.run(`UPDATE user_rates SET abuja_rate = CAST(rate * 1.05 AS INTEGER) WHERE (abuja_rate IS NULL OR abuja_rate = 0) AND rate > 0;`);
+    db.run(`UPDATE user_rates SET port_harcourt_rate = CAST(rate * 1.09 AS INTEGER) WHERE (port_harcourt_rate IS NULL OR port_harcourt_rate = 0) AND rate > 0;`);
+    db.run(`UPDATE user_rates SET northern_rate = CAST(rate * 0.96 AS INTEGER) WHERE (northern_rate IS NULL OR northern_rate = 0) AND rate > 0;`);
+  } catch (err) {
+    console.warn('Migration data sync error for user_rates:', err);
   }
 
   // Phase 4, 5, 6, 7, 8, 9 Tables Initialization
@@ -212,6 +232,29 @@ export async function getDb(): Promise<Database> {
       plant_cost REAL DEFAULT 0.0,
       location TEXT DEFAULT 'Lagos',
       source TEXT DEFAULT 'User Custom',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS library_rates (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL DEFAULT 'Material',
+      category TEXT NOT NULL,
+      item TEXT NOT NULL,
+      specification TEXT DEFAULT '',
+      unit TEXT NOT NULL,
+      lagos_rate REAL NOT NULL DEFAULT 0.0,
+      abuja_rate REAL NOT NULL DEFAULT 0.0,
+      port_harcourt_rate REAL NOT NULL DEFAULT 0.0,
+      northern_rate REAL NOT NULL DEFAULT 0.0,
+      material_component REAL DEFAULT 0.0,
+      labour_component REAL DEFAULT 0.0,
+      plant_component REAL DEFAULT 0.0,
+      overhead_profit_percent REAL DEFAULT 15.0,
+      trend TEXT DEFAULT 'stable',
+      trend_percent REAL DEFAULT 0.0,
+      key_suppliers_json TEXT DEFAULT '[]',
+      last_updated TEXT DEFAULT '',
+      is_custom INTEGER DEFAULT 0,
+      user_id TEXT DEFAULT 'system',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS project_cash_flow_milestones (
@@ -345,6 +388,26 @@ export async function getDb(): Promise<Database> {
       include_final_account INTEGER DEFAULT 1,
       include_license INTEGER DEFAULT 1,
       status TEXT DEFAULT 'Published',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS suppliers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      contact_person TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      whatsapp TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      state TEXT DEFAULT 'Lagos',
+      coverage_areas TEXT DEFAULT 'Nationwide',
+      lead_time TEXT DEFAULT '24-48 hours',
+      min_order TEXT DEFAULT '',
+      payment_terms TEXT DEFAULT 'Bank Transfer / COD',
+      verification_status TEXT DEFAULT 'Verified',
+      rating REAL DEFAULT 4.8,
+      notes TEXT DEFAULT '',
+      materials_json TEXT DEFAULT '[]',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )`
   ];
@@ -2858,6 +2921,536 @@ export async function compileExecutiveProjectDossier(projectId: string, user?: a
   };
 }
 
+// ========================================================================
+// PHASE 12: SUPPLIERS & VENDOR DIRECTORY
+// ========================================================================
 
+const SEED_NIGERIAN_SUPPLIERS = [
+  {
+    id: 'supp-dangote-01',
+    name: 'Dangote Cement Commercial Depot (Ikeja / Apapa)',
+    category: 'Cement & Aggregates',
+    contactPerson: 'Alhaji Sanusi Mohammed',
+    phone: '+234 803 452 1198',
+    whatsapp: '+234 803 452 1198',
+    email: 'depot.apapa@dangote-cement.com',
+    address: '12 Commercial Avenue, Apapa Port Corridor, Lagos',
+    state: 'Lagos',
+    coverageAreas: 'South West & Nationwide Direct Factory Dispatch',
+    leadTime: '24 hours',
+    minOrder: '300 bags (Half Trailer) / 600-900 bags',
+    paymentTerms: 'Advance Bank Transfer / Certified Draft',
+    verificationStatus: 'Verified',
+    rating: 4.9,
+    notes: 'Primary authorized depot for Grade 42.5R Ordinary Portland Cement. Fast turnaround for large commercial sites.',
+    materials: [
+      { name: 'Grade 42.5R Ordinary Portland Cement (50kg bag)', unit: 'Bag', rate: 9500 },
+      { name: 'Grade 32.5N Falcon Cement (50kg bag)', unit: 'Bag', rate: 8900 },
+      { name: 'Bulk Cement (Tanker 30 Tonnes)', unit: 'Tonne', rate: 185000 }
+    ]
+  },
+  {
+    id: 'supp-bua-02',
+    name: 'BUA Cement Regional Distribution Depot',
+    category: 'Cement & Aggregates',
+    contactPerson: 'Engr. Chinedu Okafor',
+    phone: '+234 812 770 4390',
+    whatsapp: '+234 812 770 4390',
+    email: 'sales.ph@buacement.com',
+    address: 'Trans-Amadi Industrial Layout, Port Harcourt, Rivers State',
+    state: 'Rivers',
+    coverageAreas: 'South-South, South-East & Delta Riverine',
+    leadTime: '24-48 hours',
+    minOrder: '200 bags',
+    paymentTerms: 'Direct Bank Settlement / Confirmed PO',
+    verificationStatus: 'Verified',
+    rating: 4.8,
+    notes: 'High sulphate-resisting Grade 42.5N cement suitable for coastal, swamp, and saline foundations.',
+    materials: [
+      { name: 'BUA Grade 42.5N Super Cement (50kg bag)', unit: 'Bag', rate: 9300 },
+      { name: 'Trailer Load Delivery (600 Bags)', unit: 'Trip', rate: 5580000 }
+    ]
+  },
+  {
+    id: 'supp-pulkit-03',
+    name: 'Pulkit & African Steel Mills Ltd',
+    category: 'Steel & Rebar',
+    contactPerson: 'Sunday Adebayo (Sales Lead)',
+    phone: '+234 802 331 8842',
+    whatsapp: '+234 802 331 8842',
+    email: 'orders@africansteelmills.ng',
+    address: 'Plot 14, Ikorodu Industrial Scheme, Ogijo Corridor, Lagos/Ogun',
+    state: 'Lagos',
+    coverageAreas: 'Nationwide Heavy Haulage',
+    leadTime: '2-3 business days',
+    minOrder: '5 tonnes',
+    paymentTerms: '100% on Dispatch / Confirmed LC',
+    verificationStatus: 'Verified',
+    rating: 4.9,
+    notes: 'SON certified high-yield deformed bars with yield strength >= 460 N/mm2. Mill test certificates provided with each batch.',
+    materials: [
+      { name: 'High-Yield TMT Rebars Y10 (12m Length)', unit: 'Tonne', rate: 1450000 },
+      { name: 'High-Yield TMT Rebars Y12 (12m Length)', unit: 'Tonne', rate: 1430000 },
+      { name: 'High-Yield TMT Rebars Y16 (12m Length)', unit: 'Tonne', rate: 1420000 },
+      { name: 'High-Yield TMT Rebars Y20 (12m Length)', unit: 'Tonne', rate: 1420000 },
+      { name: 'Binding Wire (25kg Roll)', unit: 'Roll', rate: 42000 }
+    ]
+  },
+  {
+    id: 'supp-royal-04',
+    name: 'Royal Quarries & Granite Aggregates Ltd',
+    category: 'Cement & Aggregates',
+    contactPerson: 'Chief Olumide Bakare',
+    phone: '+234 805 609 3321',
+    whatsapp: '+234 805 609 3321',
+    email: 'dispatch@royalquarries.com',
+    address: 'KM 42, Lagos-Ibadan Expressway / Abeokuta Quarry Basin',
+    state: 'Ogun',
+    coverageAreas: 'Lagos Island, Mainland, Ogun State',
+    leadTime: 'Same-day 24h dispatch',
+    minOrder: '30-tonne Tipper load',
+    paymentTerms: 'Cash on Site Delivery / Transfer',
+    verificationStatus: 'Verified',
+    rating: 4.8,
+    notes: 'Clean, unweathered crushed blue granite aggregates tested for low water absorption and high crushing value.',
+    materials: [
+      { name: 'Crushed Granite 20mm (3/4" Aggregate)', unit: 'Tonne', rate: 11500 },
+      { name: 'Crushed Granite 12mm (1/2" Aggregate)', unit: 'Tonne', rate: 12500 },
+      { name: 'Granite Stone Dust (For Paving/Plaster)', unit: 'Tonne', rate: 7500 },
+      { name: 'Hardcore Boulder Stones (Foundation Filling)', unit: 'Tonne', rate: 8500 }
+    ]
+  },
+  {
+    id: 'supp-epe-05',
+    name: 'Epe & Lekki River Sand Dredging Depot',
+    category: 'Cement & Aggregates',
+    contactPerson: 'Segun Oladipo',
+    phone: '+234 803 912 4001',
+    whatsapp: '+234 803 912 4001',
+    email: 'sand@lekki-dredging.ng',
+    address: 'Eleko Beach Road, Lekki-Epe Expressway, Ibeju-Lekki, Lagos',
+    state: 'Lagos',
+    coverageAreas: 'Lekki Phase 1, Ikoyi, Victoria Island, Ajah, Epe',
+    leadTime: 'Within 6-12 hours',
+    minOrder: '20-tonne Tipper load',
+    paymentTerms: 'Cash on Delivery (COD)',
+    verificationStatus: 'Verified',
+    rating: 4.7,
+    notes: 'Clean coarse river sand washed free from organic silt and salinity. Guaranteed 20-tonne full bucket tippers.',
+    materials: [
+      { name: 'Sharp River Sand (Clean Coarse Concrete Sand)', unit: 'Tonne', rate: 6500 },
+      { name: 'Soft Plaster Sand (Silica Free)', unit: 'Tonne', rate: 5800 },
+      { name: '20-Tonne Tipper Full Trip (Delivered)', unit: 'Trip', rate: 130000 }
+    ]
+  },
+  {
+    id: 'supp-vibro-06',
+    name: 'Vibro-Cast Sandcrete Blocks & Paving Co.',
+    category: 'Blocks & Masonry',
+    contactPerson: 'David Nnamdi',
+    phone: '+234 818 440 9983',
+    whatsapp: '+234 818 440 9983',
+    email: 'orders@vibrocastblocks.ng',
+    address: 'Plot 8, Gwarinpa Expressway, FCT Abuja',
+    state: 'Abuja (FCT)',
+    coverageAreas: 'Abuja Municipal, Kubwa, Lugbe, Maitama, Guzape',
+    leadTime: '24 hours',
+    minOrder: '500 units',
+    paymentTerms: '50% deposit, balance on offloading',
+    verificationStatus: 'Verified',
+    rating: 4.8,
+    notes: 'Hydraulically vibrated cured sandcrete hollow blocks conforming to NIS 87:2000. Crushing strength tested.',
+    materials: [
+      { name: '9-inch (225mm) Machine-Vibrated Hollow Sandcrete Block', unit: 'Unit', rate: 600 },
+      { name: '6-inch (150mm) Machine-Vibrated Hollow Sandcrete Block', unit: 'Unit', rate: 480 },
+      { name: '60mm Heavy Duty Interlocking Paving Stones', unit: 'm2', rate: 4800 }
+    ]
+  },
+  {
+    id: 'supp-topfeathers-07',
+    name: 'Topfeathers Longspan Aluminium & Cladding',
+    category: 'Roofing & Cladding',
+    contactPerson: 'Arc. Tunde Balogun',
+    phone: '+234 802 815 6710',
+    whatsapp: '+234 802 815 6710',
+    email: 'sales@topfeathersroofing.com',
+    address: '44 Kudirat Abiola Way, Oregun, Ikeja, Lagos',
+    state: 'Lagos',
+    coverageAreas: 'Nationwide Site Profiling',
+    leadTime: '48 hours onsite delivery & profiling',
+    minOrder: '100 square metres',
+    paymentTerms: '70% mobilisation, 30% on delivery',
+    verificationStatus: 'Verified',
+    rating: 4.9,
+    notes: 'Direct rolling mill partner for certified 0.55mm aluminium coil. On-site portable machine profiling available for long rafters.',
+    materials: [
+      { name: '0.55mm Thickness Aluminium Longspan Sheet', unit: 'm2', rate: 7500 },
+      { name: '0.45mm Steptile Aluminium Roofing Sheet', unit: 'm2', rate: 6800 },
+      { name: 'Stone-Coated Bond Roofing Shingle (New Zealand Grade)', unit: 'm2', rate: 9800 },
+      { name: 'Aluminium Ridge Cap & Flashing (0.55mm)', unit: 'm', rate: 2500 }
+    ]
+  },
+  {
+    id: 'supp-mambilla-08',
+    name: 'Mambilla & Sapele Hardwood Timber Concession',
+    category: 'Timber & Formwork',
+    contactPerson: 'Mallam Haruna Ibrahim',
+    phone: '+234 806 720 1155',
+    whatsapp: '+234 806 720 1155',
+    email: 'info@mambillatimber.ng',
+    address: 'Timber Depot Line 4, Oko-Baba, Ebute Metta, Lagos',
+    state: 'Lagos',
+    coverageAreas: 'Lagos State & Western Region',
+    leadTime: 'Same day',
+    minOrder: '50 pieces',
+    paymentTerms: 'Cash on loading / instant transfer',
+    verificationStatus: 'Verified',
+    rating: 4.7,
+    notes: 'Well-seasoned hardwood timbers (Obeche, Mahogany, Teak, Iroko) and WBP phenolic film-faced marine boards for formwork.',
+    materials: [
+      { name: '2" x 3" x 12ft Hardwood Rafter/Truss Timber', unit: 'Piece', rate: 1850 },
+      { name: '2" x 4" x 12ft Hardwood Beam Timber', unit: 'Piece', rate: 2450 },
+      { name: '2" x 6" x 12ft Hardwood Structural Timber', unit: 'Piece', rate: 3600 },
+      { name: '1" x 12" x 12ft Black Marine Plywood Board (Formwork)', unit: 'Sheet', rate: 18500 },
+      { name: 'Bamboo Prop Poles (15ft)', unit: 'Piece', rate: 650 }
+    ]
+  }
+];
 
+function seedDefaultSuppliersIfEmpty(database: any): void {
+  try {
+    const allSuppliersToSeed = [...SEED_NIGERIAN_SUPPLIERS, ...SEED_PLANT_LABOUR_PRELIM_SUPPLIERS];
+    for (const supp of allSuppliersToSeed) {
+      const check = database.exec(`SELECT id FROM suppliers WHERE id = '${supp.id.replace(/'/g, "''")}'`);
+      if (!check[0]?.values?.length) {
+        database.run(
+          `INSERT INTO suppliers (
+            id, name, category, contact_person, phone, whatsapp, email, address, state,
+            coverage_areas, lead_time, min_order, payment_terms, verification_status, rating, notes, materials_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            supp.id,
+            supp.name,
+            supp.category,
+            supp.contactPerson,
+            supp.phone,
+            supp.whatsapp,
+            supp.email,
+            supp.address,
+            supp.state,
+            supp.coverageAreas,
+            supp.leadTime,
+            supp.minOrder,
+            supp.paymentTerms,
+            supp.verificationStatus,
+            supp.rating,
+            supp.notes,
+            JSON.stringify(supp.materials)
+          ]
+        );
+      }
+    }
+    saveDbToDisk();
+  } catch (e) {
+    console.warn('Could not seed suppliers table:', e);
+  }
+}
 
+function seedDefaultLibraryRatesIfEmpty(database: any): void {
+  try {
+    for (const rate of DEFAULT_LIBRARY_RATES) {
+      const check = database.exec(`SELECT id FROM library_rates WHERE id = '${rate.id.replace(/'/g, "''")}'`);
+      if (!check[0]?.values?.length) {
+        database.run(
+          `INSERT INTO library_rates (
+            id, type, category, item, specification, unit,
+            lagos_rate, abuja_rate, port_harcourt_rate, northern_rate,
+            material_component, labour_component, plant_component, overhead_profit_percent,
+            trend, trend_percent, key_suppliers_json, last_updated, is_custom, user_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 'system')`,
+          [
+            rate.id,
+            rate.type,
+            rate.category,
+            rate.item,
+            rate.specification,
+            rate.unit,
+            rate.lagosRate,
+            rate.abujaRate,
+            rate.portHarcourtRate,
+            rate.northernRate,
+            rate.materialComponent || 0,
+            rate.labourComponent || 0,
+            rate.plantComponent || 0,
+            rate.overheadProfitPercent || 15,
+            rate.trend || 'stable',
+            rate.trendPercent || 0,
+            JSON.stringify(rate.keySuppliers || []),
+            new Date().toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })
+          ]
+        );
+      }
+    }
+    saveDbToDisk();
+  } catch (e) {
+    console.warn('Could not seed library_rates table:', e);
+  }
+}
+
+export async function getAllSuppliers(): Promise<any[]> {
+  const database = await getDb();
+  seedDefaultSuppliersIfEmpty(database);
+  const stmt = database.prepare('SELECT * FROM suppliers ORDER BY rating DESC, name ASC');
+  const results: any[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    results.push({
+      id: row.id,
+      name: row.name,
+      category: row.category,
+      contactPerson: row.contact_person,
+      phone: row.phone,
+      whatsapp: row.whatsapp,
+      email: row.email,
+      address: row.address,
+      state: row.state,
+      coverageAreas: row.coverage_areas,
+      leadTime: row.lead_time,
+      minOrder: row.min_order,
+      paymentTerms: row.payment_terms,
+      verificationStatus: row.verification_status,
+      rating: Number(row.rating || 4.8),
+      notes: row.notes,
+      materials: JSON.parse(String(row.materials_json || '[]')),
+      createdAt: row.created_at
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export async function createSupplier(data: any): Promise<any> {
+  const database = await getDb();
+  const id = data.id || `supp-${Date.now()}`;
+  database.run(
+    `INSERT INTO suppliers (
+      id, name, category, contact_person, phone, whatsapp, email, address, state,
+      coverage_areas, lead_time, min_order, payment_terms, verification_status, rating, notes, materials_json
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      data.name,
+      data.category || 'General Materials',
+      data.contactPerson || '',
+      data.phone || '',
+      data.whatsapp || '',
+      data.email || '',
+      data.address || '',
+      data.state || 'Lagos',
+      data.coverageAreas || 'Nationwide',
+      data.leadTime || '24-48 hours',
+      data.minOrder || '',
+      data.paymentTerms || 'Bank Transfer / COD',
+      data.verificationStatus || 'Verified',
+      data.rating || 4.8,
+      data.notes || '',
+      JSON.stringify(data.materials || [])
+    ]
+  );
+  saveDbToDisk();
+  return { id, ...data };
+}
+
+export async function deleteSupplier(id: string): Promise<boolean> {
+  const database = await getDb();
+  database.run(`DELETE FROM suppliers WHERE id = ?`, [id]);
+  saveDbToDisk();
+  return true;
+}
+
+// --- LIBRARY RATES MANAGEMENT (MATERIALS, PLANTS, LABOUR, PRELIMINARIES) ---
+
+export async function getAllLibraryRates(typeFilter?: string, categoryFilter?: string): Promise<any[]> {
+  const database = await getDb();
+  seedDefaultLibraryRatesIfEmpty(database);
+  
+  let query = 'SELECT * FROM library_rates';
+  const conditions: string[] = [];
+  if (typeFilter && typeFilter !== 'All') {
+    conditions.push(`type = '${typeFilter.replace(/'/g, "''")}'`);
+  }
+  if (categoryFilter && categoryFilter !== 'All') {
+    conditions.push(`category = '${categoryFilter.replace(/'/g, "''")}'`);
+  }
+  if (conditions.length > 0) {
+    query += ' WHERE ' + conditions.join(' AND ');
+  }
+  query += ' ORDER BY type ASC, category ASC, item ASC';
+
+  const stmt = database.prepare(query);
+  const results: any[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    results.push({
+      id: row.id,
+      type: row.type,
+      category: row.category,
+      item: row.item,
+      specification: row.specification || '',
+      unit: row.unit,
+      lagosRate: Number(row.lagos_rate || 0),
+      abujaRate: Number(row.abuja_rate || 0),
+      portHarcourtRate: Number(row.port_harcourt_rate || 0),
+      northernRate: Number(row.northern_rate || 0),
+      materialComponent: Number(row.material_component || 0),
+      labourComponent: Number(row.labour_component || 0),
+      plantComponent: Number(row.plant_component || 0),
+      overheadProfitPercent: Number(row.overhead_profit_percent || 15),
+      trend: row.trend || 'stable',
+      trendPercent: Number(row.trend_percent || 0),
+      keySuppliers: JSON.parse(String(row.key_suppliers_json || '[]')),
+      lastUpdated: row.last_updated || 'Recent Benchmark',
+      isCustom: Boolean(row.is_custom),
+      userId: row.user_id,
+      createdAt: row.created_at
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export async function saveLibraryRate(rateData: any, userId: string = 'user'): Promise<any> {
+  const database = await getDb();
+  seedDefaultLibraryRatesIfEmpty(database);
+  
+  const id = rateData.id || `rate-custom-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`;
+  const nowStr = new Date().toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' });
+  
+  const existing = database.exec(`SELECT id FROM library_rates WHERE id = '${id.replace(/'/g, "''")}'`);
+  
+  if (existing[0]?.values?.length) {
+    database.run(
+      `UPDATE library_rates SET 
+        type = ?, category = ?, item = ?, specification = ?, unit = ?,
+        lagos_rate = ?, abuja_rate = ?, port_harcourt_rate = ?, northern_rate = ?,
+        material_component = ?, labour_component = ?, plant_component = ?, overhead_profit_percent = ?,
+        trend = ?, trend_percent = ?, key_suppliers_json = ?, last_updated = ?, is_custom = 1
+       WHERE id = ?`,
+      [
+        rateData.type || 'Material',
+        rateData.category || 'General',
+        rateData.item || '',
+        rateData.specification || '',
+        rateData.unit || 'Unit',
+        Number(rateData.lagosRate || rateData.rate || 0),
+        Number(rateData.abujaRate || rateData.lagosRate || rateData.rate || 0),
+        Number(rateData.portHarcourtRate || rateData.lagosRate || rateData.rate || 0),
+        Number(rateData.northernRate || rateData.lagosRate || rateData.rate || 0),
+        Number(rateData.materialComponent || 0),
+        Number(rateData.labourComponent || 0),
+        Number(rateData.plantComponent || 0),
+        Number(rateData.overheadProfitPercent || 15),
+        rateData.trend || 'stable',
+        Number(rateData.trendPercent || 0),
+        JSON.stringify(rateData.keySuppliers || []),
+        nowStr,
+        id
+      ]
+    );
+  } else {
+    database.run(
+      `INSERT INTO library_rates (
+        id, type, category, item, specification, unit,
+        lagos_rate, abuja_rate, port_harcourt_rate, northern_rate,
+        material_component, labour_component, plant_component, overhead_profit_percent,
+        trend, trend_percent, key_suppliers_json, last_updated, is_custom, user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+      [
+        id,
+        rateData.type || 'Material',
+        rateData.category || 'General',
+        rateData.item || '',
+        rateData.specification || '',
+        rateData.unit || 'Unit',
+        Number(rateData.lagosRate || rateData.rate || 0),
+        Number(rateData.abujaRate || rateData.lagosRate || rateData.rate || 0),
+        Number(rateData.portHarcourtRate || rateData.lagosRate || rateData.rate || 0),
+        Number(rateData.northernRate || rateData.lagosRate || rateData.rate || 0),
+        Number(rateData.materialComponent || 0),
+        Number(rateData.labourComponent || 0),
+        Number(rateData.plantComponent || 0),
+        Number(rateData.overheadProfitPercent || 15),
+        rateData.trend || 'stable',
+        Number(rateData.trendPercent || 0),
+        JSON.stringify(rateData.keySuppliers || []),
+        nowStr,
+        userId
+      ]
+    );
+  }
+  
+  saveDbToDisk();
+  return { id, ...rateData, isCustom: true, lastUpdated: nowStr };
+}
+
+export async function bulkImportLibraryRates(rateItems: any[], userId: string = 'user'): Promise<{ total: number; saved: number }> {
+  const database = await getDb();
+  seedDefaultLibraryRatesIfEmpty(database);
+  
+  let savedCount = 0;
+  for (const item of rateItems) {
+    if (!item.item || !item.unit) continue;
+    await saveLibraryRate(item, userId);
+    savedCount++;
+  }
+  
+  saveDbToDisk();
+  return { total: rateItems.length, saved: savedCount };
+}
+
+export async function bulkAdjustLibraryRates(percentChange: number, typeFilter?: string, categoryFilter?: string): Promise<{ count: number }> {
+  const database = await getDb();
+  seedDefaultLibraryRatesIfEmpty(database);
+  
+  const multiplier = 1 + (percentChange / 100);
+  let whereClause = '';
+  const conditions: string[] = [];
+  if (typeFilter && typeFilter !== 'All') {
+    conditions.push(`type = '${typeFilter.replace(/'/g, "''")}'`);
+  }
+  if (categoryFilter && categoryFilter !== 'All') {
+    conditions.push(`category = '${categoryFilter.replace(/'/g, "''")}'`);
+  }
+  if (conditions.length > 0) {
+    whereClause = ' WHERE ' + conditions.join(' AND ');
+  }
+  
+  const countRes = database.exec(`SELECT COUNT(*) FROM library_rates ${whereClause}`);
+  const affectedCount = Number(countRes[0]?.values[0][0]) || 0;
+  
+  database.run(`
+    UPDATE library_rates 
+    SET 
+      lagos_rate = ROUND(lagos_rate * ${multiplier}),
+      abuja_rate = ROUND(abuja_rate * ${multiplier}),
+      port_harcourt_rate = ROUND(port_harcourt_rate * ${multiplier}),
+      northern_rate = ROUND(northern_rate * ${multiplier}),
+      material_component = ROUND(material_component * ${multiplier}),
+      labour_component = ROUND(labour_component * ${multiplier}),
+      plant_component = ROUND(plant_component * ${multiplier}),
+      last_updated = '${new Date().toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' })}',
+      trend = ${percentChange >= 0 ? "'up'" : "'down'"},
+      trend_percent = ABS(${percentChange})
+    ${whereClause}
+  `);
+  
+  saveDbToDisk();
+  return { count: affectedCount };
+}
+
+export async function deleteLibraryRate(id: string): Promise<boolean> {
+  const database = await getDb();
+  database.run(`DELETE FROM library_rates WHERE id = ?`, [id]);
+  saveDbToDisk();
+  return true;
+}

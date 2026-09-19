@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { User, UserStats } from '../types';
 import { safeFetchJson } from '../utils/api';
+import { safeStorage } from '../utils/storage';
 
 interface AuthContextType {
   user: User | null;
@@ -26,6 +27,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   refreshUser: () => Promise<void>;
+  refreshStats: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -34,7 +36,7 @@ const TOKEN_KEY = 'lets_estimate_session_token';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  const [token, setToken] = useState<string | null>(() => safeStorage.getItem(TOKEN_KEY));
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
@@ -54,7 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setStats(data.stats);
       } else {
         // Token invalid or expired
-        localStorage.removeItem(TOKEN_KEY);
+        safeStorage.removeItem(TOKEN_KEY);
         setToken(null);
         setUser(null);
       }
@@ -75,7 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [token, fetchCurrentUser]);
 
   const saveAuthSession = (newToken: string, newUser: User) => {
-    localStorage.setItem(TOKEN_KEY, newToken);
+    safeStorage.setItem(TOKEN_KEY, newToken);
     setToken(newToken);
     setUser(newUser);
     setIsAuthModalOpen(false);
@@ -134,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { Authorization: `Bearer ${token}` },
       });
     }
-    localStorage.removeItem(TOKEN_KEY);
+    safeStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setUser(null);
     setStats(null);
@@ -195,6 +197,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         updateProfile,
         refreshUser,
+        refreshStats: refreshUser,
       }}
     >
       {children}

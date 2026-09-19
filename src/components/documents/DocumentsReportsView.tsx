@@ -20,6 +20,7 @@ interface DocumentsReportsViewProps {
   activeProject?: Project | null;
   onOpenDossier: () => void;
   onExportExcel: () => void;
+  onExportPdf?: () => void;
 }
 
 export const DocumentsReportsView: React.FC<DocumentsReportsViewProps> = ({
@@ -27,6 +28,7 @@ export const DocumentsReportsView: React.FC<DocumentsReportsViewProps> = ({
   activeProject,
   onOpenDossier,
   onExportExcel,
+  onExportPdf,
 }) => {
   const [filterType, setFilterType] = useState('All');
 
@@ -50,6 +52,15 @@ export const DocumentsReportsView: React.FC<DocumentsReportsViewProps> = ({
       actionLabel: 'Download Excel'
     },
     {
+      title: 'Stamped Official Tender Bill of Quantities (PDF)',
+      category: 'BOQ',
+      format: 'PDF Document',
+      project: activeProject?.title || 'Active Project BOQ',
+      date: 'March 2026',
+      action: onExportPdf || onExportExcel,
+      actionLabel: 'Download PDF'
+    },
+    {
       title: 'Interim Payment Certificate (IPC 002)',
       category: 'Certificate',
       format: 'PDF Printable',
@@ -61,7 +72,7 @@ export const DocumentsReportsView: React.FC<DocumentsReportsViewProps> = ({
     {
       title: 'Contract Variation Summary Schedule',
       category: 'Variation',
-      format: 'PDF',
+      format: 'Excel / PDF',
       project: activeProject?.title || 'Active Project',
       date: 'March 2026',
       action: onExportExcel,

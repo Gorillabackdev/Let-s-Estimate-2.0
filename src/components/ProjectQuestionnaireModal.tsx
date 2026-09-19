@@ -6,6 +6,7 @@
 
 import React, { useState } from 'react';
 import { ProjectQuestionnaire } from '../types';
+import { FormattedNumberInput } from './common/FormattedNumberInput';
 import { 
   X, 
   Building, 
@@ -25,7 +26,7 @@ interface ProjectQuestionnaireModalProps {
   initialData?: ProjectQuestionnaire;
 }
 
-const DEFAULT_QUESTIONNAIRE: ProjectQuestionnaire = {
+export const DEFAULT_QUESTIONNAIRE: ProjectQuestionnaire = {
   general: {
     projectType: 'Residential',
     buildingType: 'Bungalow',
@@ -90,20 +91,36 @@ const DEFAULT_QUESTIONNAIRE: ProjectQuestionnaire = {
   },
 };
 
+const mergeQuestionnaireWithDefaults = (input?: any): ProjectQuestionnaire => {
+  const safe = input && typeof input === 'object' ? input : {};
+  return {
+    ...DEFAULT_QUESTIONNAIRE,
+    ...safe,
+    general: { ...DEFAULT_QUESTIONNAIRE.general, ...(safe.general || {}) },
+    substructure: { ...DEFAULT_QUESTIONNAIRE.substructure, ...(safe.substructure || {}) },
+    superstructure: { ...DEFAULT_QUESTIONNAIRE.superstructure, ...(safe.superstructure || {}) },
+    roofing: {
+      ...DEFAULT_QUESTIONNAIRE.roofing,
+      ...(safe.roofing || {}),
+      features: { ...DEFAULT_QUESTIONNAIRE.roofing.features, ...(safe.roofing?.features || {}) },
+    },
+    finishes: { ...DEFAULT_QUESTIONNAIRE.finishes, ...(safe.finishes || {}) },
+    services: { ...DEFAULT_QUESTIONNAIRE.services, ...(safe.services || {}) },
+  };
+};
+
 export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps> = ({
   isOpen,
   onClose,
   onSaveAndGenerate,
   initialData,
 }) => {
-  const [data, setData] = useState<ProjectQuestionnaire>(initialData || DEFAULT_QUESTIONNAIRE);
+  const [data, setData] = useState<ProjectQuestionnaire>(() => mergeQuestionnaireWithDefaults(initialData));
   const [activeTab, setActiveTab] = useState<'general' | 'substructure' | 'superstructure' | 'roofing' | 'finishes' | 'services'>('general');
 
   React.useEffect(() => {
-    if (isOpen && initialData) {
-      setData(JSON.parse(JSON.stringify(initialData)));
-    } else if (isOpen && !initialData) {
-      setData(DEFAULT_QUESTIONNAIRE);
+    if (isOpen) {
+      setData(mergeQuestionnaireWithDefaults(initialData));
     }
   }, [isOpen, initialData]);
 
@@ -122,7 +139,7 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
       // Structural Integrity Logic:
       // If 1 floor (Bungalow), columns & suspended slabs must default to No
       if (section === 'general' && field === 'numberOfFloors') {
-        const floors = Number(value);
+        const floors = value === '' ? 1 : Number(value);
         if (floors <= 1) {
           next.general.buildingType = 'Bungalow';
           next.superstructure.structuralSystem = 'Load-bearing masonry';
@@ -194,6 +211,19 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
         },
       },
     }));
+  };
+
+  const getSanitizedData = (): ProjectQuestionnaire => {
+    return {
+      ...data,
+      general: {
+        ...data.general,
+        numberOfFloors: Math.max(1, Number(data.general?.numberOfFloors) || 1),
+        approximateGFA: Math.max(10, Number(data.general?.approximateGFA) || 220),
+        numberOfRooms: Math.max(1, Number(data.general?.numberOfRooms) || 4),
+        location: data.general?.location?.trim() || 'Lagos',
+      },
+    };
   };
 
   return (
@@ -299,8 +329,14 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
                     type="number"
                     min="1"
                     max="10"
-                    value={data.general?.numberOfFloors || 1}
-                    onChange={(e) => handleUpdate('general', 'numberOfFloors', parseInt(e.target.value) || 1)}
+                    value={data.general?.numberOfFloors ?? ''}
+                    onChange={(e) => handleUpdate('general', 'numberOfFloors', e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    onBlur={(e) => {
+                      if (!e.target.value || parseInt(e.target.value, 10) < 1) {
+                        handleUpdate('general', 'numberOfFloors', 1);
+                      }
+                    }}
+                    placeholder="1"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500"
                   />
                   <p className="text-xs text-slate-500 mt-1">1 = Ground floor only (Bungalow)</p>
@@ -308,12 +344,16 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
 
                 <div>
                   <label className="block font-semibold text-slate-800 mb-1">Estimated Gross Floor Area (m²)</label>
-                  <input
-                    type="number"
-                    min="40"
-                    max="10000"
-                    value={data.general?.approximateGFA || 220}
-                    onChange={(e) => handleUpdate('general', 'approximateGFA', parseFloat(e.target.value) || 0)}
+                  <FormattedNumberInput
+                    value={data.general?.approximateGFA ?? ''}
+                    onChange={(val) => handleUpdate('general', 'approximateGFA', val)}
+                    onBlur={() => {
+                      if (!data.general?.approximateGFA || data.general.approximateGFA < 10) {
+                        handleUpdate('general', 'approximateGFA', 220);
+                      }
+                    }}
+                    placeholder="220"
+                    maxDecimals={2}
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500"
                   />
                   <p className="text-xs text-slate-500 mt-1">Total combined floor area</p>
@@ -325,8 +365,14 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
                     type="number"
                     min="1"
                     max="500"
-                    value={data.general?.numberOfRooms || 4}
-                    onChange={(e) => handleUpdate('general', 'numberOfRooms', parseInt(e.target.value) || 1)}
+                    value={data.general?.numberOfRooms ?? ''}
+                    onChange={(e) => handleUpdate('general', 'numberOfRooms', e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10) || 0))}
+                    onBlur={(e) => {
+                      if (!e.target.value || parseInt(e.target.value, 10) < 1) {
+                        handleUpdate('general', 'numberOfRooms', 4);
+                      }
+                    }}
+                    placeholder="4"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500"
                   />
                   <p className="text-xs text-slate-500 mt-1">Used for doors & windows scaling</p>
@@ -338,7 +384,7 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
                   <label className="block font-semibold text-slate-800 mb-1">Project Site Location</label>
                   <input
                     type="text"
-                    value={data.general?.location || 'Lagos'}
+                    value={data.general?.location ?? ''}
                     onChange={(e) => handleUpdate('general', 'location', e.target.value)}
                     placeholder="e.g. Lekki, Lagos or Port Harcourt, Rivers"
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-800 focus:ring-2 focus:ring-emerald-500"
@@ -730,13 +776,19 @@ export const ProjectQuestionnaireModal: React.FC<ProjectQuestionnaireModalProps>
 
           <div className="flex items-center space-x-3 w-full sm:w-auto">
             <button
-              onClick={() => onSaveAndGenerate(data, 'save_only')}
+              onClick={() => {
+                const sanitized = getSanitizedData();
+                onSaveAndGenerate(sanitized, 'save_only');
+              }}
               className="flex-1 sm:flex-none px-4 py-2 text-sm font-semibold rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Save Parameters Only
             </button>
             <button
-              onClick={() => onSaveAndGenerate(data, 'deterministic')}
+              onClick={() => {
+                const sanitized = getSanitizedData();
+                onSaveAndGenerate(sanitized, 'deterministic');
+              }}
               className="flex-1 sm:flex-none px-5 py-2 text-sm font-semibold rounded-xl bg-emerald-800 text-white hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
               title="Generate a preliminary parametric estimate based purely on questionnaire parameters"
             >

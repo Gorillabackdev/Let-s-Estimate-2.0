@@ -59,7 +59,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   );
   const [controlsOpen, setControlsOpen] = useState(currentView === 'controls');
   const [documentsOpen, setDocumentsOpen] = useState(currentView === 'documents');
-  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(
+    currentView === 'calculators' || currentView === 'suppliers' || currentView === 'materials'
+  );
   const [settingsOpen, setSettingsOpen] = useState(currentView === 'settings');
 
   const handleNavClick = (view: AppGlobalView, subView?: string) => {
@@ -382,10 +384,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="ml-2 pl-2 border-l border-emerald-900/60 space-y-0.5">
                 <button
                   type="button"
-                  onClick={() => handleNavClick('estimating', 'rates')}
-                  className={subItemClass(currentView === 'estimating' && currentSubView === 'rates')}
+                  onClick={() => handleNavClick('materials')}
+                  className={subItemClass(currentView === 'materials')}
                 >
-                  <span>My Rates</span>
+                  <span>My Rates &amp; Prices</span>
                 </button>
                 <button
                   type="button"
@@ -403,17 +405,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleNavClick('team', 'suppliers')}
-                  className={subItemClass(currentView === 'team')}
+                  onClick={() => handleNavClick('suppliers')}
+                  className={subItemClass(currentView === 'suppliers')}
                 >
                   <span>Suppliers</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleNavClick('calculators', 'materials')}
-                  className={subItemClass(false)}
+                  onClick={() => handleNavClick('materials')}
+                  className={subItemClass(currentView === 'materials')}
                 >
-                  <span>Materials</span>
+                  <span>Supply Market Catalog</span>
                 </button>
               </div>
             )}

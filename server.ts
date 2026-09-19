@@ -64,6 +64,14 @@ import {
   saveProjectFinalAccount,
   autoCalculateFinalAccount,
   compileExecutiveProjectDossier,
+  getAllSuppliers,
+  createSupplier,
+  deleteSupplier,
+  getAllLibraryRates,
+  saveLibraryRate,
+  bulkImportLibraryRates,
+  bulkAdjustLibraryRates,
+  deleteLibraryRate,
   getDb, 
   saveDbToDisk 
 } from './server/db.js';
@@ -84,7 +92,7 @@ import {
 import { performAiTakeoff, estimateFromDescription, analyzeBoqItems, auditValueEngineeringAndRisks } from './server/ai.js';
 import { runDrawingTakeoffPipeline } from './server/takeoffPipeline.js';
 import { generateExcelBuffer, generatePdfBuffer, generateUserGuidePdfBuffer, calculateMaterialRequirements, ExportData } from './server/export.js';
-import { getRateLibrary, getUserCustomRates, saveUserCustomRate, deleteUserCustomRate } from './server/rates.js';
+import { getRateLibrary, getUserCustomRates, saveUserCustomRate, deleteUserCustomRate, updateUserCustomRate } from './server/rates.js';
 
 dotenv.config();
 
@@ -1223,11 +1231,7 @@ app.get('/api/rates/library', (req: Request, res: Response) => {
 // 12. User Custom Rate Library
 app.get('/api/rates/my', optionalAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      res.json({ success: true, rates: [] });
-      return;
-    }
+    const userId = req.user?.id || 'guest-user';
     const customRates = await getUserCustomRates(userId);
     res.json({ success: true, rates: customRates });
   } catch (error: any) {
@@ -1236,20 +1240,30 @@ app.get('/api/rates/my', optionalAuth, async (req: AuthRequest, res: Response) =
 });
 
 // 13. Create User Custom Rate
-app.post('/api/rates/my', requireAuth, async (req: AuthRequest, res: Response) => {
+app.post('/api/rates/my', optionalAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { category, item, description, unit, rate, location } = req.body;
-    if (!category || !item || !unit || rate === undefined) {
+    const userId = req.user?.id || 'guest-user';
+    const { category, item, description, unit, rate, lagosRate, abujaRate, portHarcourtRate, northernRate, location } = req.body;
+    if (!category || !item || !unit || (rate === undefined && lagosRate === undefined)) {
       res.status(400).json({ error: 'Category, item, unit, and rate are required.' });
       return;
     }
+    const lRate = Number(lagosRate !== undefined ? lagosRate : (rate || 0));
+    const aRate = Number(abujaRate !== undefined && Number(abujaRate) > 0 ? abujaRate : Math.round(lRate * 1.05));
+    const phRate = Number(portHarcourtRate !== undefined && Number(portHarcourtRate) > 0 ? portHarcourtRate : Math.round(lRate * 1.09));
+    const nRate = Number(northernRate !== undefined && Number(northernRate) > 0 ? northernRate : Math.round(lRate * 0.96));
+
     const created = await saveUserCustomRate({
-      userId: req.user!.id,
+      userId,
       category,
       item,
       description: description || '',
       unit,
-      rate: Number(rate),
+      rate: lRate,
+      lagosRate: lRate,
+      abujaRate: aRate,
+      portHarcourtRate: phRate,
+      northernRate: nRate,
       location: location || 'Nigeria'
     });
     res.status(201).json({ success: true, rate: created });
@@ -1258,10 +1272,21 @@ app.post('/api/rates/my', requireAuth, async (req: AuthRequest, res: Response) =
   }
 });
 
-// 14. Delete User Custom Rate
-app.delete('/api/rates/my/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+// 13b. Update User Custom Rate
+app.put('/api/rates/my/:id', optionalAuth, async (req: AuthRequest, res: Response) => {
   try {
-    await deleteUserCustomRate(req.params.id, req.user!.id);
+    const updated = await updateUserCustomRate(req.params.id, req.body);
+    res.json({ success: true, rate: updated });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update custom rate: ' + error.message });
+  }
+});
+
+// 14. Delete User Custom Rate
+app.delete('/api/rates/my/:id', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id || 'guest-user';
+    await deleteUserCustomRate(req.params.id, userId);
     res.json({ success: true, message: 'Custom rate deleted.' });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to delete custom rate: ' + error.message });
@@ -1347,6 +1372,314 @@ app.get('/api/projects/:id/materials', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to calculate material schedule: ' + error.message });
   }
+});
+
+// 14d-1. Get all suppliers
+app.get('/api/suppliers', async (req: Request, res: Response) => {
+  try {
+    const suppliers = await getAllSuppliers();
+    res.json({ success: true, suppliers });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to fetch suppliers: ' + error.message });
+  }
+});
+
+// 14d-2. Add a new supplier
+app.post('/api/suppliers', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, category } = req.body;
+    if (!name || !category) {
+      res.status(400).json({ error: 'Supplier name and category are required.' });
+      return;
+    }
+    const created = await createSupplier(req.body);
+    res.status(201).json({ success: true, supplier: created });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create supplier: ' + error.message });
+  }
+});
+
+// 14d-3. Delete a supplier
+app.delete('/api/suppliers/:id', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    await deleteSupplier(req.params.id);
+    res.json({ success: true, message: 'Supplier deleted successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete supplier: ' + error.message });
+  }
+});
+
+// 14d-4. Get all library rates (Materials, Plants, Labour, Preliminaries)
+app.get('/api/rates', async (req: Request, res: Response) => {
+  try {
+    const type = req.query.type as string | undefined;
+    const category = req.query.category as string | undefined;
+    const rates = await getAllLibraryRates(type, category);
+    res.json({ success: true, rates });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to fetch library rates: ' + error.message });
+  }
+});
+
+// 14d-5. Save/create an individual library rate (Small Scale)
+app.post('/api/rates', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { item, unit } = req.body;
+    if (!item || !unit) {
+      res.status(400).json({ error: 'Rate item name and unit of measurement are required.' });
+      return;
+    }
+    const saved = await saveLibraryRate(req.body, req.user?.id || 'system');
+    res.status(201).json({ success: true, rate: saved });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to save rate: ' + error.message });
+  }
+});
+
+// 14d-6. Update an individual library rate (Small Scale)
+app.put('/api/rates/:id', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const rateId = req.params.id;
+    if (rateId.startsWith('urate-')) {
+      await updateUserCustomRate(rateId, req.body);
+    }
+    const saved = await saveLibraryRate({ ...req.body, id: rateId }, req.user?.id || 'system');
+    res.json({ success: true, rate: saved });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update rate: ' + error.message });
+  }
+});
+
+// 14d-7. Delete an individual library rate
+app.delete('/api/rates/:id', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    await deleteLibraryRate(req.params.id);
+    res.json({ success: true, message: 'Rate deleted successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete rate: ' + error.message });
+  }
+});
+
+// 14d-8. Bulk import library rates manually (Large Scale Import - saved individually)
+app.post('/api/rates/bulk-import', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { rates } = req.body;
+    if (!Array.isArray(rates) || rates.length === 0) {
+      res.status(400).json({ error: 'Rates array is required for bulk import.' });
+      return;
+    }
+    const result = await bulkImportLibraryRates(rates, req.user?.id || 'system');
+    res.json({ success: true, ...result, message: `Successfully imported and saved ${result.saved} rates individually.` });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to bulk import rates: ' + error.message });
+  }
+});
+
+// 14d-9. Bulk adjust rates by percentage (Large Scale Adjustment)
+app.post('/api/rates/bulk-adjust', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { percentChange, type, category } = req.body;
+    if (typeof percentChange !== 'number' || isNaN(percentChange)) {
+      res.status(400).json({ error: 'Valid percentChange number is required.' });
+      return;
+    }
+    const result = await bulkAdjustLibraryRates(percentChange, type, category);
+    res.json({ success: true, ...result, message: `Adjusted ${result.count} rates by ${percentChange > 0 ? '+' : ''}${percentChange}%.` });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to bulk adjust rates: ' + error.message });
+  }
+});
+
+// 14d-10. Get national Nigerian building material market index & price variances
+app.get('/api/materials/market-index', async (req: Request, res: Response) => {
+  try {
+    const allRates = await getAllLibraryRates();
+    if (allRates && allRates.length > 0) {
+      const items = allRates.map(r => ({
+        id: r.id,
+        name: r.item,
+        category: r.category,
+        specification: r.specification || '',
+        unit: r.unit,
+        lagosRate: r.lagosRate,
+        abujaRate: r.abujaRate,
+        portHarcourtRate: r.portHarcourtRate,
+        northernRate: r.northernRate,
+        trend: r.trend,
+        trendPercent: r.trendPercent,
+        lastUpdated: r.lastUpdated,
+        keySuppliers: r.keySuppliers || []
+      }));
+      res.json({
+        success: true,
+        benchmarkDate: new Date().toLocaleDateString('en-NG', { month: 'short', day: 'numeric', year: 'numeric' }),
+        items
+      });
+      return;
+    }
+  } catch (e) {
+    console.warn('Could not query library_rates for market-index, using fallback:', e);
+  }
+  const marketIndex = [
+    {
+      id: 'mat-cement-01',
+      name: 'Grade 42.5R Ordinary Portland Cement (50kg bag)',
+      category: 'Cement & Aggregates',
+      specification: 'High early strength CEM I / 42.5R (Dangote / BUA / Lafarge Supaset)',
+      unit: 'Bag',
+      lagosRate: 9500,
+      abujaRate: 9800,
+      portHarcourtRate: 9300,
+      northernRate: 9200,
+      trend: 'up',
+      trendPercent: 2.1,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Dangote Cement Depot', 'BUA Cement Depot', 'Lafarge Retail']
+    },
+    {
+      id: 'mat-sand-02',
+      name: 'Clean Sharp River Sand (Concrete Aggregate)',
+      category: 'Cement & Aggregates',
+      specification: 'Clean coarse riverbed sand, free of silt and organic clay minerals',
+      unit: 'Tonne',
+      lagosRate: 6500,
+      abujaRate: 7200,
+      portHarcourtRate: 8500,
+      northernRate: 5500,
+      trend: 'stable',
+      trendPercent: 0.0,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Epe Dredging Depot', 'Mpape River Sand', 'Choba Dredgers PH']
+    },
+    {
+      id: 'mat-granite-03',
+      name: 'Crushed Blue Granite 20mm (3/4" Aggregates)',
+      category: 'Cement & Aggregates',
+      specification: 'Machine-crushed angular igneous granite aggregate for structural concrete',
+      unit: 'Tonne',
+      lagosRate: 11500,
+      abujaRate: 12000,
+      portHarcourtRate: 14500,
+      northernRate: 9800,
+      trend: 'up',
+      trendPercent: 1.5,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Royal Quarries Abeokuta', 'Julius Berger Quarry Abuja', 'Akamkpa Quarries Calabar']
+    },
+    {
+      id: 'mat-rebar-04',
+      name: 'High-Yield TMT Steel Rebars Y12 (12m Length)',
+      category: 'Steel & Rebar',
+      specification: 'Thermo-Mechanically Treated ribbed deformed rebar fy >= 460 N/mm²',
+      unit: 'Tonne',
+      lagosRate: 1430000,
+      abujaRate: 1480000,
+      portHarcourtRate: 1520000,
+      northernRate: 1490000,
+      trend: 'down',
+      trendPercent: 1.8,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Pulkit Steel Mills', 'African Foundries', 'Tiger TMT']
+    },
+    {
+      id: 'mat-rebar-05',
+      name: 'High-Yield TMT Steel Rebars Y16 (12m Length)',
+      category: 'Steel & Rebar',
+      specification: 'Standard structural beam and column rebar fy >= 460 N/mm²',
+      unit: 'Tonne',
+      lagosRate: 1420000,
+      abujaRate: 1470000,
+      portHarcourtRate: 1510000,
+      northernRate: 1480000,
+      trend: 'down',
+      trendPercent: 1.5,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Pulkit Steel Mills', 'African Foundries', 'Kam Steel']
+    },
+    {
+      id: 'mat-block-06',
+      name: '9-inch (225mm) Machine-Vibrated Sandcrete Hollow Block',
+      category: 'Blocks & Masonry',
+      specification: 'Loadbearing vibrated cured block, mix ratio 1:6 cement to sharp sand',
+      unit: 'Unit',
+      lagosRate: 550,
+      abujaRate: 600,
+      portHarcourtRate: 650,
+      northernRate: 520,
+      trend: 'stable',
+      trendPercent: 0.0,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Vibro-Cast Blocks', 'Crown Block Industries', 'Lekki Master Blocks']
+    },
+    {
+      id: 'mat-block-07',
+      name: '6-inch (150mm) Machine-Vibrated Sandcrete Hollow Block',
+      category: 'Blocks & Masonry',
+      specification: 'Partition wall vibrated cured block, mix ratio 1:6 cement to sharp sand',
+      unit: 'Unit',
+      lagosRate: 450,
+      abujaRate: 480,
+      portHarcourtRate: 520,
+      northernRate: 420,
+      trend: 'stable',
+      trendPercent: 0.0,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Vibro-Cast Blocks', 'Crown Block Industries', 'Lekki Master Blocks']
+    },
+    {
+      id: 'mat-roof-08',
+      name: '0.55mm Thickness Aluminium Longspan Roofing Sheet',
+      category: 'Roofing & Cladding',
+      specification: 'Oven-baked colour-coated aluminium alloy coil with chromate conversion',
+      unit: 'm2',
+      lagosRate: 7500,
+      abujaRate: 7900,
+      portHarcourtRate: 8200,
+      northernRate: 7600,
+      trend: 'up',
+      trendPercent: 3.0,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Topfeathers Aluminium', 'Tower Aluminium', 'First Aluminium']
+    },
+    {
+      id: 'mat-timber-09',
+      name: 'Hardwood Timber 2" x 4" x 12ft (Rafters & Ceiling)',
+      category: 'Timber & Formwork',
+      specification: 'Air-seasoned Nigerian semi-hardwood (Obeche/Afara/Mahogany), straight grain',
+      unit: 'Piece',
+      lagosRate: 2450,
+      abujaRate: 2700,
+      portHarcourtRate: 2900,
+      northernRate: 2550,
+      trend: 'up',
+      trendPercent: 1.2,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Mambilla Timber Depot', 'Oko-Baba Sawmillers', 'Dugbe Timber Market']
+    },
+    {
+      id: 'mat-plywood-10',
+      name: '1" x 12" x 12ft Black Marine Plywood Board (Formwork Film-Faced)',
+      category: 'Timber & Formwork',
+      specification: 'Phenolic resin film-faced WBP waterproof plywood for smooth fair-face concrete',
+      unit: 'Sheet',
+      lagosRate: 18500,
+      abujaRate: 19500,
+      portHarcourtRate: 20500,
+      northernRate: 19000,
+      trend: 'stable',
+      trendPercent: 0.0,
+      lastUpdated: 'Current Week Benchmark',
+      keySuppliers: ['Mambilla Timber Depot', 'Timber World Lagos', 'PH Marine Ply']
+    }
+  ];
+
+  res.json({
+    success: true,
+    benchmarkDate: new Date().toISOString().split('T')[0],
+    source: "Let's Estimate Nigerian Construction Market Intelligence (NIQS Compliant)",
+    currency: 'NGN (₦)',
+    items: marketIndex
+  });
 });
 
 // ========================================================================

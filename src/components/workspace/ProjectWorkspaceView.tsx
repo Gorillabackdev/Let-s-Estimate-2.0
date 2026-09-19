@@ -39,8 +39,9 @@ import {
   Edit3
 } from 'lucide-react';
 import { Project, ProjectWorkspaceTab, BoqItem, ProjectQuestionnaire } from '../../types';
-import { formatNaira, calculateBoqTotals } from '../../utils/format';
-import { generateDeterministicBoq } from '../../utils/constructionKnowledgeBase';
+import { formatNaira, formatNumber, calculateBoqTotals } from '../../utils/format';
+import { generateDeterministicBoq, normalizeQuestionnaire } from '../../utils/constructionKnowledgeBase';
+import { DEFAULT_QUESTIONNAIRE } from '../ProjectQuestionnaireModal';
 import { BoqTable } from '../BoqTable';
 import { ProjectControlsView } from '../controls/ProjectControlsView';
 import { CalculatorsHubView } from '../calculators/CalculatorsHubView';
@@ -69,6 +70,7 @@ interface ProjectWorkspaceViewProps {
   onOpenVersionsModal?: () => void;
   onOpenAuditDrawer?: () => void;
   onTakeoffSuccess?: (items: any[], filename: string, provider: string, summary?: string) => void;
+  onImportBoq?: () => void;
 }
 
 // 14 Standard BESMM4 / QS Document Categories
@@ -109,6 +111,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
   onOpenVersionsModal,
   onOpenAuditDrawer,
   onTakeoffSuccess,
+  onImportBoq,
 }) => {
   const [activeTab, setActiveTab] = useState<ProjectWorkspaceTab>(initialTab || 'overview');
   const [takeoffEngine, setTakeoffEngine] = useState<'manual' | 'ai'>('manual');
@@ -155,59 +158,42 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
   }, [initialTab]);
 
   // Local state for questionnaire editing inside tab
-  const [localQuestionnaire, setLocalQuestionnaire] = useState<ProjectQuestionnaire>(
-    project.questionnaire || {
+  const [localQuestionnaire, setLocalQuestionnaire] = useState<ProjectQuestionnaire>(() => {
+    return normalizeQuestionnaire({
+      ...(project.questionnaire || {}),
       general: {
-        projectType: 'Residential',
-        buildingType: (project.number_of_floors || 1) > 1 ? '2-Storey' : 'Bungalow',
-        numberOfBuildings: 1,
-        numberOfFloors: project.number_of_floors || 1,
-        numberOfRooms: 4,
-        approximateGFA: project.gfa || 250,
-        numberOfUnits: 1,
-        location: project.location || 'Lagos',
-        terrain: project.swamp_premium_percent > 0 ? 'Swamp' : 'Normal',
+        ...(project.questionnaire?.general || {}),
+        buildingType: project.questionnaire?.general?.buildingType || ((project.number_of_floors || 1) > 1 ? '2-storey building' : 'Bungalow'),
+        numberOfFloors: project.questionnaire?.general?.numberOfFloors || project.number_of_floors || 1,
+        approximateGFA: project.questionnaire?.general?.approximateGFA || project.gfa || 250,
+        location: project.questionnaire?.general?.location || project.location || 'Lagos',
+        terrain: project.questionnaire?.general?.terrain || ((project.swamp_premium_percent && project.swamp_premium_percent > 0) ? 'Swamp' : 'Normal'),
       },
       substructure: {
-        foundationType: project.swamp_premium_percent > 0 ? 'Raft foundation' : 'Strip foundation',
-        excavationDepth: 1.2,
-        soilCondition: project.swamp_premium_percent > 0 ? 'Swamp / Waterlogged' : 'Firm Normal Ground',
-        hardcoreThickness: 150,
-        dpcMembrane: 'Included (0.25mm polythene damp proof membrane)',
-        antiTermiteTreatment: 'Included',
+        ...(project.questionnaire?.substructure || {}),
+        foundationType: project.questionnaire?.substructure?.foundationType || ((project.swamp_premium_percent && project.swamp_premium_percent > 0) ? 'Raft foundation' : 'Strip foundation'),
       },
-      superstructure: {
-        structuralSystem: 'Reinforced concrete frame',
-        columns: 'Yes (225x225mm RC columns)',
-        beams: 'Yes (225x450mm floor & lintel beams)',
-        suspendedSlabs: (project.number_of_floors || 1) > 1 ? 'Yes (150mm thick suspended RC slab)' : 'No',
-        externalWalls: '225mm sandcrete hollow blockwork',
-        internalPartitions: '150mm sandcrete hollow blockwork',
-        wallFinishes: 'Cement sand plaster & 3 coats emulsion paint',
-        floorFinishes: 'Vitrified ceramic tiles (600x600mm)',
-        ceilingFinishes: 'POP decorative suspended ceiling',
+    });
+  });
+
+  // Keep localQuestionnaire updated whenever project changes or loads
+  useEffect(() => {
+    setLocalQuestionnaire(normalizeQuestionnaire({
+      ...(project.questionnaire || {}),
+      general: {
+        ...(project.questionnaire?.general || {}),
+        buildingType: project.questionnaire?.general?.buildingType || ((project.number_of_floors || 1) > 1 ? '2-storey building' : 'Bungalow'),
+        numberOfFloors: project.questionnaire?.general?.numberOfFloors || project.number_of_floors || 1,
+        approximateGFA: project.questionnaire?.general?.approximateGFA || project.gfa || 250,
+        location: project.questionnaire?.general?.location || project.location || 'Lagos',
+        terrain: project.questionnaire?.general?.terrain || ((project.swamp_premium_percent && project.swamp_premium_percent > 0) ? 'Swamp' : 'Normal'),
       },
-      roofing: {
-        roofType: 'Timber trusses with king post framing',
-        roofCovering: 'Aluminium longspan roofing sheets (0.55mm)',
-        ceilingInsulation: 'Included',
-        facialBoard: 'PVC / Aluminium composite fascia',
-        guttersAndDownpipes: 'Included',
+      substructure: {
+        ...(project.questionnaire?.substructure || {}),
+        foundationType: project.questionnaire?.substructure?.foundationType || ((project.swamp_premium_percent && project.swamp_premium_percent > 0) ? 'Raft foundation' : 'Strip foundation'),
       },
-      services: {
-        electrical: 'Included (Concealed conduit, PVC cables, consumer unit)',
-        plumbing: 'Included (PPR water reticulation & PVC soil waste pipes)',
-        sewageTreatment: 'Septic tank (3.0m x 1.8m x 1.5m) and soakaway pit',
-        fireProtection: 'Fire extinguishers & heat/smoke detectors',
-      },
-      preliminaries: {
-        siteSecurityFencing: 'Included',
-        temporaryWaterAndPower: 'Included',
-        contractorsSupervision: 'Included (Registered Nigerian QS & Civil Engineer)',
-        insurancesAndBonds: 'Included',
-      }
-    }
-  );
+    }));
+  }, [project.id, project.questionnaire, project.number_of_floors, project.gfa, project.location, project.swamp_premium_percent]);
 
   const [uploadedDocs, setUploadedDocs] = useState<Array<{ id: string; category: string; title: string; filename: string; size: string; date: string }>>([
     { id: '1', category: 'Architectural', title: 'Ground & First Floor Architectural Drawings (Rev C)', filename: 'Arch_Drawings_RevC.pdf', size: '12.4 MB', date: 'Yesterday' },
@@ -247,8 +233,21 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
     { id: 'activity', label: 'Audit Activity', icon: ShieldCheck },
   ];
 
+  const getSanitizedQuestionnaire = (): ProjectQuestionnaire => {
+    const base = normalizeQuestionnaire(localQuestionnaire);
+    return {
+      ...base,
+      general: {
+        ...base.general,
+        numberOfFloors: Math.max(1, Number(base.general?.numberOfFloors) || 1),
+        approximateGFA: Math.max(10, Number(base.general?.approximateGFA) || 200),
+      }
+    };
+  };
+
   const handleGenerateQuestionnaireEstimate = () => {
-    const generated = generateDeterministicBoq(localQuestionnaire, project.location);
+    const sanitized = getSanitizedQuestionnaire();
+    const generated = generateDeterministicBoq(sanitized);
     const totals = calculateBoqTotals(
       generated,
       project.po_percent,
@@ -257,7 +256,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
     );
 
     onUpdateProject({
-      questionnaire: localQuestionnaire,
+      questionnaire: sanitized,
       items: generated,
       subtotal: totals.subtotal,
       po_amount: totals.poAmount,
@@ -265,6 +264,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
       grand_total: totals.grandTotal,
     });
 
+    setLocalQuestionnaire(sanitized);
     setActiveTab('boq');
   };
 
@@ -367,7 +367,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
             <p className="text-xs text-slate-500 flex items-center space-x-3">
               <span>BESMM4 Standard</span>
               <span>&bull;</span>
-              <span>GFA: {project.gfa || 350} m²</span>
+              <span>GFA: {formatNumber(project.gfa || 350)} m²</span>
               <span>&bull;</span>
               <span>{project.number_of_floors || 2} Floors</span>
               <span>&bull;</span>
@@ -376,6 +376,18 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {onImportBoq && (
+              <button
+                type="button"
+                onClick={onImportBoq}
+                className="px-3.5 py-2 text-xs font-bold rounded-xl border border-emerald-300 bg-emerald-50/80 hover:bg-emerald-100 text-emerald-900 transition inline-flex items-center space-x-1.5 shadow-2xs cursor-pointer"
+                title="Import external Bill of Quantities (.xlsx, .csv) to review manually"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Import BOQ</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onExportExcel}
@@ -589,7 +601,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-400 block font-medium">Gross Floor Area (GFA):</span>
-                  <span className="font-bold text-slate-900 mt-0.5 block">{project.gfa || 350} m²</span>
+                  <span className="font-bold text-slate-900 mt-0.5 block">{formatNumber(project.gfa || 350)} m²</span>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <span className="text-slate-400 block font-medium">Number of Floors:</span>
@@ -697,19 +709,23 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               <div className="space-y-1.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <label className="font-bold text-slate-700 block">Building Typology</label>
                 <select
-                  value={localQuestionnaire.general.buildingType}
-                  onChange={(e) => setLocalQuestionnaire(prev => ({
-                    ...prev,
-                    general: { ...prev.general, buildingType: e.target.value }
-                  }))}
+                  value={localQuestionnaire.general?.buildingType || 'Bungalow'}
+                  onChange={(e) => setLocalQuestionnaire(prev => {
+                    const norm = normalizeQuestionnaire(prev);
+                    return {
+                      ...norm,
+                      general: { ...norm.general, buildingType: e.target.value as any }
+                    };
+                  })}
                   className="w-full p-2 bg-white rounded-lg border border-slate-300 text-slate-800 font-semibold"
                 >
                   <option value="Bungalow">Residential Bungalow</option>
-                  <option value="2-Storey">2-Storey Duplex / Flats</option>
-                  <option value="Multi-Storey">Multi-Storey Commercial Block</option>
-                  <option value="Hostel">Multi-Room Student Hostel</option>
-                  <option value="Warehouse">Industrial Warehouse / Factory</option>
-                  <option value="Commercial">Commercial Shopping Complex</option>
+                  <option value="Duplex">Residential Duplex</option>
+                  <option value="2-storey building">2-Storey Building</option>
+                  <option value="3-storey building">3-Storey Building</option>
+                  <option value="Multi-storey">Multi-Storey Commercial Block</option>
+                  <option value="Renovation">Renovation Project</option>
+                  <option value="Other">Other Building Type</option>
                 </select>
               </div>
 
@@ -720,14 +736,29 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
                   type="number"
                   min="1"
                   max="30"
-                  value={localQuestionnaire.general.numberOfFloors}
+                  value={localQuestionnaire.general?.numberOfFloors ?? ''}
                   onChange={(e) => {
-                    const num = parseInt(e.target.value) || 1;
-                    setLocalQuestionnaire(prev => ({
-                      ...prev,
-                      general: { ...prev.general, numberOfFloors: num }
-                    }));
+                    const val = e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10) || 0);
+                    setLocalQuestionnaire(prev => {
+                      const norm = normalizeQuestionnaire(prev);
+                      return {
+                        ...norm,
+                        general: { ...norm.general, numberOfFloors: val as any }
+                      };
+                    });
                   }}
+                  onBlur={(e) => {
+                    if (!e.target.value || parseInt(e.target.value, 10) < 1) {
+                      setLocalQuestionnaire(prev => {
+                        const norm = normalizeQuestionnaire(prev);
+                        return {
+                          ...norm,
+                          general: { ...norm.general, numberOfFloors: 1 }
+                        };
+                      });
+                    }
+                  }}
+                  placeholder="1"
                   className="w-full p-2 bg-white rounded-lg border border-slate-300 text-slate-800 font-semibold"
                 />
               </div>
@@ -739,14 +770,29 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
                   type="number"
                   min="50"
                   step="10"
-                  value={localQuestionnaire.general.approximateGFA}
+                  value={localQuestionnaire.general?.approximateGFA ?? ''}
                   onChange={(e) => {
-                    const gfa = parseFloat(e.target.value) || 200;
-                    setLocalQuestionnaire(prev => ({
-                      ...prev,
-                      general: { ...prev.general, approximateGFA: gfa }
-                    }));
+                    const val = e.target.value === '' ? '' : (parseFloat(e.target.value) || 0);
+                    setLocalQuestionnaire(prev => {
+                      const norm = normalizeQuestionnaire(prev);
+                      return {
+                        ...norm,
+                        general: { ...norm.general, approximateGFA: val as any }
+                      };
+                    });
                   }}
+                  onBlur={(e) => {
+                    if (!e.target.value || parseFloat(e.target.value) < 10) {
+                      setLocalQuestionnaire(prev => {
+                        const norm = normalizeQuestionnaire(prev);
+                        return {
+                          ...norm,
+                          general: { ...norm.general, approximateGFA: 200 }
+                        };
+                      });
+                    }
+                  }}
+                  placeholder="200"
                   className="w-full p-2 bg-white rounded-lg border border-slate-300 text-slate-800 font-semibold"
                 />
               </div>
@@ -755,15 +801,19 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               <div className="space-y-1.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <label className="font-bold text-slate-700 block">Substructure Foundation Type</label>
                 <select
-                  value={localQuestionnaire.substructure.foundationType}
-                  onChange={(e) => setLocalQuestionnaire(prev => ({
-                    ...prev,
-                    substructure: { ...prev.substructure, foundationType: e.target.value }
-                  }))}
+                  value={localQuestionnaire.substructure?.foundationType || 'Strip foundation'}
+                  onChange={(e) => setLocalQuestionnaire(prev => {
+                    const norm = normalizeQuestionnaire(prev);
+                    return {
+                      ...norm,
+                      substructure: { ...norm.substructure, foundationType: e.target.value as any }
+                    };
+                  })}
                   className="w-full p-2 bg-white rounded-lg border border-slate-300 text-slate-800 font-semibold"
                 >
                   <option value="Strip foundation">Strip Foundation (Normal Ground)</option>
-                  <option value="Pad and ground beam">Pad Footings &amp; Reinforced Ground Beams</option>
+                  <option value="Pad foundation">Pad Footings &amp; Columns</option>
+                  <option value="Ground beam foundation">Pad Footings &amp; Ground Beams</option>
                   <option value="Raft foundation">Reinforced Concrete Raft Foundation</option>
                   <option value="Pile foundation">Precast / Bored Piling Foundation</option>
                 </select>
@@ -773,18 +823,21 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               <div className="space-y-1.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <label className="font-bold text-slate-700 block">Terrain &amp; Soil Condition</label>
                 <select
-                  value={localQuestionnaire.substructure.soilCondition}
-                  onChange={(e) => setLocalQuestionnaire(prev => ({
-                    ...prev,
-                    substructure: { ...prev.substructure, soilCondition: e.target.value },
-                    general: { ...prev.general, terrain: e.target.value.includes('Swamp') ? 'Swamp' : 'Normal' }
-                  }))}
+                  value={localQuestionnaire.general?.terrain || 'Normal'}
+                  onChange={(e) => setLocalQuestionnaire(prev => {
+                    const norm = normalizeQuestionnaire(prev);
+                    return {
+                      ...norm,
+                      general: { ...norm.general, terrain: e.target.value as any }
+                    };
+                  })}
                   className="w-full p-2 bg-white rounded-lg border border-slate-300 text-slate-800 font-semibold"
                 >
-                  <option value="Firm Normal Ground">Firm Normal Ground (Dry)</option>
-                  <option value="Swamp / Waterlogged">Swamp / Waterlogged Ground (+15% surcharge)</option>
-                  <option value="Loose Sand">Loose Coastal Sand</option>
-                  <option value="Rocky Ground">Rocky / Hard Strata Ground</option>
+                  <option value="Normal">Firm Normal Ground (Dry)</option>
+                  <option value="Swamp">Swamp / Waterlogged Ground (+15% surcharge)</option>
+                  <option value="Waterlogged">High Water Table / Waterlogged</option>
+                  <option value="Coastal">Loose Coastal Sand</option>
+                  <option value="Hilly">Hilly / Rocky Ground</option>
                 </select>
               </div>
 
@@ -792,17 +845,22 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               <div className="space-y-1.5 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <label className="font-bold text-slate-700 block">Roof Covering Material</label>
                 <select
-                  value={localQuestionnaire.roofing.roofCovering}
-                  onChange={(e) => setLocalQuestionnaire(prev => ({
-                    ...prev,
-                    roofing: { ...prev.roofing, roofCovering: e.target.value }
-                  }))}
+                  value={localQuestionnaire.roofing?.roofCovering || 'Aluminium longspan'}
+                  onChange={(e) => setLocalQuestionnaire(prev => {
+                    const norm = normalizeQuestionnaire(prev);
+                    return {
+                      ...norm,
+                      roofing: { ...norm.roofing, roofCovering: e.target.value as any }
+                    };
+                  })}
                   className="w-full p-2 bg-white rounded-lg border border-slate-300 text-slate-800 font-semibold"
                 >
-                  <option value="Aluminium longspan roofing sheets (0.55mm)">Aluminium Longspan (0.55mm)</option>
-                  <option value="Stone-coated Gerard metal roofing tiles">Stone-Coated Metal Tiles (Gerard)</option>
-                  <option value="Concrete flat roof slab">Concrete Flat Roof Slab with Waterproofing</option>
-                  <option value="Aluminium corrugated sheets (0.45mm)">Aluminium Corrugated (0.45mm)</option>
+                  <option value="Aluminium longspan">Aluminium Longspan (0.55mm)</option>
+                  <option value="Stone-coated">Stone-Coated Metal Tiles (Gerard)</option>
+                  <option value="Concrete tiles">Concrete Flat Roof Tiles</option>
+                  <option value="Clay tiles">Clay Tiles</option>
+                  <option value="Fibre cement">Fibre Cement Corrugated</option>
+                  <option value="Other">Other Covering</option>
                 </select>
               </div>
 
@@ -824,7 +882,9 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  onUpdateProject({ questionnaire: localQuestionnaire });
+                  const sanitized = getSanitizedQuestionnaire();
+                  setLocalQuestionnaire(sanitized);
+                  onUpdateProject({ questionnaire: sanitized });
                   alert('Questionnaire parameters saved to project profile.');
                 }}
                 className="px-4 py-2 text-xs font-bold rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 cursor-pointer shadow-2xs"
@@ -864,7 +924,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
             }}
             isProcessing={false}
             setIsProcessing={() => {}}
-            questionnaire={project.questionnaire}
+            questionnaire={localQuestionnaire}
             onOpenQuestionnaire={() => setActiveTab('questionnaire')}
             onOpenManualTakeoff={() => {
               setTakeoffEngine('manual');
@@ -945,7 +1005,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               }}
               isProcessing={false}
               setIsProcessing={() => {}}
-              questionnaire={project.questionnaire}
+              questionnaire={localQuestionnaire}
               onOpenQuestionnaire={() => setActiveTab('questionnaire')}
               onOpenManualTakeoff={() => setTakeoffEngine('manual')}
             />
@@ -964,6 +1024,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
             onAddItem={onAddBoqItem}
             onDeleteItem={onDeleteBoqItem}
             onApplyMarketRates={onApplyMarketRates}
+            onImportBoq={onImportBoq}
             onViewOnDrawing={(item) => {
               setTakeoffEngine('manual');
               setActiveTab('takeoff');
@@ -1234,31 +1295,31 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
                 <div className="p-3 bg-white rounded-lg border border-slate-200">
                   <span className="text-slate-400 block font-medium">Portland Cement:</span>
                   <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {Math.round((project.gfa || 350) * 3.8)} Bags
+                    {formatNumber(Math.round((project.gfa || 350) * 3.8))} Bags
                   </span>
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-slate-200">
                   <span className="text-slate-400 block font-medium">Sharp Sand:</span>
                   <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {Math.round((project.gfa || 350) * 0.45)} Tonnes
+                    {formatNumber(Math.round((project.gfa || 350) * 0.45))} Tonnes
                   </span>
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-slate-200">
                   <span className="text-slate-400 block font-medium">Granite Chippings:</span>
                   <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {Math.round((project.gfa || 350) * 0.55)} Tonnes
+                    {formatNumber(Math.round((project.gfa || 350) * 0.55))} Tonnes
                   </span>
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-slate-200">
                   <span className="text-slate-400 block font-medium">High-Yield Rebar:</span>
                   <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {((project.gfa || 350) * 0.038).toFixed(1)} Tonnes
+                    {formatNumber(Number(((project.gfa || 350) * 0.038).toFixed(1)))} Tonnes
                   </span>
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-slate-200">
                   <span className="text-slate-400 block font-medium">Sandcrete Blocks:</span>
                   <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {Math.round((project.gfa || 350) * 12.5)} Pieces
+                    {formatNumber(Math.round((project.gfa || 350) * 12.5))} Pieces
                   </span>
                 </div>
               </div>

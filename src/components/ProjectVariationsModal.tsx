@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Layers, Plus, Trash2, X, CheckCircle2, AlertCircle, TrendingUp, TrendingDown, FileText } from 'lucide-react';
 import { ProjectVariation, BESMM4_SECTIONS } from '../types';
 import { formatNaira } from '../utils/format';
+import { FormattedNumberInput } from './common/FormattedNumberInput';
 
 interface ProjectVariationsModalProps {
   projectId: string;
@@ -339,12 +340,11 @@ export const ProjectVariationsModal: React.FC<ProjectVariationsModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Quantity
                   </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0.01"
+                  <FormattedNumberInput
                     value={quantity}
-                    onChange={(e) => setQuantity(Number(e.target.value))}
+                    onChange={(val) => setQuantity(val)}
+                    maxDecimals={2}
+                    placeholder="1"
                     className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
                   />
                 </div>
@@ -366,12 +366,10 @@ export const ProjectVariationsModal: React.FC<ProjectVariationsModalProps> = ({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Rate (₦)
                   </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0"
+                  <FormattedNumberInput
                     value={rate}
-                    onChange={(e) => setRate(Number(e.target.value))}
+                    onChange={(val) => setRate(val)}
+                    maxDecimals={2}
                     placeholder="0"
                     className="w-full px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-300 bg-white"
                   />

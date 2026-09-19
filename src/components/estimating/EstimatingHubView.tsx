@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileSpreadsheet, 
   Sparkles, 
@@ -33,6 +33,7 @@ interface EstimatingHubViewProps {
   onDeleteBoqItem: (index: number) => void;
   onApplyMarketRates: () => void;
   onExportExcel: () => void;
+  onImportBoq?: () => void;
 }
 
 export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
@@ -46,8 +47,16 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
   onDeleteBoqItem,
   onApplyMarketRates,
   onExportExcel,
+  onImportBoq,
 }) => {
   const [activeSubView, setActiveSubView] = useState<EstimatingSubView>(initialSubView);
+
+  useEffect(() => {
+    if (initialSubView === 'rates') {
+      onOpenRateLibrary();
+      setActiveSubView('boq');
+    }
+  }, [initialSubView, onOpenRateLibrary]);
 
   // Rate Analysis Calculator State
   const [tradeTitle, setTradeTitle] = useState('225mm Vibrated Hollow Sandcrete Blockwork');
@@ -160,6 +169,7 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
             onAddItem={onAddBoqItem}
             onDeleteItem={onDeleteBoqItem}
             onApplyMarketRates={onApplyMarketRates}
+            onImportBoq={onImportBoq}
           />
         </div>
       )}
@@ -336,7 +346,7 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
         <div className="space-y-4">
           <ManualTakeoffWorkspace
             project={project}
-            onTransferToBoq={(item) => {
+            onAddBoqItem={(item) => {
               onAddBoqItem(item);
               setActiveSubView('boq');
             }}
@@ -349,17 +359,15 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
         <div className="space-y-4">
           <QsAssistantPanel
             project={project}
-            onSelectRate={(rate) => {
+            onApplyRecommendation={(rec) => {
               onAddBoqItem({
-                item_code: rate.code,
-                description: rate.description,
-                unit: rate.unit,
-                rate: rate.rate,
-                quantity: 1,
-                amount: rate.rate,
-                trade_category: rate.category,
-                source: 'CALCULATED',
-                confidence: 95
+                item: rec.item,
+                description: rec.description,
+                unit: rec.unit,
+                rate: rec.rate,
+                qty: rec.qty,
+                amount: rec.qty * rec.rate,
+                section: rec.section,
               });
               setActiveSubView('boq');
             }}

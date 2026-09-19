@@ -459,6 +459,10 @@ export interface UserCustomRate {
   description: string;
   unit: string;
   rate: number;
+  lagosRate?: number;
+  abujaRate?: number;
+  portHarcourtRate?: number;
+  northernRate?: number;
   location?: string;
   source?: string;
   material_cost?: number;
@@ -827,7 +831,9 @@ export type AppGlobalView =
   | 'settings'
   | 'help'
   | 'editor'
-  | 'landing';
+  | 'landing'
+  | 'suppliers'
+  | 'materials';
 
 export type EstimatingSubView = 
   | 'boq' 
@@ -916,6 +922,86 @@ export interface BoqReviewMetrics {
   missingInformationCount: number;
   assumptionsCount: number;
   conflictsCount: number;
+}
+
+export interface SupplierItemPrice {
+  name: string;
+  unit: string;
+  rate: number;
+  currency?: string;
+  notes?: string;
+}
+
+export interface Supplier {
+  id: string;
+  name: string;
+  category: 
+    | 'Cement & Aggregates' 
+    | 'Steel & Rebar' 
+    | 'Blocks & Masonry' 
+    | 'Roofing & Cladding' 
+    | 'MEP & Electrical' 
+    | 'Timber & Formwork' 
+    | 'Finishing & Tiles' 
+    | 'Plant & Equipment Hire'
+    | 'Labour & Subcontractors'
+    | 'Preliminaries & Site Services'
+    | 'General Materials'
+    | string;
+  resourceType?: 'material' | 'plant' | 'labour' | 'preliminaries';
+  contactPerson: string;
+  phone: string;
+  whatsapp?: string;
+  email?: string;
+  address: string;
+  state: string;
+  coverageAreas: string;
+  leadTime: string;
+  minOrder: string;
+  paymentTerms: string;
+  verificationStatus: 'Verified' | 'Pending' | 'Preferred Partner';
+  rating: number;
+  notes?: string;
+  materials: SupplierItemPrice[];
+  createdAt?: string;
+}
+
+export interface LibraryRateItem {
+  id: string;
+  type: 'Material' | 'Plant' | 'Labour' | 'Preliminaries';
+  category: string;
+  item: string;
+  specification: string;
+  unit: string;
+  lagosRate: number;
+  abujaRate: number;
+  portHarcourtRate: number;
+  northernRate: number;
+  materialComponent?: number;
+  labourComponent?: number;
+  plantComponent?: number;
+  overheadProfitPercent?: number;
+  trend?: 'up' | 'down' | 'stable';
+  trendPercent?: number;
+  lastUpdated?: string;
+  keySuppliers?: string[];
+  isCustom?: boolean;
+}
+
+export interface MaterialMarketItem {
+  id: string;
+  name: string;
+  category: string;
+  specification: string;
+  unit: string;
+  lagosRate: number;
+  abujaRate: number;
+  portHarcourtRate: number;
+  northernRate: number;
+  trend: 'up' | 'down' | 'stable';
+  trendPercent: number;
+  lastUpdated: string;
+  keySuppliers: string[];
 }
 
 

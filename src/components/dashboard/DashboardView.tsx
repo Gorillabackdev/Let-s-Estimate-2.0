@@ -27,22 +27,30 @@ import { useAuth } from '../../context/AuthContext';
 
 interface DashboardViewProps {
   projects: Project[];
-  loading: boolean;
+  loading?: boolean;
   onNavigate: (view: AppGlobalView, subView?: string) => void;
   onOpenProject: (projectId: string) => void;
   onNewProject: () => void;
-  onAiTakeoff: () => void;
-  onNewBoq: () => void;
+  onAiTakeoff?: () => void;
+  onNewBoq?: () => void;
+  onOpenTakeoff?: () => void;
+  onOpenRates?: () => void;
+  onOpenSubscription?: () => void;
+  onImportBoq?: () => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   projects = [],
-  loading,
+  loading = false,
   onNavigate,
   onOpenProject,
   onNewProject,
   onAiTakeoff,
   onNewBoq,
+  onOpenTakeoff,
+  onOpenRates,
+  onOpenSubscription,
+  onImportBoq,
 }) => {
   const { user } = useAuth();
 
@@ -94,6 +102,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <BookOpen className="w-4 h-4 text-emerald-600" />
             <span>User Guide (PDF)</span>
           </button>
+          {onImportBoq && (
+            <button
+              type="button"
+              onClick={onImportBoq}
+              className="inline-flex items-center space-x-2 px-3.5 py-2.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-300 shadow-2xs transition active:scale-95 cursor-pointer"
+              title="Import external BOQ (.xlsx, .csv) to review manually"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+              <span>Import BOQ</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onNewProject}
@@ -197,7 +216,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <span className="text-xs text-slate-500">Construction Estimating Shortcuts</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <button
             type="button"
             onClick={onNewProject}
@@ -206,6 +225,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <Building2 className="w-5 h-5 text-emerald-700 group-hover:scale-110 transition-transform" />
             <div className="mt-2 font-bold text-xs text-slate-900 group-hover:text-emerald-900">+ New Project</div>
             <div className="text-[11px] text-slate-500 mt-0.5">Define site, client &amp; specs</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={onImportBoq}
+            className="p-4 bg-white hover:bg-emerald-50 rounded-xl border border-emerald-200 hover:border-emerald-400 text-left transition shadow-2xs group cursor-pointer"
+          >
+            <FileSpreadsheet className="w-5 h-5 text-emerald-800 group-hover:scale-110 transition-transform" />
+            <div className="mt-2 font-bold text-xs text-slate-900 group-hover:text-emerald-900">Import BOQ</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Excel / CSV manual review</div>
           </button>
 
           <button

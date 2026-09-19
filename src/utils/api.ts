@@ -4,6 +4,8 @@
  * "Unexpected token '<', '<!doctype '... is not valid JSON" and unhandled "Failed to fetch" errors.
  */
 
+import { safeStorage } from './storage';
+
 export interface ApiResponse<T = any> {
   ok: boolean;
   status: number;
@@ -46,7 +48,7 @@ export async function safeFetchJson<T = any>(
 
     // Automatically attach stored session token if Authorization header not provided
     if (typeof window !== 'undefined' && !headers.has('Authorization')) {
-      const token = localStorage.getItem('lets_estimate_session_token');
+      const token = safeStorage.getItem('lets_estimate_session_token');
       if (token) {
         headers.set('Authorization', `Bearer ${token}`);
       }

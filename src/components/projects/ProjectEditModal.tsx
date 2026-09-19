@@ -315,8 +315,9 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                 type="number"
                 min="10"
                 step="1"
-                value={formData.gfa}
-                onChange={(e) => setFormData({ ...formData, gfa: Number(e.target.value) || 0 })}
+                value={formData.gfa === 0 ? '' : (formData.gfa ?? '')}
+                placeholder="0"
+                onChange={(e) => setFormData({ ...formData, gfa: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
                 className="w-full px-3 py-2 text-xs font-semibold text-slate-900 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white"
               />
             </div>
@@ -330,8 +331,9 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                 min="1"
                 max="50"
                 step="1"
-                value={formData.number_of_floors}
-                onChange={(e) => setFormData({ ...formData, number_of_floors: Number(e.target.value) || 1 })}
+                value={formData.number_of_floors === 0 ? '' : (formData.number_of_floors ?? '')}
+                placeholder="1"
+                onChange={(e) => setFormData({ ...formData, number_of_floors: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
                 className="w-full px-3 py-2 text-xs font-semibold text-slate-900 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white"
               />
             </div>
@@ -347,8 +349,9 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                   min="0"
                   max="100"
                   step="0.5"
-                  value={formData.po_percent}
-                  onChange={(e) => setFormData({ ...formData, po_percent: Number(e.target.value) || 0 })}
+                  value={formData.po_percent === 0 ? '' : (formData.po_percent ?? '')}
+                  placeholder="0"
+                  onChange={(e) => setFormData({ ...formData, po_percent: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
                   className="w-full pl-3 pr-8 py-2 text-xs font-semibold text-slate-900 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                 />
               </div>
@@ -379,8 +382,9 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                     min="1"
                     max="50"
                     step="1"
-                    value={formData.swamp_premium_percent}
-                    onChange={(e) => setFormData({ ...formData, swamp_premium_percent: Number(e.target.value) || 15 })}
+                    value={formData.swamp_premium_percent === 0 ? '' : (formData.swamp_premium_percent ?? '')}
+                    placeholder="15"
+                    onChange={(e) => setFormData({ ...formData, swamp_premium_percent: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
                     className="w-16 px-2 py-1 text-xs font-bold text-slate-900 bg-white rounded-lg border border-slate-300"
                   />
                   <span className="text-xs font-bold text-slate-700">%</span>
@@ -396,8 +400,9 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                   min="0"
                   max="20"
                   step="0.5"
-                  value={formData.vat_percent}
-                  onChange={(e) => setFormData({ ...formData, vat_percent: Number(e.target.value) || 0 })}
+                  value={formData.vat_percent === 0 ? '' : (formData.vat_percent ?? '')}
+                  placeholder="0"
+                  onChange={(e) => setFormData({ ...formData, vat_percent: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
                   className="w-16 px-2 py-1 text-xs font-bold text-slate-900 bg-white rounded-lg border border-slate-300"
                 />
                 <span className="text-xs font-bold text-slate-700">%</span>
