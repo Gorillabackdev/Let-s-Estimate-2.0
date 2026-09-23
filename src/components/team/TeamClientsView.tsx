@@ -20,9 +20,9 @@ export const TeamClientsView: React.FC<TeamClientsViewProps> = ({ onOpenTenderPo
 
   const [teamMembers, setTeamMembers] = useState([
     {
-      name: user?.full_name || 'QS Isaac Emmanuel',
+      name: user?.full_name || 'Emmanuel Isaac, MNIQS',
       role: 'Lead Quantity Surveyor & Principal Partner',
-      email: user?.email || 'isaac@estimate.ng',
+      email: user?.email || 'emmanuelisaac888@gmail.com',
       status: 'Active',
       regNo: 'NIQS-RQS-4819'
     },

@@ -31,6 +31,123 @@ export interface BuildupMaterialRow {
   marketDate?: string;
 }
 
+export interface BuildupPlantRow {
+  id: string;
+  name: string;
+  dailyHire: number | '';
+  dailyOutput: number | '';
+}
+
+export const CATEGORY_MATERIAL_DEFAULTS: Record<string, {
+  categoryName: string;
+  title: string;
+  trade: string;
+  unit: string;
+  materials: { name: string; unit: string; qty: number; rate: number; wastePercent: number }[];
+  numSkilled: number;
+  wageSkilled: number;
+  numUnskilled: number;
+  wageUnskilled: number;
+  dailyGangOutput: number;
+  plantRows: { name: string; dailyHire: number; dailyOutput: number }[];
+}> = {
+  Blockwork: {
+    categoryName: 'Blockwork',
+    title: '225mm Vibrated Sandcrete Blockwork',
+    trade: 'Blockwork & Partitioning',
+    unit: 'm2',
+    materials: [
+      { name: '9" Vibrated Hollow Sandcrete Block', unit: 'Nr', qty: 10, rate: 850, wastePercent: 5 },
+      { name: 'Grade 42.5R Portland Cement (Mortar)', unit: 'Bag', qty: 0.25, rate: 9500, wastePercent: 5 },
+      { name: 'Clean Sharp Sand (Screened)', unit: 'm3', qty: 0.04, rate: 7000, wastePercent: 10 },
+    ],
+    numSkilled: 1,
+    wageSkilled: 8000,
+    numUnskilled: 1,
+    wageUnskilled: 4000,
+    dailyGangOutput: 35,
+    plantRows: [
+      { name: 'Mortar mixing board, buckets & staging', dailyHire: 2000, dailyOutput: 35 }
+    ]
+  },
+  Concrete: {
+    categoryName: 'Concrete',
+    title: 'Grade 25 Ready / In-situ Mixed Concrete',
+    trade: 'Concrete Works',
+    unit: 'm3',
+    materials: [
+      { name: 'Dangote 42.5R Portland Cement', unit: 'Bag', qty: 6.4, rate: 9500, wastePercent: 5 },
+      { name: 'Clean Screened Sharp Sand', unit: 'm3', qty: 0.44, rate: 7500, wastePercent: 5 },
+      { name: '3/4" Crushed Granite Aggregate', unit: 'm3', qty: 0.88, rate: 11500, wastePercent: 5 },
+      { name: 'Clean Mixing & Curing Water', unit: 'Litre', qty: 180, rate: 15, wastePercent: 2 },
+    ],
+    numSkilled: 1,
+    wageSkilled: 9000,
+    numUnskilled: 3,
+    wageUnskilled: 4500,
+    dailyGangOutput: 8,
+    plantRows: [
+      { name: '500L Mechanical Concrete Mixer (Diesel)', dailyHire: 15000, dailyOutput: 8 },
+      { name: 'Poker Vibrator with Flexible Shaft', dailyHire: 5000, dailyOutput: 8 }
+    ]
+  },
+  Rebar: {
+    categoryName: 'Rebar',
+    title: 'High Tensile Ribbed Reinforcement (Cut & Bent)',
+    trade: 'Reinforcement & Steelwork',
+    unit: 'kg',
+    materials: [
+      { name: 'High Tensile Ribbed Bar (12mm - 25mm)', unit: 'kg', qty: 1.05, rate: 1300, wastePercent: 5 },
+      { name: '16-Gauge Annealed Black Binding Wire', unit: 'kg', qty: 0.02, rate: 1200, wastePercent: 3 },
+    ],
+    numSkilled: 1,
+    wageSkilled: 9000,
+    numUnskilled: 1,
+    wageUnskilled: 4000,
+    dailyGangOutput: 120,
+    plantRows: [
+      { name: 'Manual rebar bender, cutter & bench', dailyHire: 3000, dailyOutput: 120 }
+    ]
+  },
+  Plaster: {
+    categoryName: 'Plaster',
+    title: '15mm Cement Sand Internal Plaster (1:4 Mix)',
+    trade: 'Finishes & Plastering',
+    unit: 'm2',
+    materials: [
+      { name: 'Grade 42.5R Portland Cement', unit: 'Bag', qty: 0.20, rate: 9500, wastePercent: 7 },
+      { name: 'Fine Screened Plastering Sand', unit: 'Tonne', qty: 0.03, rate: 8500, wastePercent: 10 },
+    ],
+    numSkilled: 1,
+    wageSkilled: 8500,
+    numUnskilled: 1,
+    wageUnskilled: 4000,
+    dailyGangOutput: 25,
+    plantRows: [
+      { name: 'Plastering hawk, floats & mobile scaffold', dailyHire: 2500, dailyOutput: 25 }
+    ]
+  },
+  Painting: {
+    categoryName: 'Painting',
+    title: 'Two Coats Premium Acrylic Emulsion Paint on Walls',
+    trade: 'Painting & Decorating',
+    unit: 'm2',
+    materials: [
+      { name: 'Premium Acrylic Emulsion Paint', unit: 'Litre', qty: 0.25, rate: 3200, wastePercent: 5 },
+      { name: 'Alkali Resisting Primer / Undercoat', unit: 'Litre', qty: 0.15, rate: 2800, wastePercent: 5 },
+      { name: 'Mineral Turpentine / Thinner', unit: 'Litre', qty: 0.05, rate: 1800, wastePercent: 2 },
+    ],
+    numSkilled: 1,
+    wageSkilled: 8000,
+    numUnskilled: 1,
+    wageUnskilled: 4000,
+    dailyGangOutput: 45,
+    plantRows: [
+      { name: 'Ladders, roller trays & drop cloths', dailyHire: 1500, dailyOutput: 45 }
+    ]
+  }
+};
+
 export interface BuildupPreset {
   title: string;
   trade: string;
@@ -390,48 +507,67 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
   const [buildTrade, setBuildTrade] = useState(RATE_BUILDUP_PRESETS[0].trade);
   const [buildUnit, setBuildUnit] = useState(RATE_BUILDUP_PRESETS[0].unit);
 
+  // Category Preset Selector
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState<string>('Blockwork');
+
   // 1. Material Rows (Dynamic array)
   const [materials, setMaterials] = useState<BuildupMaterialRow[]>(() => 
-    RATE_BUILDUP_PRESETS[0].materials.map((m, idx) => ({
+    CATEGORY_MATERIAL_DEFAULTS.Blockwork.materials.map((m, idx) => ({
       id: `mat-${Date.now()}-${idx}`,
       name: m.name,
       unit: m.unit,
       qty: m.qty,
       rate: m.rate,
       wastePercent: m.wastePercent,
-      marketRef: m.marketRef,
-      marketRate: m.marketRate,
-      marketLocation: m.marketLocation,
-      marketDate: m.marketDate,
+      marketRef: 'NIQS Lagos/PH Benchmark',
+      marketRate: m.rate,
+      marketLocation: 'Lagos',
+      marketDate: 'Latest',
     }))
   );
 
-  // 2. Labour Parameters
-  const [labourGangDesc, setLabourGangDesc] = useState(RATE_BUILDUP_PRESETS[0].labourGangDesc);
-  const [labourDailyGangWage, setLabourDailyGangWage] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].labourDailyGangWage);
-  const [dailyGangOutput, setDailyGangOutput] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].dailyGangOutput);
-  const [useDirectLabour, setUseDirectLabour] = useState(RATE_BUILDUP_PRESETS[0].useDirectLabour || false);
-  const [directLabourOverride, setDirectLabourOverride] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].directLabourOverride || 2500);
+  // 2. Labour Parameters - Gang Composition (Requirement 3)
+  const [labourGangDesc, setLabourGangDesc] = useState('Gang 1 mason + 1 labour');
+  const [numSkilled, setNumSkilled] = useState<number | ''>(1);
+  const [wageSkilled, setWageSkilled] = useState<number | ''>(8000);
+  const [numUnskilled, setNumUnskilled] = useState<number | ''>(1);
+  const [wageUnskilled, setWageUnskilled] = useState<number | ''>(4000);
+  const [labourDailyGangWage, setLabourDailyGangWage] = useState<number | ''>(12000);
+  const [overrideGangCost, setOverrideGangCost] = useState<number | ''>('');
+  const [dailyGangOutput, setDailyGangOutput] = useState<number | ''>(35);
+  const [useDirectLabour, setUseDirectLabour] = useState(false);
+  const [directLabourOverride, setDirectLabourOverride] = useState<number | ''>(2500);
 
-  // 3. Plant & Equipment Parameters (Stored as Daily Hire / Output, with direct toggle)
+  // 3. Plant & Equipment Parameters - Multi-row Equipment + % Toggle (Requirement 4)
+  const [plantRows, setPlantRows] = useState<BuildupPlantRow[]>([
+    { id: 'plant-1', name: 'Mortar mixing board, buckets & staging', dailyHire: 2000, dailyOutput: 35 }
+  ]);
+  const [usePlantPercentOfLabour, setUsePlantPercentOfLabour] = useState(false);
+  const [plantPercentOfLabour, setPlantPercentOfLabour] = useState<number | ''>(5);
   const [plantDesc, setPlantDesc] = useState(RATE_BUILDUP_PRESETS[0].plantDesc);
-  const [noPlantRequired, setNoPlantRequired] = useState(RATE_BUILDUP_PRESETS[0].noPlantRequired || false);
-  const [useDirectPlant, setUseDirectPlant] = useState(RATE_BUILDUP_PRESETS[0].useDirectPlant || false);
-  const [plantDailyHire, setPlantDailyHire] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].plantDailyHire);
-  const [plantDailyOutput, setPlantDailyOutput] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].plantDailyOutput);
-  const [directPlantOverride, setDirectPlantOverride] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].directPlantOverride || 1428);
+  const [noPlantRequired, setNoPlantRequired] = useState(false);
+  const [useDirectPlant, setUseDirectPlant] = useState(false);
+  const [plantDailyHire, setPlantDailyHire] = useState<number | ''>(2000);
+  const [plantDailyOutput, setPlantDailyOutput] = useState<number | ''>(35);
+  const [directPlantOverride, setDirectPlantOverride] = useState<number | ''>(1428);
 
   // 4. Preliminaries / Site Water / Haulage Component (Optional)
-  const [includePrelim, setIncludePrelim] = useState(RATE_BUILDUP_PRESETS[0].includePrelim || false);
-  const [prelimDesc, setPrelimDesc] = useState(RATE_BUILDUP_PRESETS[0].prelimDesc || 'Borehole water supply & site power setup');
-  const [prelimTotalCost, setPrelimTotalCost] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].prelimTotalCost || 350000);
-  const [prelimTotalUnits, setPrelimTotalUnits] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].prelimTotalUnits || 5400);
+  const [includePrelim, setIncludePrelim] = useState(false);
+  const [prelimDesc, setPrelimDesc] = useState('Borehole water supply & site power setup');
+  const [prelimTotalCost, setPrelimTotalCost] = useState<number | ''>(350000);
+  const [prelimTotalUnits, setPrelimTotalUnits] = useState<number | ''>(5400);
 
-  // 5. Contractor Overheads & Profit
-  const [overheadPercent, setOverheadPercent] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].overheadPercent);
-  const [profitPercent, setProfitPercent] = useState<number | ''>(RATE_BUILDUP_PRESETS[0].profitPercent);
-  const [poFormula, setPoFormula] = useState<'markup' | 'sequential' | 'margin' | 'fixed'>(RATE_BUILDUP_PRESETS[0].poFormula || 'markup');
+  // 5. Markup - Overheads, Profit, Contingency & VAT (Requirement 5)
+  const [overheadPercent, setOverheadPercent] = useState<number | ''>(10);
+  const [profitPercent, setProfitPercent] = useState<number | ''>(10);
+  const [contingencyPercent, setContingencyPercent] = useState<number | ''>(5);
+  const [isVatEnabled, setIsVatEnabled] = useState(true);
+  const [vatPercent, setVatPercent] = useState<number | ''>(7.5);
+  const [poFormula, setPoFormula] = useState<'markup' | 'sequential' | 'margin' | 'fixed'>('markup');
   const [fixedMarkupAmount, setFixedMarkupAmount] = useState<number | ''>(0);
+
+  // Market Fetch Notification & UI feedback
+  const [marketFetchNotice, setMarketFetchNotice] = useState<string | null>(null);
 
   // UI helpers
   const [activeTooltipRowId, setActiveTooltipRowId] = useState<string | null>(null);
@@ -498,35 +634,102 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
     }
   }, [isOpen, activeTab]);
 
-  // Unit suggestion placeholders based on Nigerian QS practice
+  // Unit suggestion placeholders based on Nigerian QS practice (Requirement 1)
   const getUnitQtyPlaceholder = (unit: string) => {
     const u = (unit || '').toLowerCase().trim();
-    if (u.includes('m2') || u.includes('m²') || u.includes('sqm')) return '10 (e.g. blocks/m²)';
-    if (u.includes('m3') || u.includes('m³') || u.includes('cum')) return '6 (e.g. bags cement/m³)';
+    if (u.includes('m2') || u.includes('m²') || u.includes('sqm')) return '10 (e.g. blocks per m²)';
+    if (u.includes('m3') || u.includes('m³') || u.includes('cum')) return '6 (e.g. bags cement per m³)';
     if (u.includes('kg') || u.includes('tonne') || u.includes('ton')) return '1.05 (kg per kg)';
     if (u === 'm' || u.includes('lm') || u.includes('lin')) return '1.05 (m per m)';
-    return '1 (item/unit)';
+    return '1 (nr per nr)';
   };
 
   const getLabourOutputPlaceholder = (unit: string) => {
     const u = (unit || '').toLowerCase().trim();
-    if (u.includes('m2') || u.includes('m²') || u.includes('sqm')) return '7 or 14 (m²/day)';
-    if (u.includes('m3') || u.includes('m³') || u.includes('cum')) return '3.5 or 8 (m³/day)';
+    if (u.includes('m2') || u.includes('m²') || u.includes('sqm')) return '35 (m²/day)';
+    if (u.includes('m3') || u.includes('m³') || u.includes('cum')) return '8 (m³/day)';
     if (u.includes('kg')) return '120 (kg/day)';
-    if (u === 'm' || u.includes('lm') || u.includes('lin')) return '15 or 25 (m/day)';
+    if (u === 'm' || u.includes('lm') || u.includes('lin')) return '25 (m/day)';
     return '5 (nr/day)';
   };
 
   const getPlantOutputPlaceholder = (unit: string) => {
     const u = (unit || '').toLowerCase().trim();
-    if (u.includes('m2') || u.includes('m²') || u.includes('sqm')) return '7 or 14 (m²/day)';
-    if (u.includes('m3') || u.includes('m³') || u.includes('cum')) return '3.5 or 8 (m³/day)';
+    if (u.includes('m2') || u.includes('m²') || u.includes('sqm')) return '35 (m²/day)';
+    if (u.includes('m3') || u.includes('m³') || u.includes('cum')) return '8 (m³/day)';
     if (u.includes('kg')) return '120 (kg/day)';
-    if (u === 'm' || u.includes('lm') || u.includes('lin')) return '15 or 25 (m/day)';
+    if (u === 'm' || u.includes('lm') || u.includes('lin')) return '25 (m/day)';
     return '5 (nr/day)';
   };
 
-  // Handle Preset Selection
+  // Dynamic unit change handler (Requirement 1)
+  const handleUnitChange = (newUnit: string) => {
+    setBuildUnit(newUnit);
+    const u = newUnit.toLowerCase().trim();
+    if (u === 'm2' || u === 'm²') {
+      if (dailyGangOutput === '' || dailyGangOutput === 7 || dailyGangOutput === 8 || dailyGangOutput === 120) {
+        setDailyGangOutput(35);
+      }
+    } else if (u === 'm3' || u === 'm³') {
+      if (dailyGangOutput === '' || dailyGangOutput === 35 || dailyGangOutput === 120) {
+        setDailyGangOutput(8);
+      }
+    } else if (u === 'kg') {
+      if (dailyGangOutput === '' || dailyGangOutput === 35 || dailyGangOutput === 8) {
+        setDailyGangOutput(120);
+      }
+    } else if (u === 'm' || u === 'lm') {
+      if (dailyGangOutput === '' || dailyGangOutput === 35 || dailyGangOutput === 8 || dailyGangOutput === 120) {
+        setDailyGangOutput(25);
+      }
+    } else if (u === 'nr') {
+      if (dailyGangOutput === '' || dailyGangOutput === 35 || dailyGangOutput === 8 || dailyGangOutput === 120) {
+        setDailyGangOutput(5);
+      }
+    }
+  };
+
+  // Apply Category Defaults (Blockwork, Concrete, Rebar, Plaster, Painting)
+  const applyCategoryPreset = (categoryKey: string) => {
+    setSelectedCategoryKey(categoryKey);
+    const cat = CATEGORY_MATERIAL_DEFAULTS[categoryKey];
+    if (!cat) return;
+    setBuildItemTitle(cat.title);
+    setBuildTrade(cat.trade);
+    setBuildUnit(cat.unit);
+    setMaterials(cat.materials.map((m, mIdx) => ({
+      id: `mat-${Date.now()}-${mIdx}`,
+      name: m.name,
+      unit: m.unit,
+      qty: m.qty,
+      rate: m.rate,
+      wastePercent: m.wastePercent,
+      marketRef: `NIQS ${m.name} Benchmark`,
+      marketRate: m.rate,
+      marketLocation: selectedRegion.toUpperCase(),
+      marketDate: 'Latest',
+    })));
+    setNumSkilled(cat.numSkilled);
+    setWageSkilled(cat.wageSkilled);
+    setNumUnskilled(cat.numUnskilled);
+    setWageUnskilled(cat.wageUnskilled);
+    setDailyGangOutput(cat.dailyGangOutput);
+    setOverrideGangCost('');
+    setLabourGangDesc(`Gang ${cat.numSkilled} skilled + ${cat.numUnskilled} unskilled`);
+    setPlantRows(cat.plantRows.map((p, pIdx) => ({
+      id: `plant-${Date.now()}-${pIdx}`,
+      name: p.name,
+      dailyHire: p.dailyHire,
+      dailyOutput: p.dailyOutput,
+    })));
+    setNoPlantRequired(false);
+    setUseDirectPlant(false);
+    setUsePlantPercentOfLabour(false);
+    setMarketFetchNotice(`Loaded default smart templates for ${categoryKey}. All fields are 100% unlocked for your sole discretion.`);
+    setTimeout(() => setMarketFetchNotice(null), 4000);
+  };
+
+  // Handle Preset Selection from full presets
   const applyPreset = (idx: number) => {
     setSelectedPreset(idx);
     const p = RATE_BUILDUP_PRESETS[idx];
@@ -590,40 +793,188 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
     setMaterials(prev => prev.map(m => m.id === id ? { ...m, rate: marketRate } : m));
   };
 
+  // Fetch current market price suggestion (Requirement 2)
+  const handleFetchCurrentMarketPrice = (rowId: string, itemName: string) => {
+    if (!itemName) {
+      setMarketFetchNotice('Please enter a material name first (e.g. Sandcrete block, Cement, Sharp Sand).');
+      setTimeout(() => setMarketFetchNotice(null), 3500);
+      return;
+    }
+    const clean = itemName.toLowerCase();
+    const found = rates.find(r => 
+      r.item.toLowerCase().includes(clean) || 
+      clean.includes(r.item.toLowerCase()) ||
+      (clean.includes('block') && r.item.toLowerCase().includes('block')) ||
+      (clean.includes('cement') && r.item.toLowerCase().includes('cement')) ||
+      (clean.includes('sand') && r.item.toLowerCase().includes('sand')) ||
+      (clean.includes('granite') && r.item.toLowerCase().includes('granite')) ||
+      (clean.includes('rebar') && (r.item.toLowerCase().includes('rebar') || r.item.toLowerCase().includes('steel') || r.item.toLowerCase().includes('rod'))) ||
+      (clean.includes('wire') && r.item.toLowerCase().includes('wire')) ||
+      (clean.includes('paint') && r.item.toLowerCase().includes('paint')) ||
+      (clean.includes('water') && r.item.toLowerCase().includes('water'))
+    );
+
+    if (found) {
+      const price = selectedRegion === 'ph' 
+        ? (found.ph || found.portHarcourtRate || found.rate) 
+        : selectedRegion === 'abuja' 
+          ? (found.abuja || found.abujaRate || found.rate) 
+          : (found.lagos || found.lagosRate || found.rate);
+
+      if (price > 0) {
+        setMaterials(prev => prev.map(m => m.id === rowId ? {
+          ...m,
+          rate: price,
+          marketRef: found.item,
+          marketRate: price,
+          marketLocation: selectedRegion.toUpperCase(),
+          marketDate: new Date().toLocaleDateString('en-GB')
+        } : m));
+        setMarketFetchNotice(`Market price filled for "${itemName}": ₦${price.toLocaleString()} (${selectedRegion.toUpperCase()} index). Unlocked & fully editable.`);
+        setTimeout(() => setMarketFetchNotice(null), 4000);
+        return;
+      }
+    }
+    setMarketFetchNotice(`No direct market index match for "${itemName}". You have 100% discretion to type any quotation.`);
+    setTimeout(() => setMarketFetchNotice(null), 4000);
+  };
+
+  const handleFetchAllMarketPrices = () => {
+    let updatedCount = 0;
+    setMaterials(prev => prev.map(m => {
+      if (!m.name) return m;
+      const clean = m.name.toLowerCase();
+      const found = rates.find(r => 
+        r.item.toLowerCase().includes(clean) || 
+        clean.includes(r.item.toLowerCase()) ||
+        (clean.includes('block') && r.item.toLowerCase().includes('block')) ||
+        (clean.includes('cement') && r.item.toLowerCase().includes('cement')) ||
+        (clean.includes('sand') && r.item.toLowerCase().includes('sand')) ||
+        (clean.includes('granite') && r.item.toLowerCase().includes('granite')) ||
+        (clean.includes('rebar') && (r.item.toLowerCase().includes('rebar') || r.item.toLowerCase().includes('steel') || r.item.toLowerCase().includes('rod'))) ||
+        (clean.includes('wire') && r.item.toLowerCase().includes('wire')) ||
+        (clean.includes('paint') && r.item.toLowerCase().includes('paint')) ||
+        (clean.includes('water') && r.item.toLowerCase().includes('water'))
+      );
+      if (found) {
+        const price = selectedRegion === 'ph' 
+          ? (found.ph || found.portHarcourtRate || found.rate) 
+          : selectedRegion === 'abuja' 
+            ? (found.abuja || found.abujaRate || found.rate) 
+            : (found.lagos || found.lagosRate || found.rate);
+        if (price > 0) {
+          updatedCount++;
+          return {
+            ...m,
+            rate: price,
+            marketRef: found.item,
+            marketRate: price,
+            marketLocation: selectedRegion.toUpperCase(),
+            marketDate: new Date().toLocaleDateString('en-GB')
+          };
+        }
+      }
+      return m;
+    }));
+    setMarketFetchNotice(`Populated market suggestions for ${updatedCount} material row(s). All inputs remain 100% editable.`);
+    setTimeout(() => setMarketFetchNotice(null), 4000);
+  };
+
+  // Plant Table Row Actions (Requirement 4)
+  const handleAddPlantRow = () => {
+    const newRow: BuildupPlantRow = {
+      id: `plant-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: '',
+      dailyHire: '',
+      dailyOutput: dailyGangOutput || 35,
+    };
+    setPlantRows(prev => [...prev, newRow]);
+  };
+
+  const handleUpdatePlantRow = (id: string, field: keyof BuildupPlantRow, value: any) => {
+    setPlantRows(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const handleRemovePlantRow = (id: string) => {
+    setPlantRows(prev => prev.filter(p => p.id !== id));
+  };
+
   // Reset to current preset defaults
   const handleResetMaterials = () => {
-    const p = RATE_BUILDUP_PRESETS[selectedPreset];
-    setMaterials(p.materials.map((m, mIdx) => ({
-      id: `mat-${Date.now()}-${mIdx}`,
-      name: m.name,
-      unit: m.unit,
-      qty: m.qty,
-      rate: m.rate,
-      wastePercent: m.wastePercent,
-      marketRef: m.marketRef,
-      marketRate: m.marketRate,
-      marketLocation: m.marketLocation,
-      marketDate: m.marketDate,
-    })));
+    const cat = CATEGORY_MATERIAL_DEFAULTS[selectedCategoryKey];
+    if (cat) {
+      setMaterials(cat.materials.map((m, mIdx) => ({
+        id: `mat-${Date.now()}-${mIdx}`,
+        name: m.name,
+        unit: m.unit,
+        qty: m.qty,
+        rate: m.rate,
+        wastePercent: m.wastePercent,
+        marketRef: `NIQS ${m.name} Benchmark`,
+        marketRate: m.rate,
+        marketLocation: selectedRegion.toUpperCase(),
+        marketDate: 'Latest',
+      })));
+    } else {
+      const p = RATE_BUILDUP_PRESETS[selectedPreset];
+      setMaterials(p.materials.map((m, mIdx) => ({
+        id: `mat-${Date.now()}-${mIdx}`,
+        name: m.name,
+        unit: m.unit,
+        qty: m.qty,
+        rate: m.rate,
+        wastePercent: m.wastePercent,
+        marketRef: m.marketRef,
+        marketRate: m.marketRate,
+        marketLocation: m.marketLocation,
+        marketDate: m.marketDate,
+      })));
+    }
   };
 
   const handleResetLabour = () => {
-    const p = RATE_BUILDUP_PRESETS[selectedPreset];
-    setLabourGangDesc(p.labourGangDesc);
-    setLabourDailyGangWage(p.labourDailyGangWage);
-    setDailyGangOutput(p.dailyGangOutput);
-    setUseDirectLabour(p.useDirectLabour || false);
-    setDirectLabourOverride(p.directLabourOverride || 2500);
+    const cat = CATEGORY_MATERIAL_DEFAULTS[selectedCategoryKey];
+    if (cat) {
+      setNumSkilled(cat.numSkilled);
+      setWageSkilled(cat.wageSkilled);
+      setNumUnskilled(cat.numUnskilled);
+      setWageUnskilled(cat.wageUnskilled);
+      setDailyGangOutput(cat.dailyGangOutput);
+      setOverrideGangCost('');
+      setUseDirectLabour(false);
+    } else {
+      const p = RATE_BUILDUP_PRESETS[selectedPreset];
+      setLabourGangDesc(p.labourGangDesc);
+      setLabourDailyGangWage(p.labourDailyGangWage);
+      setDailyGangOutput(p.dailyGangOutput);
+      setUseDirectLabour(p.useDirectLabour || false);
+      setDirectLabourOverride(p.directLabourOverride || 2500);
+      setOverrideGangCost('');
+    }
   };
 
   const handleResetPlant = () => {
-    const p = RATE_BUILDUP_PRESETS[selectedPreset];
-    setPlantDesc(p.plantDesc);
-    setPlantDailyHire(p.plantDailyHire);
-    setPlantDailyOutput(p.plantDailyOutput);
-    setUseDirectPlant(p.useDirectPlant || false);
-    setDirectPlantOverride(p.directPlantOverride || 1428);
-    setNoPlantRequired(p.noPlantRequired || false);
+    const cat = CATEGORY_MATERIAL_DEFAULTS[selectedCategoryKey];
+    if (cat) {
+      setPlantRows(cat.plantRows.map((p, pIdx) => ({
+        id: `plant-${Date.now()}-${pIdx}`,
+        name: p.name,
+        dailyHire: p.dailyHire,
+        dailyOutput: p.dailyOutput,
+      })));
+      setNoPlantRequired(false);
+      setUseDirectPlant(false);
+      setUsePlantPercentOfLabour(false);
+    } else {
+      const p = RATE_BUILDUP_PRESETS[selectedPreset];
+      setPlantDesc(p.plantDesc);
+      setPlantDailyHire(p.plantDailyHire);
+      setPlantDailyOutput(p.plantDailyOutput);
+      setUseDirectPlant(p.useDirectPlant || false);
+      setDirectPlantOverride(p.directPlantOverride || 1428);
+      setNoPlantRequired(p.noPlantRequired || false);
+      setUsePlantPercentOfLabour(false);
+    }
   };
 
   // Find if user has a previously saved rate for this trade
@@ -639,7 +990,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
     if (savedRate.unit) setBuildUnit(savedRate.unit);
   };
 
-  // Live Calculations (100% dynamic, live reacting to QS edits)
+  // Live Calculations (100% dynamic, live reacting to QS edits on every keystroke)
   const totalNetMaterialBase = materials.reduce((acc, m) => {
     const q = Number(m.qty) || 0;
     const r = Number(m.rate) || 0;
@@ -655,15 +1006,30 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
 
   const totalMaterialWasteAmount = totalGrossMaterials - totalNetMaterialBase;
 
+  // Labour Gang Cost (Skilled + Unskilled with optional QS Override)
+  const calculatedDailyGangCost = (Number(numSkilled) || 0) * (Number(wageSkilled) || 0) + (Number(numUnskilled) || 0) * (Number(wageUnskilled) || 0);
+  const effectiveDailyGangCost = (overrideGangCost !== '' && overrideGangCost !== null && overrideGangCost !== undefined)
+    ? Number(overrideGangCost)
+    : (calculatedDailyGangCost > 0 ? calculatedDailyGangCost : (Number(labourDailyGangWage) || 0));
+
   const labourUnitCost = useDirectLabour
     ? (Number(directLabourOverride) || 0)
-    : ((Number(dailyGangOutput) > 0) ? ((Number(labourDailyGangWage) || 0) / Number(dailyGangOutput)) : 0);
+    : ((Number(dailyGangOutput) > 0) ? (effectiveDailyGangCost / Number(dailyGangOutput)) : 0);
+
+  // Plant & Equipment Unit Cost (Multi-row Equipment or % of Labour or Direct)
+  const plantRowsTotalUnitCost = plantRows.reduce((acc, p) => {
+    const hire = Number(p.dailyHire) || 0;
+    const out = Number(p.dailyOutput) || 0;
+    return acc + (out > 0 ? hire / out : 0);
+  }, 0);
 
   const plantUnitCost = noPlantRequired
     ? 0
-    : (useDirectPlant
-        ? (Number(directPlantOverride) || 0)
-        : ((Number(plantDailyOutput) > 0) ? ((Number(plantDailyHire) || 0) / Number(plantDailyOutput)) : 0));
+    : useDirectPlant
+      ? (Number(directPlantOverride) || 0)
+      : usePlantPercentOfLabour
+        ? (labourUnitCost * ((Number(plantPercentOfLabour) || 0) / 100))
+        : (plantRows.length > 0 ? plantRowsTotalUnitCost : ((Number(plantDailyOutput) > 0) ? (Number(plantDailyHire) || 0) / Number(plantDailyOutput) : 0));
 
   const prelimUnitCost = (includePrelim && Number(prelimTotalUnits) > 0)
     ? ((Number(prelimTotalCost) || 0) / Number(prelimTotalUnits))
@@ -671,8 +1037,11 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
 
   const primeCost = totalGrossMaterials + labourUnitCost + plantUnitCost + prelimUnitCost;
 
+  // Markup: Overheads, Profit, Contingency, VAT (Requirement 5)
   const ovh = Number(overheadPercent) || 0;
   const prf = Number(profitPercent) || 0;
+  const cont = Number(contingencyPercent) || 0;
+
   let poAmount = 0;
   if (poFormula === 'markup') {
     poAmount = primeCost * ((ovh + prf) / 100);
@@ -685,7 +1054,15 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
     poAmount = Number(fixedMarkupAmount) || 0;
   }
 
-  const compositeRate = Math.round(primeCost + poAmount);
+  const overheadsAmount = primeCost * (ovh / 100);
+  const profitAmount = primeCost * (prf / 100);
+  const contingencyAmount = primeCost * (cont / 100);
+
+  const subtotalBeforeVat = primeCost + poAmount + contingencyAmount;
+  const vatRate = isVatEnabled ? (Number(vatPercent) || 0) : 0;
+  const vatAmount = subtotalBeforeVat * (vatRate / 100);
+
+  const compositeRate = Math.round(subtotalBeforeVat + vatAmount);
   const compositeAbuja = Math.round(compositeRate * 1.05);
   const compositePH = Math.round(compositeRate * 1.09);
   const compositeNorthern = Math.round(compositeRate * 0.96);
@@ -701,10 +1078,10 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
 
   const benchmarkVal = benchmarkMatch
     ? (selectedRegion === 'ph' 
-        ? benchmarkMatch.ph 
+        ? (benchmarkMatch.ph || benchmarkMatch.portHarcourtRate || benchmarkMatch.rate || 0) 
         : selectedRegion === 'abuja' 
-          ? benchmarkMatch.abuja 
-          : benchmarkMatch.lagos)
+          ? (benchmarkMatch.abuja || benchmarkMatch.abujaRate || benchmarkMatch.rate || 0) 
+          : (benchmarkMatch.lagos || benchmarkMatch.lagosRate || benchmarkMatch.rate || 0))
     : null;
 
   const percentAboveBenchmark = (benchmarkVal && benchmarkVal > 0 && compositeRate > benchmarkVal * 1.25)
@@ -1080,7 +1457,12 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {filteredRates.map((r, idx) => {
-                    const regionalRate = r[selectedRegion];
+                    const regionalRate = (r[selectedRegion] ?? (
+                      selectedRegion === 'ph' ? (r.ph || r.portHarcourtRate) :
+                      selectedRegion === 'abuja' ? (r.abuja || r.abujaRate) :
+                      (r.lagos || r.lagosRate)
+                    )) || 0;
+                    const specText = r.spec || r.description || '';
                     return (
                       <tr key={idx} className="hover:bg-emerald-50/40 transition">
                         <td className="py-3 px-3 font-semibold text-slate-900">
@@ -1089,7 +1471,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                             {r.category}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-slate-600 max-w-sm">{r.spec}</td>
+                        <td className="py-3 px-3 text-slate-600 max-w-sm">{specText}</td>
                         <td className="py-3 px-2 text-center font-mono font-medium text-slate-800">{r.unit}</td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-emerald-800 text-sm">
                           {formatNaira(regionalRate)}
@@ -1101,7 +1483,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                               onClick={() => {
                                 onSelectRate({
                                   item: r.item,
-                                  description: r.spec,
+                                  description: specText,
                                   unit: r.unit,
                                   rate: regionalRate
                                 });
@@ -1131,12 +1513,12 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
               {/* Left Column: Editable Parameters & Granular Tables */}
               <div className="lg:col-span-7 space-y-4">
                 
-                {/* Presets & Trade Selection Bar */}
-                <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs space-y-2.5">
+                {/* Category Quick Pre-populates & Trade Presets (Requirement 1 & 2) */}
+                <div className="bg-white p-3.5 sm:p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Standard Nigerian Trade Presets:</span>
+                      <span>Quick Trade Pre-populate <span className="font-normal text-slate-400 lowercase">(Click to pre-fill smart defaults — all fields remain 100% editable)</span>:</span>
                     </label>
                     <button
                       type="button"
@@ -1145,20 +1527,47 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                       title="Reset all fields to the currently selected preset"
                     >
                       <RotateCcw className="w-3 h-3" />
-                      <span>Reset to Preset Default</span>
+                      <span>Reset to Defaults</span>
                     </button>
                   </div>
                   
-                  <div className="flex flex-wrap gap-1.5">
-                    {RATE_BUILDUP_PRESETS.map((p, idx) => (
+                  {/* Category Quick Buttons */}
+                  <div className="flex flex-wrap gap-2">
+                    {Object.keys(CATEGORY_MATERIAL_DEFAULTS).map((catKey) => {
+                      const cat = CATEGORY_MATERIAL_DEFAULTS[catKey];
+                      const isSelected = selectedCategoryKey === catKey;
+                      return (
+                        <button
+                          key={catKey}
+                          type="button"
+                          onClick={() => applyCategoryPreset(catKey)}
+                          className={`text-xs px-3 py-1.5 rounded-lg font-bold transition flex items-center gap-1.5 cursor-pointer border ${
+                            isSelected
+                              ? 'bg-emerald-800 text-white border-emerald-900 shadow-xs'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'
+                          }`}
+                        >
+                          <span>{cat.categoryName}</span>
+                          <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${isSelected ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 text-slate-600'}`}>
+                            {cat.unit}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Standard NIQS Presets Dropdown/Row */}
+                  <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+                    <span className="text-[11px] font-semibold text-slate-500">More Presets:</span>
+                    {RATE_BUILDUP_PRESETS.slice(0, 5).map((p, idx) => (
                       <button
                         key={idx}
                         type="button"
                         onClick={() => applyPreset(idx)}
-                        className={`text-xs px-2.5 py-1.5 rounded-lg font-medium transition cursor-pointer ${
+                        className={`text-[11px] px-2 py-1 rounded font-medium transition cursor-pointer ${
                           selectedPreset === idx
-                            ? 'bg-emerald-800 text-white shadow-xs'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            ? 'bg-emerald-100 text-emerald-900 font-bold border border-emerald-300'
+                            : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200'
                         }`}
                       >
                         {p.title.split(' ')[0]} {p.title.split(' ')[1]} ({p.unit})
@@ -1182,17 +1591,33 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                   )}
                 </div>
 
+                {/* Feedback Notification Banner */}
+                {marketFetchNotice && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs rounded-xl flex items-center justify-between shadow-xs animate-fade-in">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span>{marketFetchNotice}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMarketFetchNotice(null)}
+                      className="text-emerald-700 hover:text-emerald-900 font-bold ml-3"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 {/* Soft Benchmark Warning (Requirement 6 - Never blocks saving) */}
                 {percentAboveBenchmark !== null && benchmarkVal && (
                   <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2.5 shadow-xs animate-fade-in">
                     <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="space-y-1">
                       <p className="font-bold text-amber-950">
-                        Soft Market Benchmark Notice: This rate {formatNaira(compositeRate)} is {percentAboveBenchmark}% above {selectedRegion.toUpperCase()} average ({formatNaira(benchmarkVal)} for &ldquo;{benchmarkMatch?.item}&rdquo;)
+                        Advisory Market Index Notice: Computed rate {formatNaira(compositeRate)} is {percentAboveBenchmark}% above {selectedRegion.toUpperCase()} benchmark ({formatNaira(benchmarkVal)} for &ldquo;{benchmarkMatch?.item}&rdquo;)
                       </p>
                       <p className="text-[11px] text-amber-800 leading-relaxed">
-                        Check Plant hire or Material quantities if this was unintentional. 
-                        <strong>QS sole discretion applies:</strong> this is advisory only and rate can be saved freely without restriction.
+                        Market Index is for reference only, not enforcement. <strong>QS has 100% sole discretion:</strong> this rate is fully approved and can be saved freely without restriction.
                       </p>
                     </div>
                   </div>
@@ -1233,7 +1658,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                         <input
                           type="text"
                           value={buildUnit}
-                          onChange={(e) => setBuildUnit(e.target.value)}
+                          onChange={(e) => handleUnitChange(e.target.value)}
                           placeholder="m2, m3, kg, nr"
                           className="w-full text-xs p-2 rounded-lg bg-white border border-slate-300 text-slate-900 font-bold uppercase placeholder:text-slate-400 placeholder:italic focus:ring-2 focus:ring-emerald-500 shadow-xs"
                         />
@@ -1241,44 +1666,53 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Quick Unit Selector */}
-                  <div className="flex items-center gap-1.5 pt-1 text-[11px] text-slate-500">
-                    <span>Quick Unit:</span>
+                  {/* Quick Unit Selector (Requirement 1 - Updates labels and output suggestions dynamically) */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-slate-500">
+                    <span className="font-semibold text-slate-600">Quick Unit Switch:</span>
                     {['m2', 'm3', 'kg', 'm', 'nr'].map((u) => (
                       <button
                         key={u}
                         type="button"
-                        onClick={() => setBuildUnit(u)}
-                        className={`px-2 py-0.5 rounded font-mono font-medium transition ${
+                        onClick={() => handleUnitChange(u)}
+                        className={`px-2.5 py-1 rounded-md font-mono font-bold transition cursor-pointer ${
                           buildUnit.toLowerCase() === u
-                            ? 'bg-emerald-800 text-white font-bold'
+                            ? 'bg-emerald-800 text-white shadow-xs'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                         }`}
                       >
                         {u === 'm2' ? 'm²' : u === 'm3' ? 'm³' : u}
                       </button>
                     ))}
-                    <span className="text-slate-400 italic ml-2">Labels & suggested output update automatically</span>
+                    <span className="text-slate-400 italic ml-2">Labels & output suggestions adapt live</span>
                   </div>
                 </div>
 
                 {/* 1. MATERIAL TABLE - QS EDITS ALL (Requirement 2) */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-2 gap-2">
                     <div className="flex items-center gap-2">
                       <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold">1</span>
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                         Materials Supply & Waste Allowance <span className="font-normal text-slate-500 lowercase">(per {buildUnit})</span>
                       </h4>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={handleFetchAllMarketPrices}
+                        className="text-[11px] text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-1 rounded font-medium transition flex items-center gap-1"
+                        title="Look up all material prices against current Nigerian market index suggestions"
+                      >
+                        <Zap className="w-3 h-3 text-blue-600" />
+                        <span>Auto-Fetch Market Suggestions</span>
+                      </button>
                       <button
                         type="button"
                         onClick={handleResetMaterials}
-                        className="text-[11px] text-slate-500 hover:text-emerald-700 font-medium transition flex items-center gap-1"
+                        className="text-[11px] text-slate-500 hover:text-emerald-700 font-medium transition flex items-center gap-1 px-1.5 py-1"
                       >
                         <RotateCcw className="w-3 h-3" />
-                        <span>Reset Materials</span>
+                        <span>Reset</span>
                       </button>
                       <button
                         type="button"
@@ -1286,7 +1720,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                         className="text-xs px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg font-semibold flex items-center gap-1 transition"
                       >
                         <Plus className="w-3.5 h-3.5" />
-                        <span>Add Material Line</span>
+                        <span>Add Row</span>
                       </button>
                     </div>
                   </div>
@@ -1297,9 +1731,9 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                       <thead>
                         <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-[11px]">
                           <th className="py-2 px-2">Material Description</th>
-                          <th className="py-2 px-2 w-20">Unit</th>
-                          <th className="py-2 px-2 w-24">Qty / {buildUnit}</th>
-                          <th className="py-2 px-2 w-32">Rate (₦)</th>
+                          <th className="py-2 px-2 w-16">Unit</th>
+                          <th className="py-2 px-2 w-28">Qty per {buildUnit}</th>
+                          <th className="py-2 px-2 w-36">Rate (₦)</th>
                           <th className="py-2 px-2 w-20">Waste %</th>
                           <th className="py-2 px-2 w-28 text-right">Cost (₦)</th>
                           <th className="py-2 px-1 w-8 text-center"></th>
@@ -1309,7 +1743,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                         {materials.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="py-4 text-center text-slate-400 italic">
-                              No materials required for this item (e.g. manual excavation). Click &ldquo;Add Material Line&rdquo; to introduce supplies.
+                              No materials required for this item. Click &ldquo;Add Row&rdquo; to introduce supplies.
                             </td>
                           </tr>
                         ) : (
@@ -1367,42 +1801,17 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                                       value={mat.rate}
                                       onChange={(e) => handleUpdateMaterialRow(mat.id, 'rate', e.target.value === '' ? '' : Number(e.target.value))}
                                       placeholder={mat.marketRate ? String(mat.marketRate) : '0'}
-                                      onFocus={() => setActiveTooltipRowId(mat.id)}
-                                      onBlur={() => setTimeout(() => setActiveTooltipRowId(null), 300)}
                                       className="w-full text-xs p-1.5 rounded bg-white border border-slate-300 text-slate-900 font-mono text-right placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
                                     />
-                                    {hasMarketRef && (
-                                      <button
-                                        type="button"
-                                        onClick={() => setActiveTooltipRowId(activeTooltipRowId === mat.id ? null : mat.id)}
-                                        className="text-slate-400 hover:text-emerald-700 transition shrink-0"
-                                        title={`Market Index Ref: ₦${mat.marketRate?.toLocaleString()} (${mat.marketLocation || 'PH'}, ${mat.marketDate || '18/09/26'})`}
-                                      >
-                                        <Info className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => handleFetchCurrentMarketPrice(mat.id, mat.name)}
+                                      className="px-1.5 py-1 rounded bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-[10px] font-bold shrink-0 transition"
+                                      title="Fetch current market price suggestion into this editable input"
+                                    >
+                                      ⚡ Fetch
+                                    </button>
                                   </div>
-
-                                  {/* Market Index Tooltip & QS Overwrite Button */}
-                                  {activeTooltipRowId === mat.id && hasMarketRef && (
-                                    <div className="absolute z-20 left-0 top-full mt-1 w-64 p-2 bg-slate-900 text-white rounded-lg shadow-xl text-[10px] space-y-1">
-                                      <p className="font-semibold text-emerald-300">
-                                        Market Index: ₦{mat.marketRate?.toLocaleString()} ({mat.marketLocation || 'PH'}, {mat.marketDate || '18/09/26'})
-                                      </p>
-                                      <p className="text-slate-300 leading-tight">
-                                        QS has sole discretion to enter any supplier rate. System saves your typed price.
-                                      </p>
-                                      {isDifferentFromMarket && (
-                                        <button
-                                          type="button"
-                                          onMouseDown={() => handleSyncToMarket(mat.id, mat.marketRate!)}
-                                          className="mt-1 px-2 py-0.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded font-medium text-[10px] transition block w-full text-center"
-                                        >
-                                          Update to Market Price (₦{mat.marketRate?.toLocaleString()})
-                                        </button>
-                                      )}
-                                    </div>
-                                  )}
 
                                   {isDifferentFromMarket && (
                                     <div className="mt-0.5 flex items-center justify-between text-[10px]">
@@ -1411,7 +1820,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                                         type="button"
                                         onClick={() => handleSyncToMarket(mat.id, mat.marketRate!)}
                                         className="text-slate-500 hover:text-emerald-700 underline text-[10px]"
-                                        title="Click if you wish to sync back to market index price"
+                                        title="Click to fill market index suggestion"
                                       >
                                         Mkt: ₦{mat.marketRate?.toLocaleString()}
                                       </button>
@@ -1438,7 +1847,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                                   <button
                                     type="button"
                                     onClick={() => handleRemoveMaterialRow(mat.id)}
-                                    className="text-slate-300 hover:text-red-600 p-1 transition"
+                                    className="text-slate-300 hover:text-red-600 p-1 transition cursor-pointer"
                                     title="Delete row"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -1470,13 +1879,13 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                   </div>
                 </div>
 
-                {/* 2. LABOUR COMPONENT - QS EDITS ALL (Requirement 3) */}
+                {/* 2. LABOUR COMPONENT - GANG COMPOSITION (Requirement 3) */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-2 gap-2">
                     <div className="flex items-center gap-2">
                       <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-xs font-bold">2</span>
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Labour Gang & Daily Output <span className="font-normal text-slate-500 lowercase">(per {buildUnit})</span>
+                        Labour Gang Composition & Output <span className="font-normal text-slate-500 lowercase">(per {buildUnit})</span>
                       </h4>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1497,68 +1906,141 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                             : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
                         }`}
                       >
-                        {useDirectLabour ? '✓ Using Direct ₦/' + buildUnit : 'Enter Direct ₦/' + buildUnit}
+                        {useDirectLabour ? '✓ Direct Subcontract Rate' : 'Direct ₦/' + buildUnit}
                       </button>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Gang Description <span className="text-slate-400 font-normal">(Editable)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={labourGangDesc}
-                      onChange={(e) => setLabourGangDesc(e.target.value)}
-                      placeholder="e.g. Gang 1 mason + 2 labour"
-                      className="w-full text-xs p-2 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
-                    />
-                  </div>
-
                   {!useDirectLabour ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-amber-50/40 rounded-lg border border-amber-200/50">
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                          Daily Gang Wage (₦/day)
-                        </label>
-                        <input
-                          type="number"
-                          step="any"
-                          value={labourDailyGangWage}
-                          onChange={(e) => setLabourDailyGangWage(e.target.value === '' ? '' : Number(e.target.value))}
-                          placeholder="e.g. 15000"
-                          className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
-                        />
-                        <span className="text-[10px] text-slate-500 mt-0.5 block">Suggestion from NIQS craftsman guide</span>
+                    <div className="space-y-3">
+                      {/* Gang Breakdown: Skilled + Unskilled */}
+                      <div className="p-3 bg-amber-50/40 rounded-lg border border-amber-200/50 space-y-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                              Skilled Artisans (Nr)
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={numSkilled}
+                              onChange={(e) => setNumSkilled(e.target.value === '' ? '' : Number(e.target.value))}
+                              placeholder="1"
+                              className="w-full text-xs p-1.5 rounded bg-white border border-slate-300 text-slate-900 font-mono text-center shadow-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                              Skilled Daily Wage (₦)
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={wageSkilled}
+                              onChange={(e) => setWageSkilled(e.target.value === '' ? '' : Number(e.target.value))}
+                              placeholder="8000"
+                              className="w-full text-xs p-1.5 rounded bg-white border border-slate-300 text-slate-900 font-mono text-right shadow-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                              Unskilled Labour (Nr)
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={numUnskilled}
+                              onChange={(e) => setNumUnskilled(e.target.value === '' ? '' : Number(e.target.value))}
+                              placeholder="1"
+                              className="w-full text-xs p-1.5 rounded bg-white border border-slate-300 text-slate-900 font-mono text-center shadow-xs"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                              Unskilled Wage (₦)
+                            </label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={wageUnskilled}
+                              onChange={(e) => setWageUnskilled(e.target.value === '' ? '' : Number(e.target.value))}
+                              placeholder="4000"
+                              className="w-full text-xs p-1.5 rounded bg-white border border-slate-300 text-slate-900 font-mono text-right shadow-xs"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Daily Gang Cost (Live Calculated with Direct Override) */}
+                        <div className="pt-2 border-t border-amber-200/50 flex flex-wrap items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-700 font-medium">Daily Gang Total:</span>
+                            <span className="font-mono font-bold text-amber-900 bg-white px-2 py-0.5 rounded border border-amber-300">
+                              ₦{calculatedDailyGangCost.toLocaleString()}/day
+                            </span>
+                            <span className="text-[10px] text-slate-500 italic">({numSkilled} skilled @ ₦{Number(wageSkilled).toLocaleString()} + {numUnskilled} unskilled @ ₦{Number(wageUnskilled).toLocaleString()})</span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] text-slate-600">Gang Cost Override:</span>
+                            <input
+                              type="number"
+                              step="any"
+                              value={overrideGangCost}
+                              onChange={(e) => setOverrideGangCost(e.target.value === '' ? '' : Number(e.target.value))}
+                              placeholder="Auto"
+                              className="w-24 text-xs p-1 rounded bg-white border border-slate-300 text-slate-900 font-mono text-right placeholder:text-slate-400 placeholder:italic shadow-xs"
+                              title="Leave empty to use computed skilled + unskilled gang total"
+                            />
+                          </div>
+                        </div>
                       </div>
 
-                      <div>
-                        <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                          Daily Gang Output ({buildUnit}/day)
-                        </label>
-                        <input
-                          type="number"
-                          step="any"
-                          value={dailyGangOutput}
-                          onChange={(e) => setDailyGangOutput(e.target.value === '' ? '' : Number(e.target.value))}
-                          placeholder={getLabourOutputPlaceholder(buildUnit)}
-                          className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
-                        />
-                        <span className="text-[10px] text-slate-500 mt-0.5 block">Output unit matches main unit ({buildUnit})</span>
+                      {/* Gang Output */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            Gang Description
+                          </label>
+                          <input
+                            type="text"
+                            value={labourGangDesc}
+                            onChange={(e) => setLabourGangDesc(e.target.value)}
+                            placeholder="e.g. Gang 1 mason + 1 labour"
+                            className="w-full text-xs p-2 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 placeholder:italic shadow-xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                            Daily Gang Output ({buildUnit}/day)
+                          </label>
+                          <input
+                            type="number"
+                            step="any"
+                            value={dailyGangOutput}
+                            onChange={(e) => setDailyGangOutput(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder={getLabourOutputPlaceholder(buildUnit)}
+                            className="w-full text-xs p-2 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono placeholder:text-slate-400 placeholder:italic shadow-xs"
+                          />
+                          <span className="text-[10px] text-slate-500 mt-0.5 block">Formula: Daily Gang Cost (₦{effectiveDailyGangCost.toLocaleString()}) ÷ Output ({dailyGangOutput} {buildUnit})</span>
+                        </div>
                       </div>
                     </div>
                   ) : (
                     <div className="p-3 bg-amber-50/50 rounded-lg border border-amber-200 space-y-2">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-semibold text-amber-950">
-                          Direct Labour Rate (₦/{buildUnit}) <span className="text-slate-400 font-normal">— Sole QS Override</span>
+                          Direct Subcontract Labour Rate (₦/{buildUnit}) <span className="text-slate-400 font-normal">— Sole QS Override</span>
                         </label>
                         <button
                           type="button"
                           onClick={() => setUseDirectLabour(false)}
                           className="text-[11px] text-amber-700 hover:underline"
                         >
-                          Switch back to Wage ÷ Output
+                          Switch back to Gang Wage ÷ Output
                         </button>
                       </div>
                       <input
@@ -1580,13 +2062,13 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                   </div>
                 </div>
 
-                {/* 3. PLANT COMPONENT - STORED AS HIRE/OUTPUT (Requirement 4) */}
+                {/* 3. PLANT & EQUIPMENT - MULTI-ROW WITH % TOGGLE (Requirement 4) */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-2 gap-2">
                     <div className="flex items-center gap-2">
                       <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-800 flex items-center justify-center text-xs font-bold">3</span>
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Plant, Tools & Equipment <span className="font-normal text-slate-500 lowercase">(Stored as Hire ÷ Output)</span>
+                        Plant, Tools & Equipment <span className="font-normal text-slate-500 lowercase">(Hire ÷ Output or % of Labour)</span>
                       </h4>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1603,7 +2085,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                           type="checkbox"
                           checked={noPlantRequired}
                           onChange={(e) => setNoPlantRequired(e.target.checked)}
-                          className="rounded text-emerald-700 focus:ring-emerald-500"
+                          className="rounded text-emerald-700 focus:ring-emerald-500 cursor-pointer"
                         />
                         <span>No Plant Required</span>
                       </label>
@@ -1612,79 +2094,144 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
 
                   {!noPlantRequired ? (
                     <div className="space-y-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-700 mb-1">
-                          Plant Description <span className="text-slate-400 font-normal">(Editable)</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={plantDesc}
-                          onChange={(e) => setPlantDesc(e.target.value)}
-                          placeholder="e.g. 500L Concrete Mixer & Poker Vibrator"
-                          className="w-full text-xs p-2 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
-                        />
+                      {/* Toggle: Multi-row Equipment vs. % of Labour */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setUsePlantPercentOfLabour(false)}
+                            className={`px-2.5 py-1 rounded font-semibold text-xs transition cursor-pointer ${
+                              !usePlantPercentOfLabour
+                                ? 'bg-blue-800 text-white shadow-xs'
+                                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                            }`}
+                          >
+                            Equipment Hire Table ({plantRows.length} items)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setUsePlantPercentOfLabour(true)}
+                            className={`px-2.5 py-1 rounded font-semibold text-xs transition cursor-pointer ${
+                              usePlantPercentOfLabour
+                                ? 'bg-blue-800 text-white shadow-xs'
+                                : 'bg-slate-200 text-slate-700 hover:bg-slate-300'
+                            }`}
+                          >
+                            Use % of Labour Instead
+                          </button>
+                        </div>
+
+                        {!usePlantPercentOfLabour && (
+                          <button
+                            type="button"
+                            onClick={handleAddPlantRow}
+                            className="text-xs px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 rounded font-semibold flex items-center gap-1 transition"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Add Equipment Line</span>
+                          </button>
+                        )}
                       </div>
 
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-600">Plant Cost Calculation Method:</span>
-                        <button
-                          type="button"
-                          onClick={() => setUseDirectPlant(!useDirectPlant)}
-                          className={`text-xs px-2.5 py-0.5 rounded-full font-semibold transition border ${
-                            useDirectPlant
-                              ? 'bg-blue-100 text-blue-900 border-blue-300'
-                              : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                          }`}
-                        >
-                          {useDirectPlant ? '✓ Direct ₦/' + buildUnit : 'Enter per Unit directly'}
-                        </button>
-                      </div>
-
-                      {!useDirectPlant ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-blue-50/40 rounded-lg border border-blue-200/50">
+                      {usePlantPercentOfLabour ? (
+                        <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200 flex items-center justify-between gap-3 text-xs">
                           <div>
-                            <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                              Daily Hire / Operation (₦/day)
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                              Plant & Small Tools as % of Labour Component
                             </label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={plantDailyHire}
-                              onChange={(e) => setPlantDailyHire(e.target.value === '' ? '' : Number(e.target.value))}
-                              placeholder="e.g. 10000"
-                              className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
-                            />
-                            <span className="text-[10px] text-slate-500 mt-0.5 block">Stored as N/day ÷ Output (not fixed N/m2)</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                step="any"
+                                value={plantPercentOfLabour}
+                                onChange={(e) => setPlantPercentOfLabour(e.target.value === '' ? '' : Number(e.target.value))}
+                                placeholder="5"
+                                className="w-24 text-xs p-1.5 rounded bg-white border border-slate-300 text-slate-900 font-mono shadow-xs text-right"
+                              />
+                              <span className="font-bold text-slate-700">% of Labour Cost (₦{Math.round(labourUnitCost).toLocaleString()})</span>
+                            </div>
                           </div>
-
-                          <div>
-                            <label className="block text-[11px] font-medium text-slate-700 mb-1">
-                              Daily Plant Output ({buildUnit}/day)
-                            </label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={plantDailyOutput}
-                              onChange={(e) => setPlantDailyOutput(e.target.value === '' ? '' : Number(e.target.value))}
-                              placeholder={getPlantOutputPlaceholder(buildUnit)}
-                              className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
-                            />
-                            <span className="text-[10px] text-slate-500 mt-0.5 block">Output matches unit ({buildUnit})</span>
+                          <div className="text-right">
+                            <span className="text-[10px] text-slate-500 block">Computed Plant:</span>
+                            <span className="font-mono font-bold text-blue-900 text-sm">
+                              {formatNaira(Math.round(plantUnitCost))} / {buildUnit}
+                            </span>
                           </div>
                         </div>
                       ) : (
-                        <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-200 space-y-2">
-                          <label className="text-xs font-semibold text-blue-950 block">
-                            Direct Plant Rate (₦/{buildUnit}) <span className="text-slate-400 font-normal">— QS Override</span>
-                          </label>
-                          <input
-                            type="number"
-                            step="any"
-                            value={directPlantOverride}
-                            onChange={(e) => setDirectPlantOverride(e.target.value === '' ? '' : Number(e.target.value))}
-                            placeholder="e.g. 1428"
-                            className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
-                          />
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 text-[11px]">
+                                <th className="py-2 px-2">Equipment Description</th>
+                                <th className="py-2 px-2 w-32">Daily Hire (₦/day)</th>
+                                <th className="py-2 px-2 w-28">Output ({buildUnit}/day)</th>
+                                <th className="py-2 px-2 w-28 text-right">Cost / {buildUnit}</th>
+                                <th className="py-2 px-1 w-8 text-center"></th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {plantRows.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="py-3 text-center text-slate-400 italic">
+                                    No equipment rows added. Click &ldquo;Add Equipment Line&rdquo; to add mixers, scaffolding or tools.
+                                  </td>
+                                </tr>
+                              ) : (
+                                plantRows.map((p) => {
+                                  const hire = Number(p.dailyHire) || 0;
+                                  const out = Number(p.dailyOutput) || 0;
+                                  const unitCost = out > 0 ? hire / out : 0;
+                                  return (
+                                    <tr key={p.id} className="hover:bg-slate-50/70 transition">
+                                      <td className="py-2 px-2">
+                                        <input
+                                          type="text"
+                                          value={p.name}
+                                          onChange={(e) => handleUpdatePlantRow(p.id, 'name', e.target.value)}
+                                          placeholder="e.g. 500L Concrete Mixer"
+                                          className="w-full text-xs p-1.5 rounded bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 shadow-xs"
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <input
+                                          type="number"
+                                          step="any"
+                                          value={p.dailyHire}
+                                          onChange={(e) => handleUpdatePlantRow(p.id, 'dailyHire', e.target.value === '' ? '' : Number(e.target.value))}
+                                          placeholder="15000"
+                                          className="w-full text-xs p-1.5 rounded bg-white border border-slate-300 text-slate-900 font-mono text-right shadow-xs"
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2">
+                                        <input
+                                          type="number"
+                                          step="any"
+                                          value={p.dailyOutput}
+                                          onChange={(e) => handleUpdatePlantRow(p.id, 'dailyOutput', e.target.value === '' ? '' : Number(e.target.value))}
+                                          placeholder={getPlantOutputPlaceholder(buildUnit)}
+                                          className="w-full text-xs p-1.5 rounded bg-white border border-slate-300 text-slate-900 font-mono text-right shadow-xs"
+                                        />
+                                      </td>
+                                      <td className="py-2 px-2 text-right font-mono font-bold text-blue-900">
+                                        {formatNaira(Math.round(unitCost))}
+                                      </td>
+                                      <td className="py-2 px-1 text-center">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleRemovePlantRow(p.id)}
+                                          className="text-slate-300 hover:text-red-600 p-1 transition cursor-pointer"
+                                          title="Delete plant row"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                          </table>
                         </div>
                       )}
 
@@ -1702,7 +2249,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                   )}
                 </div>
 
-                {/* 4. PRELIMINARIES / WATER / HAULAGE APPORTIONMENT (User Example: Borehole 350,000 / 5400) */}
+                {/* 4. PRELIMINARIES / WATER / HAULAGE APPORTIONMENT (Optional) */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <div className="flex items-center gap-2">
@@ -1783,21 +2330,21 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                   )}
                 </div>
 
-                {/* 5. CONTRACTOR P&O - QS SOLE DISCRETION (Requirement 5) */}
+                {/* 5. CONTRACTOR P&O, CONTINGENCY & VAT - QS SOLE DISCRETION (Requirement 5) */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <div className="flex items-center gap-2">
                       <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-xs font-bold">5</span>
                       <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Overheads & Profit (P&O) Formula Selection
+                        Overheads, Profit, Contingency & VAT <span className="font-normal text-slate-500 lowercase">(QS 100% Discretion)</span>
                       </h4>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Overheads Allowance (%)
+                        Overheads (%)
                       </label>
                       <input
                         type="number"
@@ -1805,73 +2352,79 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                         value={overheadPercent}
                         onChange={(e) => setOverheadPercent(e.target.value === '' ? '' : Number(e.target.value))}
                         placeholder="10%"
-                        className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
+                        className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono shadow-xs text-right"
                       />
                     </div>
 
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Contractor Profit (%)
+                        Profit (%)
                       </label>
                       <input
                         type="number"
                         step="any"
                         value={profitPercent}
                         onChange={(e) => setProfitPercent(e.target.value === '' ? '' : Number(e.target.value))}
-                        placeholder="15%"
-                        className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono placeholder:text-slate-400 placeholder:italic focus:ring-1 focus:ring-emerald-500 shadow-xs"
+                        placeholder="10%"
+                        className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono shadow-xs text-right"
                       />
                     </div>
 
                     <div>
                       <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Formula Method
-                      </label>
-                      <select
-                        value={poFormula}
-                        onChange={(e) => setPoFormula(e.target.value as any)}
-                        className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 focus:ring-1 focus:ring-emerald-500 shadow-xs"
-                      >
-                        <option value="markup">Prime × (1 + O% + P%) [Standard]</option>
-                        <option value="sequential">Prime × (1 + O%) × (1 + P%) [Compounded]</option>
-                        <option value="margin">Prime ÷ [1 - (O% + P%)] [Selling Margin]</option>
-                        <option value="fixed">Fixed Lump Sum ₦/unit</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {poFormula === 'fixed' && (
-                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200">
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                        Fixed P&O Addition (₦/{buildUnit})
+                        Contingency (%)
                       </label>
                       <input
                         type="number"
                         step="any"
-                        value={fixedMarkupAmount}
-                        onChange={(e) => setFixedMarkupAmount(e.target.value === '' ? '' : Number(e.target.value))}
-                        placeholder="e.g. 3500"
-                        className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono shadow-xs"
+                        value={contingencyPercent}
+                        onChange={(e) => setContingencyPercent(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="5%"
+                        className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono shadow-xs text-right"
                       />
                     </div>
-                  )}
 
-                  <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-semibold text-slate-700">
+                          VAT (7.5%)
+                        </label>
+                        <input
+                          type="checkbox"
+                          checked={isVatEnabled}
+                          onChange={(e) => setIsVatEnabled(e.target.checked)}
+                          className="rounded text-emerald-700 focus:ring-emerald-500 cursor-pointer"
+                          title="Toggle VAT on/off"
+                        />
+                      </div>
+                      <input
+                        type="number"
+                        step="any"
+                        disabled={!isVatEnabled}
+                        value={vatPercent}
+                        onChange={(e) => setVatPercent(e.target.value === '' ? '' : Number(e.target.value))}
+                        placeholder="7.5%"
+                        className="w-full text-xs p-2 rounded bg-white border border-slate-300 text-slate-900 font-mono shadow-xs text-right disabled:opacity-40"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-200 flex flex-wrap items-center justify-between gap-2">
                     <span>
-                      Prime Cost: <strong className="font-mono text-slate-800">{formatNaira(Math.round(primeCost))}</strong> + P&O ({overheadPercent}% Ovh + {profitPercent}% Prf):
+                      Prime Cost: <strong className="font-mono text-slate-800">{formatNaira(Math.round(primeCost))}</strong> + O&P ({overheadPercent}% + {profitPercent}%) + Cont ({contingencyPercent}%):
                     </span>
                     <span className="font-mono font-bold text-emerald-800">
-                      +{formatNaira(Math.round(poAmount))} / {buildUnit}
+                      Subtotal: {formatNaira(Math.round(subtotalBeforeVat))} {isVatEnabled && `+ VAT: ₦${Math.round(vatAmount).toLocaleString()}`}
                     </span>
                   </div>
                 </div>
 
               </div>
 
-              {/* Right Column: Dynamic Calculation Receipt, Multi-City Rates & Save Actions */}
+              {/* Right Column: Dynamic Real-Time Calculation Receipt & City Multipliers */}
               <div className="lg:col-span-5 space-y-4">
                 
-                {/* Result Summary Card */}
+                {/* Result Summary Card - Real-Time Updates On Every Keystroke (Requirement 6) */}
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-md space-y-4 sticky top-4">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                     <div>
@@ -1887,52 +2440,113 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                     </span>
                   </div>
 
-                  {/* Scientific Breakdown Receipt */}
+                  {/* Real-Time Breakdown Receipt with Proportions */}
                   <div className="text-xs space-y-2">
-                    <div className="flex justify-between text-slate-600">
-                      <span>Gross Materials ({materials.length} line items):</span>
-                      <span className="font-mono font-medium text-slate-800">{formatNaira(Math.round(totalGrossMaterials))}</span>
+                    <div className="flex justify-between items-center text-slate-600">
+                      <span>Materials Component:</span>
+                      <div className="text-right">
+                        <span className="font-mono font-medium text-slate-800">{formatNaira(Math.round(totalGrossMaterials))}</span>
+                        <span className="text-[10px] text-slate-400 ml-1.5">
+                          ({compositeRate > 0 ? Math.round((totalGrossMaterials / compositeRate) * 100) : 0}%)
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex justify-between text-slate-600">
-                      <span>Labour ({useDirectLabour ? 'Direct Override' : `${Number(labourDailyGangWage).toLocaleString()}/day ÷ ${dailyGangOutput} ${buildUnit}`}):</span>
-                      <span className="font-mono font-medium text-slate-800">{formatNaira(Math.round(labourUnitCost))}</span>
+                    <div className="flex justify-between items-center text-slate-600">
+                      <span>Labour Component:</span>
+                      <div className="text-right">
+                        <span className="font-mono font-medium text-slate-800">{formatNaira(Math.round(labourUnitCost))}</span>
+                        <span className="text-[10px] text-slate-400 ml-1.5">
+                          ({compositeRate > 0 ? Math.round((labourUnitCost / compositeRate) * 100) : 0}%)
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex justify-between text-slate-600">
-                      <span>Plant ({noPlantRequired ? 'None' : useDirectPlant ? 'Direct Override' : `${Number(plantDailyHire).toLocaleString()}/day ÷ ${plantDailyOutput} ${buildUnit}`}):</span>
-                      <span className="font-mono font-medium text-slate-800">{formatNaira(Math.round(plantUnitCost))}</span>
+                    <div className="flex justify-between items-center text-slate-600">
+                      <span>Plant & Equipment:</span>
+                      <div className="text-right">
+                        <span className="font-mono font-medium text-slate-800">{formatNaira(Math.round(plantUnitCost))}</span>
+                        <span className="text-[10px] text-slate-400 ml-1.5">
+                          ({compositeRate > 0 ? Math.round((plantUnitCost / compositeRate) * 100) : 0}%)
+                        </span>
+                      </div>
                     </div>
 
                     {includePrelim && prelimUnitCost > 0 && (
-                      <div className="flex justify-between text-slate-600">
-                        <span>Preliminaries Apportionment:</span>
+                      <div className="flex justify-between items-center text-slate-600">
+                        <span>Preliminaries:</span>
                         <span className="font-mono font-medium text-purple-800">+{formatNaira(Math.round(prelimUnitCost * 100) / 100)}</span>
                       </div>
                     )}
 
                     <div className="flex justify-between font-bold text-slate-900 pt-2 border-t border-slate-100">
-                      <span>Total Prime Cost per {buildUnit}:</span>
+                      <span>Total Prime Cost:</span>
                       <span className="font-mono text-slate-900">{formatNaira(Math.round(primeCost))}</span>
                     </div>
 
-                    <div className="flex justify-between text-slate-700">
-                      <span>Contractor P&O ({overheadPercent}% Ovh + {profitPercent}% Prf):</span>
-                      <span className="font-mono font-bold text-emerald-700">+{formatNaira(Math.round(poAmount))}</span>
+                    <div className="flex justify-between items-center text-slate-700">
+                      <span>Overhead & Profit ({overheadPercent}% + {profitPercent}%):</span>
+                      <div className="text-right">
+                        <span className="font-mono font-bold text-emerald-700">+{formatNaira(Math.round(poAmount))}</span>
+                        <span className="text-[10px] text-slate-400 ml-1.5">
+                          ({compositeRate > 0 ? Math.round((poAmount / compositeRate) * 100) : 0}%)
+                        </span>
+                      </div>
                     </div>
 
+                    <div className="flex justify-between items-center text-slate-700">
+                      <span>Contingency ({contingencyPercent}%):</span>
+                      <div className="text-right">
+                        <span className="font-mono font-semibold text-slate-700">+{formatNaira(Math.round(contingencyAmount))}</span>
+                        <span className="text-[10px] text-slate-400 ml-1.5">
+                          ({compositeRate > 0 ? Math.round((contingencyAmount / compositeRate) * 100) : 0}%)
+                        </span>
+                      </div>
+                    </div>
+
+                    {isVatEnabled && (
+                      <div className="flex justify-between items-center text-slate-700">
+                        <span>VAT ({vatPercent}%):</span>
+                        <div className="text-right">
+                          <span className="font-mono font-semibold text-slate-700">+{formatNaira(Math.round(vatAmount))}</span>
+                          <span className="text-[10px] text-slate-400 ml-1.5">
+                            ({compositeRate > 0 ? Math.round((vatAmount / compositeRate) * 100) : 0}%)
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex justify-between font-bold text-emerald-950 pt-2 border-t border-emerald-200 text-sm bg-emerald-50/70 p-2.5 rounded-lg">
-                      <span>COMPOSITE UNIT RATE:</span>
+                      <span>ALL-IN COMPOSITE RATE:</span>
                       <span className="font-mono text-base">{formatNaira(compositeRate)} / {buildUnit}</span>
                     </div>
 
+                    {/* Comparison with Market Index Benchmark (Advisory Only) */}
+                    {benchmarkVal && (
+                      <div className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-600 font-medium">Market Benchmark ({selectedRegion.toUpperCase()}):</span>
+                          <span className="font-mono font-semibold text-slate-800">{formatNaira(benchmarkVal)}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-600">Difference:</span>
+                          <span className={`font-mono font-bold ${compositeRate > benchmarkVal ? 'text-amber-700' : 'text-emerald-700'}`}>
+                            {compositeRate >= benchmarkVal ? '+' : ''}{formatNaira(compositeRate - benchmarkVal)} ({compositeRate >= benchmarkVal ? '+' : ''}{benchmarkVal > 0 ? Math.round(((compositeRate - benchmarkVal) / benchmarkVal) * 100) : 0}%)
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 italic block">
+                          Advisory benchmark only — QS sole discretion applies.
+                        </span>
+                      </div>
+                    )}
+
                     {/* Regional Multi-City Breakdown */}
-                    <div className="pt-3 border-t border-slate-100 space-y-1.5 bg-slate-50 p-3 rounded-lg">
+                    <div className="pt-2 border-t border-slate-100 space-y-1.5 bg-slate-50 p-3 rounded-lg">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
                           Geopolitical Multi-City Index
                         </span>
-                        <span className="text-[10px] text-emerald-700 font-semibold">Auto-calculated</span>
+                        <span className="text-[10px] text-emerald-700 font-semibold">Live Multipliers</span>
                       </div>
 
                       <div className="flex justify-between text-xs text-slate-700">
@@ -1957,7 +2571,7 @@ export const NigerianRatesModal: React.FC<NigerianRatesModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Actions & Saving Buttons (Requirement 6) */}
+                  {/* Actions & Saving Buttons */}
                   <div className="space-y-2 pt-2">
                     {onSelectRate && (
                       <button

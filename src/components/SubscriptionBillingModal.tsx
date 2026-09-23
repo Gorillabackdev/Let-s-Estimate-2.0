@@ -426,7 +426,7 @@ export const SubscriptionBillingModal: React.FC<SubscriptionBillingModalProps> =
                     type="text"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="e.g. +234 815 151 2100"
+                    placeholder="e.g. +234 803 000 0000"
                     className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white text-slate-900 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
                   />
                 </div>

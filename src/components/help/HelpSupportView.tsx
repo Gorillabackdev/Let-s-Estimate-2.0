@@ -15,19 +15,28 @@ import {
   FolderArchive
 } from 'lucide-react';
 import { AppGlobalView } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 interface HelpSupportViewProps {
   onNavigate: (view: AppGlobalView) => void;
 }
 
 export const HelpSupportView: React.FC<HelpSupportViewProps> = ({ onNavigate }) => {
+  const { user } = useAuth();
   const [downloadingGuide, setDownloadingGuide] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+
+  const userEmail = user?.email || 'emmanuelisaac888@gmail.com';
+  const userPhone = user?.phone || '';
 
   const handleDownloadGuide = async () => {
     try {
       setDownloadingGuide(true);
-      const res = await fetch('/api/guide/pdf');
+      const params = new URLSearchParams();
+      if (userEmail) params.append('email', userEmail);
+      if (userPhone) params.append('phone', userPhone);
+      const queryString = params.toString() ? `?${params.toString()}` : '';
+      const res = await fetch(`/api/guide/pdf${queryString}`);
       if (!res.ok) throw new Error('Failed to download guide');
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
@@ -198,10 +207,27 @@ export const HelpSupportView: React.FC<HelpSupportViewProps> = ({ onNavigate }) 
           <p className="text-slate-600 leading-relaxed">
             Need customized enterprise rates, multi-user license keys, or technical assistance with your drawings?
           </p>
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-            <div><strong>Email:</strong> support@estimate.ng</div>
-            <div><strong>Hotline / WhatsApp:</strong> +234 815 151 2100</div>
-            <div><strong>Accreditation:</strong> NIQS / BESMM4 Technical Standards Partner</div>
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+            <div>
+              <span className="text-slate-500 block text-[11px] font-medium">Official Contact Email</span>
+              <a href={`mailto:${userEmail}`} className="font-bold text-emerald-700 hover:underline">
+                {userEmail}
+              </a>
+            </div>
+            {userPhone ? (
+              <div>
+                <span className="text-slate-500 block text-[11px] font-medium">Hotline / WhatsApp</span>
+                <span className="font-bold text-slate-900">{userPhone}</span>
+              </div>
+            ) : null}
+            <div className="pt-1 border-t border-slate-200/60">
+              <span className="text-slate-500 block text-[11px] font-medium">Lead Consultant &amp; Practice</span>
+              <span className="font-bold text-slate-900">{user?.full_name || 'Emmanuel Isaac, MNIQS'} • Estimate with Isaac</span>
+            </div>
+            <div>
+              <span className="text-slate-500 block text-[11px] font-medium">Accreditation</span>
+              <span className="font-semibold text-emerald-800">NIQS / BESMM4 Technical Standards Partner</span>
+            </div>
           </div>
         </div>
 

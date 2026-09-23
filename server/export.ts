@@ -460,10 +460,23 @@ export function generatePdfBuffer(data: ExportData): Promise<Buffer> {
   });
 }
 
+export interface UserGuideOptions {
+  contactEmail?: string;
+  whatsappPhone?: string;
+  brandName?: string;
+  leadQsName?: string;
+}
+
 /**
  * Generate a comprehensive, professional User Guide & Onboarding Manual PDF for new users
  */
-export function generateUserGuidePdfBuffer(): Promise<Buffer> {
+export function generateUserGuidePdfBuffer(options?: UserGuideOptions): Promise<Buffer> {
+  const contactEmail = options?.contactEmail || 'emmanuelisaac888@gmail.com';
+  const whatsappPhone = options?.whatsappPhone || '';
+  const brandName = options?.brandName || 'Estimate with Isaac';
+  const leadQsName = options?.leadQsName || 'Emmanuel Isaac, MNIQS';
+  const footerLabel = `Let's Estimate 2.0 User Manual - ${brandName} (${contactEmail})`;
+
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({
@@ -471,7 +484,7 @@ export function generateUserGuidePdfBuffer(): Promise<Buffer> {
         margin: 40,
         info: {
           Title: "Let's Estimate 2.0 - Complete User Guide & Manual",
-          Author: "Let's Estimate Engineering Team",
+          Author: leadQsName,
           Subject: 'Comprehensive User Guide for Nigerian Construction Professionals',
         },
       });
@@ -555,7 +568,7 @@ export function generateUserGuidePdfBuffer(): Promise<Buffer> {
       );
 
       // Footer of Page 1
-      doc.fillColor('#94a3b8').fontSize(7).text("Page 1 of 3 - Let's Estimate 2.0 User Manual - https://estimate.ng", 50, 790, { align: 'center', width: 495 });
+      doc.fillColor('#94a3b8').fontSize(7).text(`Page 1 of 3 - ${footerLabel}`, 50, 790, { align: 'center', width: 495 });
 
       // PAGE 2: 5-STEP WORKFLOW GUIDE
       doc.addPage();
@@ -622,7 +635,7 @@ export function generateUserGuidePdfBuffer(): Promise<Buffer> {
       );
 
       // Footer of Page 2
-      doc.fillColor('#94a3b8').fontSize(7).text("Page 2 of 3 - Let's Estimate 2.0 User Manual - https://estimate.ng", 50, 790, { align: 'center', width: 495 });
+      doc.fillColor('#94a3b8').fontSize(7).text(`Page 2 of 3 - ${footerLabel}`, 50, 790, { align: 'center', width: 495 });
 
       // PAGE 3: TIPS, BEST PRACTICES & FAQ
       doc.addPage();
@@ -681,14 +694,16 @@ export function generateUserGuidePdfBuffer(): Promise<Buffer> {
       y += 115;
       doc.rect(50, y, 495, 65).fill('#ecfdf5').stroke('#6ee7b7');
       doc.fillColor('#065f46').fontSize(10).font('Helvetica-Bold').text('Need Help or Custom Enterprise Deployment?', 65, y + 10);
+      
+      const hotlineInfo = whatsappPhone ? `  |  WhatsApp Hotline: ${whatsappPhone}` : '';
       doc.fillColor('#047857').fontSize(8).font('Helvetica').text(
-        "Email Support: support@estimate.ng  |  WhatsApp Hotline: +234 815 151 2100  |  Website: https://estimate.ng\n" +
+        `Official Support: ${contactEmail}${hotlineInfo}  |  Lead Consultant: ${leadQsName}\n` +
         "Built with pride for Quantity Surveyors, Civil Engineers, and Builders across Nigeria.",
         65, y + 26, { width: 465 }
       );
 
       // Footer of Page 3
-      doc.fillColor('#94a3b8').fontSize(7).text("Page 3 of 3 - Let's Estimate 2.0 User Manual - https://estimate.ng", 50, 790, { align: 'center', width: 495 });
+      doc.fillColor('#94a3b8').fontSize(7).text(`Page 3 of 3 - ${footerLabel}`, 50, 790, { align: 'center', width: 495 });
 
       doc.end();
     } catch (error) {

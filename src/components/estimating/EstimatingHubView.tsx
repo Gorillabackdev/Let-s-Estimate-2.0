@@ -21,6 +21,7 @@ import { formatNaira } from '../../utils/format';
 import { BoqTable } from '../BoqTable';
 import { ManualTakeoffWorkspace } from './ManualTakeoffWorkspace';
 import { QsAssistantPanel } from './QsAssistantPanel';
+import { MarketRatesEngine } from './MarketRatesEngine';
 
 interface EstimatingHubViewProps {
   project?: Project | null;
@@ -29,6 +30,7 @@ interface EstimatingHubViewProps {
   onOpenAiTakeoff: () => void;
   onOpenRateLibrary: () => void;
   onUpdateBoqItem: (index: number, field: keyof BoqItem, value: any) => void;
+  onUpdateProject?: (updated: Partial<Project>) => void;
   onAddBoqItem: (item?: Partial<BoqItem>) => void;
   onDeleteBoqItem: (index: number) => void;
   onApplyMarketRates: () => void;
@@ -43,6 +45,7 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
   onOpenAiTakeoff,
   onOpenRateLibrary,
   onUpdateBoqItem,
+  onUpdateProject,
   onAddBoqItem,
   onDeleteBoqItem,
   onApplyMarketRates,
@@ -52,11 +55,10 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
   const [activeSubView, setActiveSubView] = useState<EstimatingSubView>(initialSubView);
 
   useEffect(() => {
-    if (initialSubView === 'rates') {
-      onOpenRateLibrary();
-      setActiveSubView('boq');
+    if (initialSubView) {
+      setActiveSubView(initialSubView);
     }
-  }, [initialSubView, onOpenRateLibrary]);
+  }, [initialSubView]);
 
   // Rate Analysis Calculator State
   const [tradeTitle, setTradeTitle] = useState('225mm Vibrated Hollow Sandcrete Blockwork');
@@ -103,11 +105,15 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
           </button>
           <button
             type="button"
-            onClick={onOpenRateLibrary}
-            className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 shadow-2xs inline-flex items-center space-x-1.5 cursor-pointer"
+            onClick={() => setActiveSubView('rates')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold border shadow-2xs inline-flex items-center space-x-1.5 cursor-pointer transition ${
+              activeSubView === 'rates' 
+                ? 'bg-emerald-800 text-white border-emerald-800' 
+                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+            }`}
           >
-            <Database className="w-4 h-4 text-emerald-700" />
-            <span>Rate Library</span>
+            <TrendingUp className={`w-4 h-4 ${activeSubView === 'rates' ? 'text-white' : 'text-emerald-700'}`} />
+            <span>Market Rates Engine</span>
           </button>
         </div>
       </div>
@@ -117,12 +123,12 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
         <div className="flex flex-wrap items-center gap-2">
           {[
             { id: 'boq', label: 'BOQ & Estimates', icon: FileSpreadsheet, badge: items.length },
+            { id: 'rates', label: 'Market Rates Engine', icon: TrendingUp },
             { id: 'takeoff', label: 'AI Quantity Takeoff', icon: Sparkles },
             { id: 'manual-takeoff', label: 'Manual Takeoff Workspace', icon: Ruler },
-            { id: 'rates', label: 'Rate Library', icon: Database },
             { id: 'analysis', label: 'Rate Analysis', icon: Calculator },
             { id: 'qs-assistant', label: 'QS Assistant & BESMM4', icon: BookOpen },
-            { id: 'estimate', label: 'Cost Estimate Summary', icon: TrendingUp },
+            { id: 'estimate', label: 'Cost Estimate Summary', icon: DollarSign },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeSubView === tab.id;
@@ -133,8 +139,6 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
                 onClick={() => {
                   if (tab.id === 'takeoff') {
                     onOpenAiTakeoff();
-                  } else if (tab.id === 'rates') {
-                    onOpenRateLibrary();
                   } else {
                     setActiveSubView(tab.id as EstimatingSubView);
                   }
@@ -172,6 +176,15 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
             onImportBoq={onImportBoq}
           />
         </div>
+      )}
+
+      {/* SUBVIEW: NIGERIAN CONSTRUCTION MARKET RATES ENGINE */}
+      {activeSubView === 'rates' && (
+        <MarketRatesEngine
+          project={project}
+          onUpdateBoqItem={onUpdateBoqItem}
+          onUpdateProject={onUpdateProject}
+        />
       )}
 
       {/* SUBVIEW 2: RATE ANALYSIS BUILD-UP */}
@@ -342,13 +355,19 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
       )}
 
       {/* SUBVIEW: MANUAL TAKEOFF WORKSPACE */}
-      {activeSubView === 'manual-takeoff' && (
+      {activeSubView === 'manual-takeoff' && project && (
         <div className="space-y-4">
           <ManualTakeoffWorkspace
             project={project}
-            onAddBoqItem={(item) => {
-              onAddBoqItem(item);
-              setActiveSubView('boq');
+            onAddBoqItem={onAddBoqItem}
+            onUpdateBoqItem={onUpdateBoqItem}
+            onDeleteBoqItem={onDeleteBoqItem}
+            onApplyMarketRates={onApplyMarketRates}
+            onImportBoq={onImportBoq}
+            onUpdateProjectMeasurements={(measurements) => {
+              if (onUpdateProject) {
+                onUpdateProject({ manual_measurements: measurements });
+              }
             }}
           />
         </div>

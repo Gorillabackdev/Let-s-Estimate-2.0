@@ -25,6 +25,11 @@ import {
   Sparkles,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronUp,
+  ChevronDown,
+  Search,
   Upload,
   AlertCircle,
   Eye,
@@ -34,11 +39,16 @@ import {
   ArrowRight,
   PanelRightClose,
   PanelRightOpen,
-  GripVertical
+  GripVertical,
+  BookOpen,
+  Compass,
+  Crosshair,
+  Move
 } from 'lucide-react';
 import { Project, ManualMeasurement, BoqItem, DrawingSheet } from '../../types';
 import { formatNaira } from '../../utils/format';
 import { safeStorage } from '../../utils/storage';
+import { generateSampleArchitecturalPlan } from './sampleBlueprint';
 
 // Configure local PDF.js worker
 if (typeof window !== 'undefined') {
@@ -83,9 +93,17 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
   const [pdfDoc, setPdfDoc] = useState<pdfjsLib.PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState<number>(1);
   const [currentPage, setCurrentPage] = useState<number>(1);
+  const [jumpInput, setJumpInput] = useState<string>('1');
   const [isPdf, setIsPdf] = useState<boolean>(false);
   const [isLoadingFile, setIsLoadingFile] = useState<boolean>(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSampleDrawing, setIsSampleDrawing] = useState<boolean>(false);
+  const [renderVersion, setRenderVersion] = useState<number>(0);
+  const [showAllPagesMeasurements, setShowAllPagesMeasurements] = useState<boolean>(false);
+  const [pageSearchQuery, setPageSearchQuery] = useState<string>('');
+
+  const currentRenderTaskRef = useRef<any>(null);
+  const pageCacheRef = useRef<Map<number, { canvas: HTMLCanvasElement; width: number; height: number }>>(new Map());
 
   // Rendered Image Cache (offscreen canvas holding the real drawing image/page)
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -160,6 +178,13 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
   const resizeStartWidthRef = useRef<number>(260);
   const [containerDimensions, setContainerDimensions] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
 
+  // Navigation & Zoom Enhancements
+  const [showMinimap, setShowMinimap] = useState<boolean>(true);
+  const [wheelScrollMode, setWheelScrollMode] = useState<'zoom' | 'pan'>('zoom');
+  const [showZoomPresetsMenu, setShowZoomPresetsMenu] = useState<boolean>(false);
+  const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
+  const touchStartRef = useRef<{ x: number; y: number; dist?: number }>({ x: 0, y: 0 });
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -179,6 +204,56 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
+
+  // Minimap dimensions & coordinate mapping
+  const minimapWidth = 170;
+  const minimapAspect =
+    drawingDimensions.width && drawingDimensions.height
+      ? drawingDimensions.height / drawingDimensions.width
+      : 0.65;
+  const minimapHeight = Math.max(75, Math.min(130, Math.round(minimapWidth * minimapAspect)));
+  const minimapScaleX = minimapWidth / Math.max(1, drawingDimensions.width);
+  const minimapScaleY = minimapHeight / Math.max(1, drawingDimensions.height);
+
+  const containerW = containerDimensions.width || 800;
+  const containerH = containerDimensions.height || 600;
+
+  const visibleLeftInDrawing = -pan.x / zoom;
+  const visibleTopInDrawing = -pan.y / zoom;
+  const visibleWidthInDrawing = containerW / zoom;
+  const visibleHeightInDrawing = containerH / zoom;
+
+  const minimapViewportLeft = Math.max(0, Math.min(minimapWidth, Math.round(visibleLeftInDrawing * minimapScaleX)));
+  const minimapViewportTop = Math.max(0, Math.min(minimapHeight, Math.round(visibleTopInDrawing * minimapScaleY)));
+  const minimapViewportWidth = Math.max(10, Math.min(minimapWidth - minimapViewportLeft, Math.round(visibleWidthInDrawing * minimapScaleX)));
+  const minimapViewportHeight = Math.max(10, Math.min(minimapHeight - minimapViewportTop, Math.round(visibleHeightInDrawing * minimapScaleY)));
+
+  // Render thumbnail onto minimap canvas
+  useEffect(() => {
+    if (!showMinimap || !minimapCanvasRef.current || !offscreenCanvasRef.current) return;
+    const miniCtx = minimapCanvasRef.current.getContext('2d');
+    if (!miniCtx) return;
+
+    miniCtx.clearRect(0, 0, minimapWidth, minimapHeight);
+    miniCtx.fillStyle = '#020617';
+    miniCtx.fillRect(0, 0, minimapWidth, minimapHeight);
+
+    try {
+      miniCtx.drawImage(
+        offscreenCanvasRef.current,
+        0,
+        0,
+        offscreenCanvasRef.current.width,
+        offscreenCanvasRef.current.height,
+        0,
+        0,
+        minimapWidth,
+        minimapHeight
+      );
+    } catch {
+      // ignore
+    }
+  }, [showMinimap, renderVersion, minimapWidth, minimapHeight]);
 
   // Handle measurement panel dragging
   const handleStartResize = (e: React.MouseEvent) => {
@@ -219,128 +294,278 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
     });
   };
 
-  // If a measurement was targeted for inspection, ensure panel is visible
+  // Synchronize initial prop changes
   useEffect(() => {
-    if (highlightMeasurementId) {
-      setSelectedMeasurementId(highlightMeasurementId);
-      setIsMeasurementsVisible(true);
+    if (initialFileUrl && initialFileUrl !== fileUrl) {
+      setFileUrl(initialFileUrl);
     }
-  }, [highlightMeasurementId]);
+  }, [initialFileUrl]);
+
+  useEffect(() => {
+    if (initialFileName && initialFileName !== fileName) {
+      setFileName(initialFileName);
+    }
+  }, [initialFileName]);
+
+  // Auto-fit given drawing dimensions into canvas viewport
+  const autoFitDrawing = useCallback((dw: number, dh: number) => {
+    if (containerRef.current) {
+      const containerWidth = containerRef.current.clientWidth || 800;
+      const containerHeight = containerRef.current.clientHeight || 600;
+      const scaleW = (containerWidth - 40) / dw;
+      const scaleH = (containerHeight - 40) / dh;
+      const initialZoom = Math.min(scaleW, scaleH, 1);
+      setZoom(Math.max(0.2, initialZoom));
+      setPan({
+        x: Math.round((containerWidth - dw * initialZoom) / 2),
+        y: Math.round((containerHeight - dh * initialZoom) / 2),
+      });
+    }
+  }, []);
+
+  // Load calibrated sample architectural blueprint as resilient fallback
+  const loadSampleArchitecturalDrawing = useCallback(() => {
+    const sample = generateSampleArchitecturalPlan();
+    offscreenCanvasRef.current = sample.canvas;
+    setDrawingDimensions({ width: sample.width, height: sample.height });
+    setIsPdf(false);
+    setPdfDoc(null);
+    setNumPages(1);
+    setCurrentPage(1);
+    setJumpInput('1');
+    setIsSampleDrawing(true);
+    setLoadError(null);
+    setIsLoadingFile(false);
+    setScaleRatio(sample.scaleRatio);
+    setPixelsPerMeter(sample.pixelsPerMeter);
+    setIsCalibrated(true);
+    setRenderVersion((v) => v + 1);
+    autoFitDrawing(sample.width, sample.height);
+  }, [autoFitDrawing]);
+
+  // Helper to reliably check if a source represents a PDF document
+  const checkIsPdfSource = useCallback(
+    async (source: string | ArrayBuffer, hintName?: string): Promise<boolean> => {
+      if (hintName && hintName.toLowerCase().endsWith('.pdf')) return true;
+      if (typeof source === 'string') {
+        if (source.toLowerCase().includes('.pdf') || source.includes('application/pdf')) return true;
+        if (source.startsWith('data:application/pdf')) return true;
+        if (source.startsWith('blob:')) {
+          if (activeFile && (activeFile.type === 'application/pdf' || activeFile.name.toLowerCase().endsWith('.pdf'))) {
+            return true;
+          }
+          try {
+            const res = await fetch(source);
+            const blob = await res.blob();
+            if (blob.type === 'application/pdf') return true;
+            const headBuf = await blob.slice(0, 5).arrayBuffer();
+            const head = new Uint8Array(headBuf);
+            if (head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46) {
+              return true; // %PDF
+            }
+          } catch {
+            // Ignore fetch error on blob
+          }
+        }
+      } else if (source instanceof ArrayBuffer) {
+        const head = new Uint8Array(source.slice(0, 5));
+        if (head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46) {
+          return true; // %PDF
+        }
+      }
+      return false;
+    },
+    [activeFile]
+  );
+
+  // Helper to load image with fallback for CORS and local URLs
+  const loadImageSafe = (imgSrc: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      // Only set crossOrigin if not blob: or data: URL to avoid security errors
+      if (!imgSrc.startsWith('blob:') && !imgSrc.startsWith('data:')) {
+        img.crossOrigin = 'anonymous';
+      }
+      img.onload = () => resolve(img);
+      img.onerror = () => {
+        // If crossOrigin anonymous failed (e.g. server lacks CORS headers), retry without crossOrigin
+        if (img.crossOrigin) {
+          const retryImg = new Image();
+          retryImg.onload = () => resolve(retryImg);
+          retryImg.onerror = () => reject(new Error('Image could not be rendered'));
+          retryImg.src = imgSrc;
+        } else {
+          reject(new Error('Image could not be rendered'));
+        }
+      };
+      img.src = imgSrc;
+    });
+  };
 
   // ============================================================================
   // LOAD REAL DRAWING FILE (PDF OR IMAGE)
   // ============================================================================
-  const loadDrawingSource = useCallback(async (source: string | ArrayBuffer, isPdfSource: boolean, pageNum = 1) => {
-    setIsLoadingFile(true);
-    setLoadError(null);
-
-    try {
-      if (isPdfSource) {
-        setIsPdf(true);
-        let doc: pdfjsLib.PDFDocumentProxy;
-        if (typeof source === 'string') {
-          doc = await pdfjsLib.getDocument({ url: source }).promise;
-        } else {
-          doc = await pdfjsLib.getDocument({ data: source }).promise;
-        }
-        setPdfDoc(doc);
-        setNumPages(doc.numPages);
-        setCurrentPage(pageNum);
-
-        // Render PDF page to offscreen canvas
-        const page = await doc.getPage(pageNum);
-        const viewport = page.getViewport({ scale: 2.0 }); // 2x scale for crisp architectural linework
-
-        const offscreen = document.createElement('canvas');
-        offscreen.width = viewport.width;
-        offscreen.height = viewport.height;
-        const offCtx = offscreen.getContext('2d');
-
-        if (!offCtx) throw new Error('Could not create offscreen canvas context');
-
-        await (page as any).render({ canvasContext: offCtx, viewport, canvas: offscreen }).promise;
-
-        offscreenCanvasRef.current = offscreen;
-        setDrawingDimensions({ width: viewport.width, height: viewport.height });
-
-        // Auto-fit to screen
-        if (containerRef.current) {
-          const containerWidth = containerRef.current.clientWidth || 800;
-          const containerHeight = containerRef.current.clientHeight || 600;
-          const scaleW = (containerWidth - 40) / viewport.width;
-          const scaleH = (containerHeight - 40) / viewport.height;
-          const initialZoom = Math.min(scaleW, scaleH, 1);
-          setZoom(Math.max(0.2, initialZoom));
-          setPan({
-            x: Math.round((containerWidth - viewport.width * initialZoom) / 2),
-            y: Math.round((containerHeight - viewport.height * initialZoom) / 2),
-          });
-        }
-      } else {
-        // Image source (PNG / JPG / WEBP)
-        setIsPdf(false);
-        setPdfDoc(null);
-        setNumPages(1);
-
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve();
-          img.onerror = () => reject(new Error('Failed to load drawing image'));
-          if (typeof source === 'string') {
-            img.src = source;
-          } else {
-            const blob = new Blob([source]);
-            img.src = URL.createObjectURL(blob);
-          }
-        });
-
-        const offscreen = document.createElement('canvas');
-        offscreen.width = img.naturalWidth || 1200;
-        offscreen.height = img.naturalHeight || 800;
-        const offCtx = offscreen.getContext('2d');
-        if (!offCtx) throw new Error('Could not create offscreen canvas context');
-
-        offCtx.drawImage(img, 0, 0);
-        offscreenCanvasRef.current = offscreen;
-        setDrawingDimensions({ width: offscreen.width, height: offscreen.height });
-
-        // Auto-fit to screen
-        if (containerRef.current) {
-          const containerWidth = containerRef.current.clientWidth || 800;
-          const containerHeight = containerRef.current.clientHeight || 600;
-          const scaleW = (containerWidth - 40) / offscreen.width;
-          const scaleH = (containerHeight - 40) / offscreen.height;
-          const initialZoom = Math.min(scaleW, scaleH, 1);
-          setZoom(Math.max(0.2, initialZoom));
-          setPan({
-            x: Math.round((containerWidth - offscreen.width * initialZoom) / 2),
-            y: Math.round((containerHeight - offscreen.height * initialZoom) / 2),
-          });
-        }
+  const loadDrawingSource = useCallback(
+    async (source: string | ArrayBuffer, isPdfHint?: boolean, pageNum = 1) => {
+      if (!source || (typeof source === 'string' && source.trim() === '')) {
+        loadSampleArchitecturalDrawing();
+        return;
       }
-    } catch (err: any) {
-      console.error('Error loading drawing:', err);
-      setLoadError(err?.message || 'Failed to render drawing.');
-    } finally {
-      setIsLoadingFile(false);
-    }
-  }, []);
+
+      setIsLoadingFile(true);
+      setLoadError(null);
+
+      // Cancel any in-flight rendering task
+      if (currentRenderTaskRef.current) {
+        try {
+          currentRenderTaskRef.current.cancel();
+        } catch {
+          // ignore
+        }
+        currentRenderTaskRef.current = null;
+      }
+
+      try {
+        // Robust PDF detection checking hint, file name, mime type and magic bytes
+        let isPdfSource = isPdfHint;
+        if (isPdfSource === undefined) {
+          isPdfSource = await checkIsPdfSource(source, fileName);
+        } else if (!isPdfSource) {
+          isPdfSource = await checkIsPdfSource(source, fileName);
+        }
+
+        if (isPdfSource) {
+          try {
+            setIsPdf(true);
+            pageCacheRef.current.clear();
+            let doc: pdfjsLib.PDFDocumentProxy;
+            if (typeof source === 'string') {
+              doc = await pdfjsLib.getDocument({ url: source }).promise;
+            } else {
+              doc = await pdfjsLib.getDocument({ data: new Uint8Array(source.slice(0)) }).promise;
+            }
+            setPdfDoc(doc);
+            setNumPages(doc.numPages);
+            setCurrentPage(pageNum);
+            setJumpInput(String(pageNum));
+
+            // Render PDF page to offscreen canvas
+            const page = await doc.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 2.0 }); // 2x scale for crisp linework
+
+            const offscreen = document.createElement('canvas');
+            offscreen.width = viewport.width;
+            offscreen.height = viewport.height;
+            const offCtx = offscreen.getContext('2d');
+
+            if (!offCtx) throw new Error('Could not create offscreen canvas context');
+
+            const renderTask = (page as any).render({ canvasContext: offCtx, viewport, canvas: offscreen });
+            currentRenderTaskRef.current = renderTask;
+            await renderTask.promise;
+            currentRenderTaskRef.current = null;
+
+            pageCacheRef.current.set(pageNum, { canvas: offscreen, width: viewport.width, height: viewport.height });
+            offscreenCanvasRef.current = offscreen;
+            setDrawingDimensions({ width: viewport.width, height: viewport.height });
+            setIsSampleDrawing(false);
+            setRenderVersion((v) => v + 1);
+
+            autoFitDrawing(viewport.width, viewport.height);
+            return;
+          } catch (pdfErr: any) {
+            if (pdfErr?.name === 'RenderingCancelledException') return;
+            console.warn('PDF load attempt failed, trying image fallback:', pdfErr);
+            // Fall through to image or blueprint fallback
+          }
+        }
+
+        // Attempt loading as image (PNG / JPG / WEBP)
+        let imgSrc = '';
+        let shouldRevoke = false;
+        if (typeof source === 'string') {
+          imgSrc = source;
+        } else {
+          const blob = new Blob([source]);
+          imgSrc = URL.createObjectURL(blob);
+          shouldRevoke = true;
+        }
+
+        try {
+          const img = await loadImageSafe(imgSrc);
+          if (shouldRevoke) URL.revokeObjectURL(imgSrc);
+
+          setIsPdf(false);
+          setPdfDoc(null);
+          setNumPages(1);
+          setCurrentPage(1);
+          setJumpInput('1');
+          setIsSampleDrawing(false);
+
+          const offscreen = document.createElement('canvas');
+          offscreen.width = img.naturalWidth || 1200;
+          offscreen.height = img.naturalHeight || 800;
+          const offCtx = offscreen.getContext('2d');
+          if (!offCtx) throw new Error('Could not create offscreen canvas context');
+
+          offCtx.drawImage(img, 0, 0);
+          offscreenCanvasRef.current = offscreen;
+          setDrawingDimensions({ width: offscreen.width, height: offscreen.height });
+          setRenderVersion((v) => v + 1);
+
+          autoFitDrawing(offscreen.width, offscreen.height);
+        } catch (imgErr) {
+          if (shouldRevoke) URL.revokeObjectURL(imgSrc);
+          // If neither PDF nor direct image loaded, fall back gracefully to the Calibrated Architectural Blueprint!
+          console.warn('Drawing source unrenderable, loading Calibrated Blueprint:', imgErr);
+          loadSampleArchitecturalDrawing();
+        }
+      } catch (err: any) {
+        if (err?.name === 'RenderingCancelledException') return;
+        console.warn('Drawing load exception, falling back to blueprint:', err);
+        loadSampleArchitecturalDrawing();
+      } finally {
+        setIsLoadingFile(false);
+      }
+    },
+    [checkIsPdfSource, fileName, autoFitDrawing, loadSampleArchitecturalDrawing]
+  );
 
   // Handle Initial File or URL
   useEffect(() => {
-    if (fileUrl) {
-      const isPdfUrl = fileUrl.toLowerCase().includes('.pdf') || fileUrl.includes('application/pdf');
-      loadDrawingSource(fileUrl, isPdfUrl, 1);
+    if (fileUrl && fileUrl.trim().length > 0) {
+      loadDrawingSource(fileUrl);
+    } else {
+      loadSampleArchitecturalDrawing();
     }
-  }, [fileUrl, loadDrawingSource]);
+  }, [fileUrl, loadDrawingSource, loadSampleArchitecturalDrawing]);
 
-  // Handle PDF Page Changes
-  const handlePageChange = async (newPage: number) => {
+  // Handle PDF Page Changes with caching & fast in-flight cancellation
+  const handlePageChange = useCallback(async (newPage: number) => {
     if (!pdfDoc || newPage < 1 || newPage > numPages) return;
     setCurrentPage(newPage);
+    setJumpInput(String(newPage));
+
+    // Check page cache first for instantaneous page transitions
+    const cached = pageCacheRef.current.get(newPage);
+    if (cached) {
+      offscreenCanvasRef.current = cached.canvas;
+      setDrawingDimensions({ width: cached.width, height: cached.height });
+      setRenderVersion((v) => v + 1);
+      return;
+    }
+
     setIsLoadingFile(true);
+
+    // Cancel in-flight render if user is clicking through pages rapidly
+    if (currentRenderTaskRef.current) {
+      try {
+        currentRenderTaskRef.current.cancel();
+      } catch {
+        // ignore cancellation
+      }
+      currentRenderTaskRef.current = null;
+    }
 
     try {
       const page = await pdfDoc.getPage(newPage);
@@ -351,16 +576,74 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
       offscreen.height = viewport.height;
       const offCtx = offscreen.getContext('2d');
       if (offCtx) {
-        await (page as any).render({ canvasContext: offCtx, viewport, canvas: offscreen }).promise;
+        const renderTask = (page as any).render({ canvasContext: offCtx, viewport, canvas: offscreen });
+        currentRenderTaskRef.current = renderTask;
+        await renderTask.promise;
+        currentRenderTaskRef.current = null;
+
+        pageCacheRef.current.set(newPage, { canvas: offscreen, width: viewport.width, height: viewport.height });
         offscreenCanvasRef.current = offscreen;
         setDrawingDimensions({ width: viewport.width, height: viewport.height });
+        setRenderVersion((v) => v + 1);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'RenderingCancelledException') {
+        return;
+      }
       console.error('Failed to change page:', err);
     } finally {
       setIsLoadingFile(false);
     }
+  }, [pdfDoc, numPages]);
+
+  // If a measurement was targeted for inspection, ensure panel is visible and flip to that page
+  useEffect(() => {
+    if (highlightMeasurementId) {
+      setSelectedMeasurementId(highlightMeasurementId);
+      setIsMeasurementsVisible(true);
+      const target = measurements.find((m) => m.id === highlightMeasurementId);
+      if (target && target.pageNumber && isPdf && target.pageNumber !== currentPage) {
+        handlePageChange(target.pageNumber);
+      }
+    }
+  }, [highlightMeasurementId, measurements, isPdf, currentPage, handlePageChange]);
+
+  // Jump to specific page handler
+  const handleApplyJump = () => {
+    const p = parseInt(jumpInput, 10);
+    if (!isNaN(p) && p >= 1 && p <= numPages) {
+      handlePageChange(p);
+    } else {
+      setJumpInput(String(currentPage));
+    }
   };
+
+  // Keyboard navigation for multi-page review (PageUp/PageDown, Home/End, or Ctrl+Arrow)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
+
+      if (isPdf && numPages > 1) {
+        if (e.key === 'PageUp' || ((e.ctrlKey || e.altKey) && e.key === 'ArrowLeft')) {
+          e.preventDefault();
+          if (currentPage > 1) handlePageChange(currentPage - 1);
+        } else if (e.key === 'PageDown' || ((e.ctrlKey || e.altKey) && e.key === 'ArrowRight')) {
+          e.preventDefault();
+          if (currentPage < numPages) handlePageChange(currentPage + 1);
+        } else if (e.key === 'Home') {
+          e.preventDefault();
+          handlePageChange(1);
+        } else if (e.key === 'End') {
+          e.preventDefault();
+          handlePageChange(numPages);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPdf, numPages, currentPage, handlePageChange]);
 
   // Upload local drawing file directly
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -371,33 +654,39 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
     setFileName(file.name);
     const isPdfFile = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const buffer = reader.result as ArrayBuffer;
-      await loadDrawingSource(buffer, isPdfFile, 1);
+    if (isPdfFile) {
+      const objectUrl = URL.createObjectURL(file);
+      setFileUrl(objectUrl);
+      await loadDrawingSource(objectUrl, true, 1);
+    } else {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const buffer = reader.result as ArrayBuffer;
+        await loadDrawingSource(buffer, false, 1);
+      };
+      reader.readAsArrayBuffer(file);
+    }
 
-      // Attempt to save drawing to project backend
-      try {
-        const formData = new FormData();
-        formData.append('drawing', file);
-        formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
-        formData.append('projectId', project.id || 'proj-temp');
+    // Attempt to save drawing to project backend
+    try {
+      const formData = new FormData();
+      formData.append('drawing', file);
+      formData.append('title', file.name.replace(/\.[^/.]+$/, ''));
+      formData.append('projectId', project.id || 'proj-temp');
 
-        const res = await fetch(`/api/projects/${project.id}/drawings`, {
-          method: 'POST',
-          body: formData,
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.drawing && onDrawingUploaded) {
-            onDrawingUploaded(data.drawing);
-          }
+      const res = await fetch(`/api/projects/${project.id}/drawings`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.drawing && onDrawingUploaded) {
+          onDrawingUploaded(data.drawing);
         }
-      } catch {
-        // Local preview succeeds regardless of network
       }
-    };
-    reader.readAsArrayBuffer(file);
+    } catch {
+      // Local preview succeeds regardless of network
+    }
   };
 
   // ============================================================================
@@ -517,6 +806,10 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
 
     // RENDER SAVED MEASUREMENTS OVERLAY
     measurements.forEach((m) => {
+      // Filter by PDF page if document has multiple pages and user hasn't toggled showing all
+      if (isPdf && m.pageNumber && m.pageNumber !== currentPage && !showAllPagesMeasurements) {
+        return;
+      }
       const isSelected = m.id === selectedMeasurementId;
       const pts = m.points || [];
       if (pts.length === 0) return;
@@ -730,7 +1023,190 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
     containerDimensions,
     isMeasurementsVisible,
     panelWidth,
+    currentPage,
+    isPdf,
+    renderVersion,
+    showAllPagesMeasurements,
   ]);
+
+  // ============================================================================
+  // ZOOM & PAN ENGINE (CENTERED ZOOM & MULTI-DIRECTIONAL SHIFT)
+  // ============================================================================
+  const handleZoomBy = useCallback(
+    (factor: number, focalPoint?: { x: number; y: number }) => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const containerWidth = container.clientWidth || 800;
+      const containerHeight = container.clientHeight || 600;
+
+      // Focal point defaults to exact viewport center if not provided (e.g. from toolbar buttons)
+      const focusX = focalPoint?.x ?? containerWidth / 2;
+      const focusY = focalPoint?.y ?? containerHeight / 2;
+
+      setZoom((prevZoom) => {
+        const nextZoom = Math.min(10.0, Math.max(0.1, prevZoom * factor));
+        const zoomRatio = nextZoom / prevZoom;
+
+        setPan((prevPan) => ({
+          x: Math.round(focusX - (focusX - prevPan.x) * zoomRatio),
+          y: Math.round(focusY - (focusY - prevPan.y) * zoomRatio),
+        }));
+
+        return nextZoom;
+      });
+    },
+    []
+  );
+
+  const handleZoomTo = useCallback(
+    (targetZoom: number, focalPoint?: { x: number; y: number }) => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const containerWidth = container.clientWidth || 800;
+      const containerHeight = container.clientHeight || 600;
+
+      const focusX = focalPoint?.x ?? containerWidth / 2;
+      const focusY = focalPoint?.y ?? containerHeight / 2;
+
+      setZoom((prevZoom) => {
+        const nextZoom = Math.min(10.0, Math.max(0.1, targetZoom));
+        const zoomRatio = nextZoom / prevZoom;
+
+        setPan((prevPan) => ({
+          x: Math.round(focusX - (focusX - prevPan.x) * zoomRatio),
+          y: Math.round(focusY - (focusY - prevPan.y) * zoomRatio),
+        }));
+
+        return nextZoom;
+      });
+    },
+    []
+  );
+
+  const handlePanBy = useCallback((deltaX: number, deltaY: number) => {
+    setPan((prev) => ({
+      x: prev.x + deltaX,
+      y: prev.y + deltaY,
+    }));
+  }, []);
+
+  const handlePanToPoint = useCallback(
+    (drawingX: number, drawingY: number) => {
+      const container = containerRef.current;
+      if (!container) return;
+      const containerWidth = container.clientWidth || 800;
+      const containerHeight = container.clientHeight || 600;
+
+      setPan({
+        x: Math.round(containerWidth / 2 - drawingX * zoom),
+        y: Math.round(containerHeight / 2 - drawingY * zoom),
+      });
+    },
+    [zoom]
+  );
+
+  // Fit to screen
+  const handleFitToScreen = useCallback(() => {
+    if (!containerRef.current || !drawingDimensions.width) return;
+    const containerWidth = containerRef.current.clientWidth || 800;
+    const containerHeight = containerRef.current.clientHeight || 600;
+
+    const scaleW = (containerWidth - 48) / drawingDimensions.width;
+    const scaleH = (containerHeight - 48) / drawingDimensions.height;
+    const targetZoom = Math.min(scaleW, scaleH, 1.5);
+
+    setZoom(targetZoom);
+    setPan({
+      x: Math.round((containerWidth - drawingDimensions.width * targetZoom) / 2),
+      y: Math.round((containerHeight - drawingDimensions.height * targetZoom) / 2),
+    });
+  }, [drawingDimensions]);
+
+  // Fit to width
+  const handleFitToWidth = useCallback(() => {
+    if (!containerRef.current || !drawingDimensions.width) return;
+    const containerWidth = containerRef.current.clientWidth || 800;
+    const containerHeight = containerRef.current.clientHeight || 600;
+
+    const targetZoom = (containerWidth - 48) / drawingDimensions.width;
+    setZoom(targetZoom);
+    setPan({
+      x: 24,
+      y: Math.round((containerHeight - drawingDimensions.height * targetZoom) / 2),
+    });
+  }, [drawingDimensions]);
+
+  // Global mouse up to ensure pan drag releases cleanly outside canvas
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setIsDragging(false);
+    };
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, []);
+
+  // Keyboard navigation & pan listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select') return;
+
+      if (e.code === 'Space' && !isSpacePressed) {
+        setIsSpacePressed(true);
+      }
+
+      const panStep = e.shiftKey ? 240 : 80;
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setPan((p) => ({ ...p, y: p.y + panStep }));
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setPan((p) => ({ ...p, y: p.y - panStep }));
+      } else if (e.key === 'ArrowLeft') {
+        if (isPdf && numPages > 1 && (e.ctrlKey || e.altKey)) {
+          // Handled in PDF page handler
+        } else {
+          e.preventDefault();
+          setPan((p) => ({ ...p, x: p.x + panStep }));
+        }
+      } else if (e.key === 'ArrowRight') {
+        if (isPdf && numPages > 1 && (e.ctrlKey || e.altKey)) {
+          // Handled in PDF page handler
+        } else {
+          e.preventDefault();
+          setPan((p) => ({ ...p, x: p.x - panStep }));
+        }
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        handleZoomBy(1.25);
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        handleZoomBy(0.8);
+      } else if (e.key === '0') {
+        e.preventDefault();
+        handleFitToScreen();
+      } else if (e.key === '1') {
+        e.preventDefault();
+        handleZoomTo(1.0);
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isSpacePressed, isPdf, numPages, handleZoomBy, handleFitToScreen, handleZoomTo]);
 
   // ============================================================================
   // MOUSE & POINTER INTERACTIONS (PAN, ZOOM, MEASURE)
@@ -743,8 +1219,8 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
     const screenY = e.clientY - rect.top;
     const drawCoords = screenToDrawing(screenX, screenY);
 
-    // Middle click or Spacebar or Pan Tool -> start panning
-    if (e.button === 1 || isSpacePressed || activeTool === 'pan') {
+    // Right-click (2), Middle-click (1), Spacebar pressed, or Pan Tool active -> start panning
+    if (e.button === 1 || e.button === 2 || isSpacePressed || activeTool === 'pan') {
       setIsDragging(true);
       setDragStart({ x: screenX - pan.x, y: screenY - pan.y });
       return;
@@ -774,6 +1250,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
         scaleRatio,
         dimensions: { count: 1 },
         points: [drawCoords],
+        pageNumber: isPdf ? currentPage : 1,
         notes: `Numbered takeoff marker at drawing coords (${Math.round(drawCoords.x)}, ${Math.round(drawCoords.y)})`,
         createdAt: new Date().toISOString(),
         addedToBoq: false,
@@ -822,7 +1299,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
     setIsDragging(false);
   };
 
-  // Mouse wheel zoom centered on cursor
+  // Mouse wheel & trackpad handler: smooth panning + cursor-focal zoom
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -831,14 +1308,97 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
-    const newZoom = Math.min(8.0, Math.max(0.15, zoom * zoomFactor));
+    // Trackpad pinch-to-zoom OR Ctrl/Meta + wheel -> zoom into cursor
+    if (e.ctrlKey || e.metaKey) {
+      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+      handleZoomBy(zoomFactor, { x: mouseX, y: mouseY });
+      return;
+    }
 
-    setPan({
-      x: mouseX - (mouseX - pan.x) * (newZoom / zoom),
-      y: mouseY - (mouseY - pan.y) * (newZoom / zoom),
-    });
-    setZoom(newZoom);
+    // Horizontal trackpad gesture or Shift + wheel -> Pan horizontally
+    if (Math.abs(e.deltaX) > 0 || e.shiftKey) {
+      const dX = e.shiftKey ? e.deltaY : e.deltaX;
+      setPan((prev) => ({
+        x: prev.x - dX,
+        y: prev.y - (e.shiftKey ? 0 : e.deltaY),
+      }));
+      return;
+    }
+
+    // For vertical wheel motion:
+    if (wheelScrollMode === 'pan') {
+      setPan((prev) => ({
+        x: prev.x,
+        y: prev.y - e.deltaY,
+      }));
+    } else {
+      // Default: smooth zoom centered on cursor
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      handleZoomBy(zoomFactor, { x: mouseX, y: mouseY });
+    }
+  };
+
+  // Touch handlers for mobile & touchscreen devices
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const screenX = t.clientX - rect.left;
+      const screenY = t.clientY - rect.top;
+      touchStartRef.current = { x: screenX, y: screenY };
+      if (activeTool === 'pan' || isSpacePressed) {
+        setIsDragging(true);
+        setDragStart({ x: screenX - pan.x, y: screenY - pan.y });
+      }
+    } else if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const midX = (t1.clientX + t2.clientX) / 2 - rect.left;
+      const midY = (t1.clientY + t2.clientY) / 2 - rect.top;
+      touchStartRef.current = { x: midX, y: midY, dist };
+      setIsDragging(true);
+      setDragStart({ x: midX - pan.x, y: midY - pan.y });
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    if (e.touches.length === 1 && isDragging) {
+      const t = e.touches[0];
+      const screenX = t.clientX - rect.left;
+      const screenY = t.clientY - rect.top;
+      setPan({
+        x: screenX - dragStart.x,
+        y: screenY - dragStart.y,
+      });
+    } else if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const midX = (t1.clientX + t2.clientX) / 2 - rect.left;
+      const midY = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+      if (touchStartRef.current.dist && touchStartRef.current.dist > 0) {
+        const factor = dist / touchStartRef.current.dist;
+        handleZoomBy(factor, { x: midX, y: midY });
+        touchStartRef.current.dist = dist;
+      }
+
+      setPan({
+        x: midX - dragStart.x,
+        y: midY - dragStart.y,
+      });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    touchStartRef.current = { x: 0, y: 0 };
   };
 
   // Double click to finish length or area
@@ -875,6 +1435,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
       scaleRatio,
       dimensions: { length: totalM },
       points: currentPoints,
+      pageNumber: isPdf ? currentPage : 1,
       notes: `Linear measurement on ${fileName || 'Drawing'} at scale 1:${scaleRatio}`,
       createdAt: new Date().toISOString(),
       addedToBoq: false,
@@ -907,6 +1468,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
       scaleRatio,
       dimensions: { area: areaM2 },
       points: currentPoints,
+      pageNumber: isPdf ? currentPage : 1,
       notes: `Measured polygon area on ${fileName || 'Drawing'}`,
       createdAt: new Date().toISOString(),
       addedToBoq: false,
@@ -953,6 +1515,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
         deductions: wallDeductionsM2,
       },
       points: currentPoints,
+      pageNumber: isPdf ? currentPage : 1,
       notes: `Wall length: ${wallLengthM}m × height ${wallHeight}m less ${wallDeductionsM2}m² openings = ${netAreaM2}m²`,
       createdAt: new Date().toISOString(),
       addedToBoq: false,
@@ -980,6 +1543,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
       scaleRatio,
       dimensions: {},
       points: [annotationPendingCoord],
+      pageNumber: isPdf ? currentPage : 1,
       notes: annotationText.trim(),
       createdAt: new Date().toISOString(),
       addedToBoq: false,
@@ -1039,43 +1603,6 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
     }
   };
 
-  // Fit to screen
-  const handleFitToScreen = () => {
-    if (!containerRef.current || !drawingDimensions.width) return;
-    const containerWidth = containerRef.current.clientWidth;
-    const containerHeight = containerRef.current.clientHeight;
-
-    const scaleW = (containerWidth - 48) / drawingDimensions.width;
-    const scaleH = (containerHeight - 48) / drawingDimensions.height;
-    const targetZoom = Math.min(scaleW, scaleH, 1.5);
-
-    setZoom(targetZoom);
-    setPan({
-      x: Math.round((containerWidth - drawingDimensions.width * targetZoom) / 2),
-      y: Math.round((containerHeight - drawingDimensions.height * targetZoom) / 2),
-    });
-  };
-
-  // Spacebar pan listener
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !isSpacePressed) {
-        setIsSpacePressed(true);
-      }
-    };
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === 'Space') {
-        setIsSpacePressed(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-    };
-  }, [isSpacePressed]);
-
   return (
     <div className="flex flex-col h-[820px] bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-xl">
       {/* TOP CONTROL TOOLBAR */}
@@ -1109,29 +1636,92 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
           </label>
         </div>
 
-        {/* Center: PDF Page Navigation */}
+        {/* Center: Multi-Page PDF Review & Navigation Suite */}
         {isPdf && numPages > 1 && (
-          <div className="flex items-center space-x-2 bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-700">
+          <div className="flex items-center space-x-1.5 bg-slate-800/90 px-2.5 py-1 rounded-xl border border-slate-700 shadow-xs">
+            {/* Quick First Page button */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(1)}
+              disabled={currentPage <= 1 || isLoadingFile}
+              className="p-1 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400 cursor-pointer rounded transition"
+              title="First Page (Home)"
+            >
+              <ChevronsLeft className="w-4 h-4" />
+            </button>
+
+            {/* PREVIOUS PAGE BUTTON (Prominent with text & icon) */}
             <button
               type="button"
               onClick={() => handlePageChange(currentPage - 1)}
               disabled={currentPage <= 1 || isLoadingFile}
-              className="p-1 text-slate-300 hover:text-white disabled:opacity-30 cursor-pointer"
-              title="Previous Page"
+              className="flex items-center space-x-1 px-2.5 py-1 bg-slate-700 hover:bg-slate-600 active:bg-slate-500 disabled:opacity-30 disabled:hover:bg-slate-700 text-xs font-bold text-slate-200 hover:text-white rounded-lg transition cursor-pointer border border-slate-600/50"
+              title="Previous Page (Left Arrow or PageUp)"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Previous</span>
             </button>
-            <span className="text-xs font-mono font-bold text-slate-200">
-              Page {currentPage} / {numPages}
-            </span>
+
+            {/* Page Jump Input & Counter */}
+            <div className="flex items-center space-x-1 px-2 py-0.5 bg-slate-900/90 rounded-lg border border-slate-700 font-mono text-xs">
+              <span className="text-slate-400 text-[11px]">Pg</span>
+              <input
+                type="number"
+                min={1}
+                max={numPages}
+                value={jumpInput}
+                onChange={(e) => setJumpInput(e.target.value)}
+                onBlur={handleApplyJump}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleApplyJump();
+                }}
+                className="w-10 text-center font-bold text-emerald-400 bg-transparent outline-none focus:bg-slate-800 rounded px-1 py-0.5"
+                title={`Jump directly to any page between 1 and ${numPages}`}
+              />
+              <span className="text-slate-400">/ {numPages}</span>
+            </div>
+
+            {/* NEXT PAGE BUTTON (Prominent with text & accent color) */}
             <button
               type="button"
               onClick={() => handlePageChange(currentPage + 1)}
               disabled={currentPage >= numPages || isLoadingFile}
-              className="p-1 text-slate-300 hover:text-white disabled:opacity-30 cursor-pointer"
-              title="Next Page"
+              className="flex items-center space-x-1 px-2.5 py-1 bg-emerald-800 hover:bg-emerald-700 active:bg-emerald-600 disabled:opacity-30 disabled:hover:bg-emerald-800 text-xs font-bold text-white rounded-lg transition cursor-pointer border border-emerald-700 shadow-xs"
+              title="Next Page (Right Arrow or PageDown)"
             >
-              <ChevronRight className="w-4 h-4" />
+              <span className="hidden sm:inline">Next</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+
+            {/* Quick Last Page button */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(numPages)}
+              disabled={currentPage >= numPages || isLoadingFile}
+              className="p-1 text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400 cursor-pointer rounded transition"
+              title={`Last Page (${numPages})`}
+            >
+              <ChevronsRight className="w-4 h-4" />
+            </button>
+
+            {/* Sheet/Page Browser Drawer Toggle */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!isMeasurementsVisible) {
+                  setIsMeasurementsVisible(true);
+                }
+                setSidebarTab('sheets');
+              }}
+              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1 cursor-pointer ml-1 ${
+                sidebarTab === 'sheets' && isMeasurementsVisible
+                  ? 'bg-emerald-700 text-white'
+                  : 'bg-slate-700/60 hover:bg-slate-700 text-slate-300'
+              }`}
+              title="Open multi-page sheets browser"
+            >
+              <Layers className="w-3.5 h-3.5 text-emerald-300" />
+              <span className="hidden md:inline text-[11px]">Pages ({numPages})</span>
             </button>
           </div>
         )}
@@ -1275,31 +1865,108 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
             </button>
           )}
 
-          <div className="inline-flex items-center space-x-1 bg-slate-900/60 p-1 rounded-lg border border-slate-700">
+          {/* Wheel Scroll Mode Toggle */}
+          <button
+            type="button"
+            onClick={() => setWheelScrollMode((m) => (m === 'zoom' ? 'pan' : 'zoom'))}
+            className={`px-2 py-1 rounded-lg text-xs font-semibold border transition cursor-pointer flex items-center space-x-1 ${
+              wheelScrollMode === 'pan'
+                ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300'
+                : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-slate-200'
+            }`}
+            title={
+              wheelScrollMode === 'pan'
+                ? 'Wheel Mode: Pan/Scroll Sheet (Click to switch to Wheel Zoom)'
+                : 'Wheel Mode: Zoom into Cursor (Click to switch to Wheel Pan)'
+            }
+          >
+            <Move className="w-3 h-3 text-emerald-400" />
+            <span className="hidden md:inline">{wheelScrollMode === 'pan' ? 'Scroll: Pan' : 'Scroll: Zoom'}</span>
+          </button>
+
+          {/* Centered Zoom & Presets Menu */}
+          <div className="inline-flex items-center space-x-1 bg-slate-900/80 p-1 rounded-lg border border-slate-700 relative">
             <button
               type="button"
-              onClick={() => setZoom((z) => Math.max(0.2, z * 0.8))}
-              className="p-1 text-slate-300 hover:text-white rounded cursor-pointer"
-              title="Zoom Out"
+              onClick={() => handleZoomBy(0.8)}
+              className="p-1 text-slate-300 hover:text-white rounded cursor-pointer transition hover:bg-slate-800"
+              title="Zoom Out (Centered, or press -)"
             >
               <ZoomOut className="w-3.5 h-3.5" />
             </button>
-            <span className="text-xs font-mono font-bold text-slate-300 px-1">
-              {Math.round(zoom * 100)}%
-            </span>
+
+            {/* Zoom presets trigger */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowZoomPresetsMenu(!showZoomPresetsMenu)}
+                className="text-xs font-mono font-bold text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-800 flex items-center space-x-0.5 cursor-pointer"
+                title="Select zoom level or fit"
+              >
+                <span>{Math.round(zoom * 100)}%</span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
+
+              {showZoomPresetsMenu && (
+                <div className="absolute top-full mt-1.5 right-0 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 z-30 min-w-[130px] text-xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleFitToScreen();
+                      setShowZoomPresetsMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-200 hover:text-emerald-400 flex items-center justify-between"
+                  >
+                    <span>Fit Screen</span>
+                    <span className="text-[10px] text-slate-500">0</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleFitToWidth();
+                      setShowZoomPresetsMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 hover:bg-slate-800 text-slate-200 hover:text-emerald-400"
+                  >
+                    Fit Width
+                  </button>
+                  <div className="h-px bg-slate-800 my-1" />
+                  {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0].map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      onClick={() => {
+                        handleZoomTo(level);
+                        setShowZoomPresetsMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-1 hover:bg-slate-800 flex items-center justify-between ${
+                        Math.abs(zoom - level) < 0.05
+                          ? 'text-emerald-400 font-bold bg-emerald-950/40'
+                          : 'text-slate-300'
+                      }`}
+                    >
+                      <span>{Math.round(level * 100)}%</span>
+                      {Math.abs(zoom - level) < 0.05 && <Check className="w-3 h-3" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
-              onClick={() => setZoom((z) => Math.min(6.0, z * 1.25))}
-              className="p-1 text-slate-300 hover:text-white rounded cursor-pointer"
-              title="Zoom In"
+              onClick={() => handleZoomBy(1.25)}
+              className="p-1 text-slate-300 hover:text-white rounded cursor-pointer transition hover:bg-slate-800"
+              title="Zoom In (Centered, or press +)"
             >
               <ZoomIn className="w-3.5 h-3.5" />
             </button>
+
             <button
               type="button"
               onClick={handleFitToScreen}
-              className="p-1 text-slate-300 hover:text-white rounded cursor-pointer ml-1"
-              title="Fit to Screen"
+              className="p-1 text-slate-300 hover:text-white rounded cursor-pointer ml-0.5 hover:bg-slate-800"
+              title="Fit to Screen (0)"
             >
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
@@ -1355,6 +2022,18 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
               <ChevronLeft className="w-3.5 h-3.5 text-slate-400 group-hover:text-white" />
             </button>
           )}
+
+          {/* Calibrated Sample Architectural Drawing Indicator */}
+          {isSampleDrawing && (
+            <div className="absolute top-4 left-4 z-20 flex items-center space-x-2 bg-slate-900/95 border border-emerald-500/60 text-emerald-300 px-3 py-1.5 rounded-xl shadow-xl backdrop-blur-xs text-xs font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Calibrated Sample Architectural Blueprint (1:100)</span>
+              <label className="ml-2 px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold cursor-pointer transition shadow-xs">
+                Upload My Plan
+                <input type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" onChange={handleFileUpload} className="hidden" />
+              </label>
+            </div>
+          )}
           {isLoadingFile && (
             <div className="absolute inset-0 bg-slate-950/75 z-20 flex flex-col items-center justify-center text-white space-y-3">
               <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -1381,8 +2060,175 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
             onMouseUp={handleMouseUp}
             onDoubleClick={handleDoubleClick}
             onWheel={handleWheel}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onContextMenu={(e) => e.preventDefault()}
             className="w-full h-full block"
           />
+
+          {/* Quick Navigation Tip (Auto-dismisses or stays subtle) */}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 pointer-events-none hidden md:flex items-center space-x-2 bg-slate-900/80 backdrop-blur-xs px-3 py-1 rounded-full border border-slate-700/60 text-[11px] text-slate-300 shadow-lg">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            <span>Right-click & drag to shift view anytime • Space + drag • Arrow keys</span>
+          </div>
+
+          {/* Floating Interactive Minimap / Sheet Navigator */}
+          {showMinimap && offscreenCanvasRef.current && (
+            <div className="absolute bottom-4 left-4 z-20 bg-slate-900/95 border border-slate-700/80 rounded-xl shadow-2xl p-2 backdrop-blur-md flex flex-col space-y-1.5 select-none">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-1 text-[11px] font-bold text-slate-300">
+                <div className="flex items-center space-x-1 text-emerald-400">
+                  <Compass className="w-3.5 h-3.5" />
+                  <span>Sheet Navigator</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMinimap(false)}
+                  className="text-slate-400 hover:text-white p-0.5 rounded cursor-pointer"
+                  title="Hide sheet navigator"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Minimap Canvas with Highlighted Viewport Box */}
+              <div
+                className="relative cursor-pointer overflow-hidden rounded-lg border border-slate-700/80 bg-slate-950 flex items-center justify-center group"
+                style={{ width: `${minimapWidth}px`, height: `${minimapHeight}px` }}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const clickX = e.clientX - rect.left;
+                  const clickY = e.clientY - rect.top;
+                  const targetDrawX = clickX / minimapScaleX;
+                  const targetDrawY = clickY / minimapScaleY;
+                  handlePanToPoint(targetDrawX, targetDrawY);
+                }}
+                title="Click anywhere to center view on that room or section"
+              >
+                <canvas
+                  ref={minimapCanvasRef}
+                  width={minimapWidth}
+                  height={minimapHeight}
+                  className="w-full h-full block pointer-events-none"
+                />
+                {/* Active Viewport Rectangle */}
+                <div
+                  style={{
+                    left: `${minimapViewportLeft}px`,
+                    top: `${minimapViewportTop}px`,
+                    width: `${minimapViewportWidth}px`,
+                    height: `${minimapViewportHeight}px`,
+                  }}
+                  className="absolute border-2 border-emerald-400 bg-emerald-500/25 rounded-xs pointer-events-none shadow-md transition-all"
+                />
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] text-slate-400 pt-0.5">
+                <span>Click area to shift</span>
+                <button
+                  type="button"
+                  onClick={handleFitToScreen}
+                  className="text-emerald-400 hover:text-emerald-300 hover:underline font-bold cursor-pointer"
+                >
+                  Fit Sheet
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Collapsed Navigator Button */}
+          {!showMinimap && (
+            <button
+              type="button"
+              onClick={() => setShowMinimap(true)}
+              className="absolute bottom-4 left-4 z-20 px-2.5 py-1.5 bg-slate-900/90 hover:bg-slate-800 text-emerald-400 border border-emerald-500/50 rounded-xl text-xs font-bold shadow-xl flex items-center space-x-1.5 backdrop-blur-xs transition cursor-pointer"
+              title="Show Sheet Navigator / Minimap"
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>Navigator</span>
+            </button>
+          )}
+
+          {/* Directional Pan D-Pad (Nudge & Shift View) */}
+          <div className="absolute bottom-4 right-4 z-20 flex flex-col items-center bg-slate-900/90 border border-slate-700/80 rounded-2xl shadow-xl p-1 backdrop-blur-xs">
+            <button
+              type="button"
+              onClick={() => handlePanBy(0, 150)}
+              className="p-1 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition cursor-pointer"
+              title="Shift View Up (Arrow Up)"
+            >
+              <ChevronUp className="w-4 h-4" />
+            </button>
+            <div className="flex items-center space-x-1">
+              <button
+                type="button"
+                onClick={() => handlePanBy(150, 0)}
+                className="p-1 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition cursor-pointer"
+                title="Shift View Left (Arrow Left)"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleFitToScreen}
+                className="p-1.5 bg-emerald-950 hover:bg-emerald-900 text-emerald-400 border border-emerald-500/40 rounded-lg text-[10px] font-bold transition cursor-pointer"
+                title="Reset / Center View to Fit (0)"
+              >
+                <Crosshair className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handlePanBy(-150, 0)}
+                className="p-1 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition cursor-pointer"
+                title="Shift View Right (Arrow Right)"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => handlePanBy(0, -150)}
+              className="p-1 hover:bg-slate-800 active:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition cursor-pointer"
+              title="Shift View Down (Arrow Down)"
+            >
+              <ChevronDown className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Floating On-Canvas PDF Page Navigation Bar */}
+          {isPdf && numPages > 1 && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center space-x-2 bg-slate-900/90 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-slate-700/80 shadow-2xl">
+              <button
+                type="button"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage <= 1 || isLoadingFile}
+                className="flex items-center space-x-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 active:bg-slate-600 disabled:opacity-30 disabled:hover:bg-slate-800 text-xs font-bold text-slate-200 rounded-xl transition cursor-pointer border border-slate-600/50 shadow-xs"
+                title="Previous Page (Left Arrow or PageUp)"
+              >
+                <ChevronLeft className="w-4 h-4 text-emerald-400" />
+                <span>Previous</span>
+              </button>
+
+              <div className="flex items-center space-x-1.5 px-3 py-1 bg-slate-950/80 rounded-xl border border-slate-800 font-mono text-xs text-slate-300">
+                <span className="text-slate-400 font-sans text-[11px]">Reviewing</span>
+                <span className="font-bold text-emerald-400">{currentPage}</span>
+                <span className="text-slate-500">/</span>
+                <span className="font-bold text-slate-200">{numPages}</span>
+                <span className="text-slate-500 text-[10px] hidden sm:inline">pages</span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage >= numPages || isLoadingFile}
+                className="flex items-center space-x-1 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-700 active:bg-emerald-600 disabled:opacity-30 disabled:hover:bg-emerald-800 text-xs font-bold text-white rounded-xl transition cursor-pointer border border-emerald-600/50 shadow-xs"
+                title="Next Page (Right Arrow or PageDown)"
+              >
+                <span>Next</span>
+                <ChevronRight className="w-4 h-4 text-white" />
+              </button>
+            </div>
+          )}
 
           {/* Calibrate Guide Overlay */}
           {activeTool === 'calibrate' && (
@@ -1418,11 +2264,34 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
           >
             {/* Header with Title, Width Presets & Collapse Button */}
             <div className="p-2.5 border-b border-slate-800 flex items-center justify-between gap-1">
-              <div className="flex items-center space-x-1.5 min-w-0">
-                <Layers className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 truncate">
-                  Measurements ({measurements.length})
-                </h3>
+              <div className="flex items-center space-x-1 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => setSidebarTab('measurements')}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer transition ${
+                    sidebarTab === 'measurements'
+                      ? 'bg-slate-800 text-emerald-400 border border-emerald-500/30'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Items ({measurements.length})</span>
+                </button>
+
+                {isPdf && numPages > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => setSidebarTab('sheets')}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold flex items-center space-x-1 cursor-pointer transition ${
+                      sidebarTab === 'sheets'
+                        ? 'bg-slate-800 text-emerald-400 border border-emerald-500/30'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <BookOpen className="w-3.5 h-3.5" />
+                    <span>Pages ({numPages})</span>
+                  </button>
+                )}
               </div>
 
               {/* Quick width presets & Hide button */}
@@ -1476,96 +2345,217 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
               </div>
             </div>
 
-            {/* Quick status bar */}
-            {measurements.length > 0 && (
-              <div className="px-3 py-1 bg-slate-800/40 border-b border-slate-800 text-[10px] text-slate-400 flex items-center justify-between">
-                <span>{measurements.filter((m) => m.addedToBoq).length} in BOQ</span>
-                <span className="font-mono text-slate-500">{panelWidth}px</span>
-              </div>
-            )}
-
-            {/* Measurements List */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
-            {measurements.length === 0 ? (
-              <div className="py-12 text-center text-slate-500">
-                <Ruler className="w-8 h-8 mx-auto mb-2 text-slate-600" />
-                <p className="text-xs font-bold text-slate-400">No Measurements Yet</p>
-                <p className="text-[11px] text-slate-500 mt-1 max-w-[220px] mx-auto">
-                  Select a tool above (Length, Area, Wall, Count) and measure directly on the drawing.
-                </p>
-              </div>
-            ) : (
-              measurements.map((m) => {
-                const isSelected = m.id === selectedMeasurementId;
-                return (
-                  <div
-                    key={m.id}
-                    onClick={() => setSelectedMeasurementId(m.id)}
-                    className={`p-3 rounded-xl border transition cursor-pointer text-xs ${
-                      isSelected
-                        ? 'bg-slate-800/90 border-emerald-500 shadow-xs'
-                        : 'bg-slate-800/40 border-slate-700/60 hover:bg-slate-800/70'
+            {/* Sub-bar for Multi-Page Filtering when in measurements tab */}
+            {sidebarTab === 'measurements' && isPdf && numPages > 1 && (
+              <div className="px-3 py-1.5 bg-slate-800/60 border-b border-slate-800 flex items-center justify-between text-[11px]">
+                <span className="text-slate-400">Filter Scope:</span>
+                <div className="flex items-center space-x-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllPagesMeasurements(false)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${
+                      !showAllPagesMeasurements
+                        ? 'bg-emerald-800 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 font-bold">
-                          {m.toolType}
-                        </span>
-                        <h4 className="font-bold text-slate-200 mt-1">{m.label}</h4>
+                    Page {currentPage} Only
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllPagesMeasurements(true)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer transition ${
+                      showAllPagesMeasurements
+                        ? 'bg-emerald-800 text-white shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    All {numPages} Pages
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: SHEETS BROWSER */}
+            {sidebarTab === 'sheets' && isPdf && (
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    All PDF Pages ({numPages})
+                  </span>
+                  <span className="text-[10px] text-slate-500">Click to jump</span>
+                </div>
+                <div className="space-y-1.5">
+                  {Array.from({ length: numPages }, (_, i) => i + 1).map((pg) => {
+                    const isCur = pg === currentPage;
+                    const pageMeasCount = measurements.filter((m) => m.pageNumber === pg).length;
+                    return (
+                      <div
+                        key={pg}
+                        onClick={() => handlePageChange(pg)}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border transition cursor-pointer text-xs ${
+                          isCur
+                            ? 'bg-emerald-950/60 border-emerald-500 text-white shadow-sm'
+                            : 'bg-slate-800/40 border-slate-800 hover:bg-slate-800/80 text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-2.5">
+                          <span
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center font-mono font-black text-xs ${
+                              isCur ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'
+                            }`}
+                          >
+                            {pg}
+                          </span>
+                          <div>
+                            <span className="font-bold block">Page {pg}</span>
+                            <span className="text-[10px] text-slate-400">
+                              {pg === currentPage ? 'Currently Viewing' : 'Review Sheet'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          {pageMeasCount > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-mono font-bold">
+                              {pageMeasCount} items
+                            </span>
+                          )}
+                          {isCur && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                        </div>
                       </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
-                      <div className="flex items-center space-x-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteMeasurement(m.id);
-                          }}
-                          className="p-1 text-slate-500 hover:text-rose-400 rounded cursor-pointer"
-                          title="Delete Measurement"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+            {/* TAB CONTENT: MEASUREMENTS LIST */}
+            {sidebarTab === 'measurements' && (
+              <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+                {(() => {
+                  const visibleMeasurements = isPdf && !showAllPagesMeasurements
+                    ? measurements.filter((m) => !m.pageNumber || m.pageNumber === currentPage)
+                    : measurements;
+
+                  if (visibleMeasurements.length === 0) {
+                    return (
+                      <div className="py-12 text-center text-slate-500">
+                        <Ruler className="w-8 h-8 mx-auto mb-2 text-slate-600" />
+                        <p className="text-xs font-bold text-slate-400">
+                          {isPdf && !showAllPagesMeasurements
+                            ? `No Items on Page ${currentPage}`
+                            : 'No Measurements Yet'}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-1 max-w-[220px] mx-auto">
+                          Select a tool above (Length, Area, Wall, Count) and measure directly on the drawing.
+                        </p>
+                        {isPdf && !showAllPagesMeasurements && measurements.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowAllPagesMeasurements(true)}
+                            className="mt-3 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg text-xs font-bold cursor-pointer"
+                          >
+                            View All {measurements.length} Items
+                          </button>
+                        )}
                       </div>
-                    </div>
+                    );
+                  }
 
-                    <div className="mt-2 flex items-center justify-between border-t border-slate-700/50 pt-2">
-                      <span className="font-mono text-sm font-black text-emerald-400">
-                        {m.measuredQuantity} {m.unit}
-                      </span>
+                  return visibleMeasurements.map((m) => {
+                    const isSelected = m.id === selectedMeasurementId;
+                    const isDiffPage = isPdf && m.pageNumber && m.pageNumber !== currentPage;
 
-                      {m.addedToBoq ? (
-                        <span className="inline-flex items-center text-[10px] text-emerald-400 font-bold">
-                          <CheckCircle2 className="w-3 h-3 mr-1" /> Added to BOQ
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAddMeasurementToBoq(m);
-                          }}
-                          className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[10px] font-bold shadow-xs cursor-pointer transition flex items-center space-x-1"
-                        >
-                          <span>Add to BOQ</span>
-                          <ArrowRight className="w-2.5 h-2.5" />
-                        </button>
-                      )}
-                    </div>
+                    return (
+                      <div
+                        key={m.id}
+                        onClick={() => {
+                          setSelectedMeasurementId(m.id);
+                          if (isDiffPage && m.pageNumber) {
+                            handlePageChange(m.pageNumber);
+                          }
+                        }}
+                        className={`p-3 rounded-xl border transition cursor-pointer text-xs ${
+                          isSelected
+                            ? 'bg-slate-800/90 border-emerald-500 shadow-xs'
+                            : 'bg-slate-800/40 border-slate-700/60 hover:bg-slate-800/70'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center space-x-1.5">
+                              <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-700 text-slate-300 font-bold">
+                                {m.toolType}
+                              </span>
+                              {isPdf && m.pageNumber && (
+                                <span
+                                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded font-bold ${
+                                    m.pageNumber === currentPage
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                      : 'bg-slate-700/80 text-slate-400'
+                                  }`}
+                                  title={`Measured on Page ${m.pageNumber}`}
+                                >
+                                  Pg {m.pageNumber}
+                                </span>
+                              )}
+                            </div>
+                            <h4 className="font-bold text-slate-200 mt-1">{m.label}</h4>
+                          </div>
 
-                    {m.notes && (
-                      <p className="text-[10px] text-slate-400 mt-1 italic line-clamp-2">
-                        {m.notes}
-                      </p>
-                    )}
-                  </div>
-                );
-              })
+                          <div className="flex items-center space-x-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteMeasurement(m.id);
+                              }}
+                              className="p-1 text-slate-500 hover:text-rose-400 rounded cursor-pointer"
+                              title="Delete Measurement"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="mt-2 flex items-center justify-between border-t border-slate-700/50 pt-2">
+                          <span className="font-mono text-sm font-black text-emerald-400">
+                            {m.measuredQuantity} {m.unit}
+                          </span>
+
+                          {m.addedToBoq ? (
+                            <span className="inline-flex items-center text-[10px] text-emerald-400 font-bold">
+                              <CheckCircle2 className="w-3 h-3 mr-1" /> Added to BOQ
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddMeasurementToBoq(m);
+                              }}
+                              className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[10px] font-bold shadow-xs cursor-pointer transition flex items-center space-x-1"
+                            >
+                              <span>Add to BOQ</span>
+                              <ArrowRight className="w-2.5 h-2.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        {m.notes && (
+                          <p className="text-[10px] text-slate-400 mt-1 italic line-clamp-2">
+                            {m.notes}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
             )}
           </div>
-        </div>
-      )}
+        )}
       </div>
 
       {/* CALIBRATION MODAL */}

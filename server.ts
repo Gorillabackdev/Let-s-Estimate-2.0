@@ -807,7 +807,33 @@ app.post('/api/export/pdf', async (req: Request, res: Response) => {
 // 3b. Download User Guide & Manual PDF for new users
 app.get('/api/guide/pdf', async (req: Request, res: Response) => {
   try {
-    const buffer = await generateUserGuidePdfBuffer();
+    const queryEmail = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+    const queryPhone = typeof req.query.phone === 'string' ? req.query.phone.trim() : '';
+
+    let contactEmail = queryEmail || 'emmanuelisaac888@gmail.com';
+    let whatsappPhone = queryPhone || '';
+    let leadQsName = 'Emmanuel Isaac, MNIQS';
+
+    try {
+      const user = await getUserByEmail(contactEmail);
+      if (user) {
+        if (!whatsappPhone && user.phone) {
+          whatsappPhone = user.phone;
+        }
+        if (user.full_name) {
+          leadQsName = user.full_name;
+        }
+      }
+    } catch (e) {
+      // Fallback cleanly
+    }
+
+    const buffer = await generateUserGuidePdfBuffer({
+      contactEmail,
+      whatsappPhone,
+      leadQsName,
+      brandName: 'Estimate with Isaac'
+    });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="Lets_Estimate_2.0_User_Guide.pdf"');
     res.send(buffer);

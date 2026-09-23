@@ -5,7 +5,13 @@
  */
 
 import * as XLSX from 'xlsx';
+import * as pdfjsLib from 'pdfjs-dist';
 import { BoqItem, BESMM4_SECTIONS, QsVerificationStatus } from '../types';
+
+// Configure local PDF.js worker
+if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+}
 
 export interface ColumnMapping {
   itemNumberCol: number; // Column index for item number or code
@@ -17,6 +23,45 @@ export interface ColumnMapping {
   rateCol: number;       // Column index for unit rate (₦)
   amountCol: number;     // Column index for total amount (₦)
 }
+
+export interface BoqImportParameters {
+  headerRowIndex: number;
+  dataStartRowIndex: number;
+  dataEndRowIndex?: number;
+  mapping: ColumnMapping;
+  defaultSection: string;
+  defaultUnit: string;
+  autoCalculateAmount: boolean;
+  autoDeriveRate: boolean;
+  allowUnpricedItems: boolean;
+  cleanCurrencySymbols: boolean;
+  filterSummaryRows: boolean;
+  mergeMultilineNotes: boolean;
+}
+
+export const DEFAULT_IMPORT_PARAMETERS: BoqImportParameters = {
+  headerRowIndex: 0,
+  dataStartRowIndex: 1,
+  dataEndRowIndex: undefined,
+  mapping: {
+    itemNumberCol: -1,
+    sectionCol: -1,
+    itemCol: -1,
+    descriptionCol: -1,
+    unitCol: -1,
+    qtyCol: -1,
+    rateCol: -1,
+    amountCol: -1,
+  },
+  defaultSection: 'Substructure',
+  defaultUnit: 'item',
+  autoCalculateAmount: true,
+  autoDeriveRate: true,
+  allowUnpricedItems: true,
+  cleanCurrencySymbols: true,
+  filterSummaryRows: true,
+  mergeMultilineNotes: true,
+};
 
 export interface RawParsedSheet {
   sheetName: string;
@@ -34,6 +79,7 @@ export interface ParsedBoqResult {
   headers: string[];
   headerRowIndex: number;
   mapping: ColumnMapping;
+  parameters?: BoqImportParameters;
   items: BoqItem[];
   rawRowsCount: number;
   sheetItemCounts?: Record<string, number>;
@@ -706,20 +752,142 @@ export function detectHeaderAndColumns(rows: any[][]): { headerIndex: number; ma
 }
 
 /**
- * Extract BoqItems from a 2D row array using given header index and column mapping
+ * Converts PDF text content items into 2D table rows by vertical line grouping and horizontal token clustering
+ */
+export function extractTableRowsFromPdfItems(items: any[]): any[][] {
+  if (!Array.isArray(items) || items.length === 0) return [];
+
+  // Filter valid text items
+  const validItems = items.filter(it => it && typeof it.str === 'string' && it.str.trim() !== '');
+  if (validItems.length === 0) return [];
+
+  // Sort by vertical position descending (PDF y=0 is at bottom), then horizontal x ascending
+  validItems.sort((a, b) => {
+    const yA = a.transform ? a.transform[5] : 0;
+    const yB = b.transform ? b.transform[5] : 0;
+    const diffY = yB - yA;
+    if (Math.abs(diffY) > 3.5) return diffY;
+    const xA = a.transform ? a.transform[4] : 0;
+    const xB = b.transform ? b.transform[4] : 0;
+    return xA - xB;
+  });
+
+  // Group items into horizontal lines
+  const lines: Array<Array<{ str: string; x: number; width: number }>> = [];
+  let currentLine: Array<{ str: string; x: number; width: number }> = [];
+  let currentY = validItems[0].transform ? validItems[0].transform[5] : 0;
+
+  for (const item of validItems) {
+    const y = item.transform ? item.transform[5] : 0;
+    const x = item.transform ? item.transform[4] : 0;
+    const w = item.width || 0;
+    const text = item.str.trim();
+
+    if (Math.abs(y - currentY) > 4) {
+      if (currentLine.length > 0) {
+        lines.push(currentLine);
+      }
+      currentLine = [];
+      currentY = y;
+    }
+    currentLine.push({ str: text, x, width: w });
+  }
+  if (currentLine.length > 0) {
+    lines.push(currentLine);
+  }
+
+  // Convert each line into distinct column cells
+  const rows: any[][] = [];
+  for (const line of lines) {
+    if (line.length === 0) continue;
+    line.sort((a, b) => a.x - b.x);
+
+    const cells: string[] = [];
+    let currentCell = line[0].str;
+    let lastXEnd = line[0].x + (line[0].width || (line[0].str.length * 5));
+
+    for (let i = 1; i < line.length; i++) {
+      const it = line[i];
+      const gap = it.x - lastXEnd;
+      // Close tokens (< 12px) merge into same cell string
+      if (gap < 12) {
+        currentCell += ' ' + it.str;
+      } else {
+        cells.push(currentCell.trim());
+        currentCell = it.str;
+      }
+      lastXEnd = Math.max(lastXEnd, it.x + (it.width || (it.str.length * 5)));
+    }
+    if (currentCell.trim()) {
+      cells.push(currentCell.trim());
+    }
+
+    if (cells.length > 0) {
+      rows.push(cells);
+    }
+  }
+
+  return rows;
+}
+
+/**
+ * Reads any PDF document and extracts table rows for each page
+ */
+export async function parsePdfToSheets(buffer: ArrayBuffer): Promise<{ sheetNames: string[]; allSheets: Record<string, any[][]> }> {
+  if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+  }
+  const uint8 = new Uint8Array(buffer);
+  const loadingTask = pdfjsLib.getDocument({ data: uint8 });
+  const pdfDoc = await loadingTask.promise;
+  const numPages = pdfDoc.numPages;
+  const allSheets: Record<string, any[][]> = {};
+  const sheetNames: string[] = [];
+
+  for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+    const page = await pdfDoc.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    const rows = extractTableRowsFromPdfItems(textContent.items as any[]);
+    const pageName = `Page ${pageNum}`;
+    sheetNames.push(pageName);
+    allSheets[pageName] = rows;
+  }
+
+  return { sheetNames, allSheets };
+}
+
+/**
+ * Extract BoqItems from a 2D row array using given header index and column mapping,
+ * applying flexible parameters to understand any Nigerian or standard BOQ format.
  */
 export function extractBoqItemsFromRows(
   rows: any[][],
   headerIndex: number,
   mapping: ColumnMapping,
   defaultStatus: QsVerificationStatus = 'Imported',
-  fallbackSection?: string
+  fallbackSection?: string,
+  customParams?: Partial<BoqImportParameters>
 ): BoqItem[] {
+  const params: BoqImportParameters = {
+    ...DEFAULT_IMPORT_PARAMETERS,
+    headerRowIndex: headerIndex,
+    dataStartRowIndex: customParams?.dataStartRowIndex !== undefined ? customParams.dataStartRowIndex : (headerIndex + 1),
+    mapping: mapping || customParams?.mapping || DEFAULT_IMPORT_PARAMETERS.mapping,
+    defaultSection: fallbackSection || customParams?.defaultSection || 'Substructure',
+    ...customParams,
+  };
+
+  const effectiveMapping = params.mapping;
+  const startRow = Math.max(params.dataStartRowIndex, params.headerRowIndex + 1);
+  const endRow = params.dataEndRowIndex !== undefined && params.dataEndRowIndex > startRow 
+    ? Math.min(params.dataEndRowIndex, rows.length) 
+    : rows.length;
+
   const items: BoqItem[] = [];
-  let currentSection = fallbackSection ? (normalizeBesmm4Section(fallbackSection) || 'Substructure') : '';
+  let currentSection = normalizeBesmm4Section(params.defaultSection) || 'Substructure';
   let runningNumber = 1;
 
-  for (let r = headerIndex + 1; r < rows.length; r++) {
+  for (let r = startRow; r < endRow; r++) {
     const row = rows[r];
     if (!Array.isArray(row) || row.length === 0) continue;
 
@@ -734,29 +902,29 @@ export function extractBoqItemsFromRows(
       continue; // Skip section title row as a measurable line item
     }
 
-    const rawItemNo = mapping.itemNumberCol >= 0 ? String(row[mapping.itemNumberCol] || '').trim() : '';
-    const rawSection = mapping.sectionCol >= 0 ? String(row[mapping.sectionCol] || '').trim() : '';
-    let rawDesc = mapping.descriptionCol >= 0 ? String(row[mapping.descriptionCol] || '').trim() : '';
-    let rawItem = mapping.itemCol >= 0 ? String(row[mapping.itemCol] || '').trim() : '';
-    const rawUnit = mapping.unitCol >= 0 ? String(row[mapping.unitCol] || '').trim() : '';
-    let qty = mapping.qtyCol >= 0 ? cleanNumber(row[mapping.qtyCol]) : 0;
-    const rawRate = mapping.rateCol >= 0 ? cleanNumber(row[mapping.rateCol]) : 0;
-    const rawAmount = mapping.amountCol >= 0 ? cleanNumber(row[mapping.amountCol]) : 0;
+    const rawItemNo = effectiveMapping.itemNumberCol >= 0 ? String(row[effectiveMapping.itemNumberCol] || '').trim() : '';
+    const rawSection = effectiveMapping.sectionCol >= 0 ? String(row[effectiveMapping.sectionCol] || '').trim() : '';
+    let rawDesc = effectiveMapping.descriptionCol >= 0 ? String(row[effectiveMapping.descriptionCol] || '').trim() : '';
+    let rawItem = effectiveMapping.itemCol >= 0 ? String(row[effectiveMapping.itemCol] || '').trim() : '';
+    const rawUnit = effectiveMapping.unitCol >= 0 ? String(row[effectiveMapping.unitCol] || '').trim() : '';
+    let qty = effectiveMapping.qtyCol >= 0 ? cleanNumber(row[effectiveMapping.qtyCol]) : 0;
+    const rawRate = effectiveMapping.rateCol >= 0 ? cleanNumber(row[effectiveMapping.rateCol]) : 0;
+    const rawAmount = effectiveMapping.amountCol >= 0 ? cleanNumber(row[effectiveMapping.amountCol]) : 0;
 
     // Skip repeated column headers that appear on subsequent printed pages (e.g. at every 20-35 rows in a 500-item document)
     const isRepeatedHeader = (
       (/^(item(\s*(no\.?|#))?|s\/?n|no\.?|ref\.?)$/i.test(rawItemNo) ||
        /^(description(\s*of\s*works?)?|particulars?|spec(ification)?s?|details)$/i.test(rawDesc)) &&
       (/^(unit(\s*of\s*measure)?|uom|measure)$/i.test(rawUnit) ||
-       /^(qty|quantity|quantities)$/i.test(String(row[mapping.qtyCol] || '').trim()) ||
-       /^(rate|price|unit\s*rate)$/i.test(String(row[mapping.rateCol] || '').trim()))
+       /^(qty|quantity|quantities)$/i.test(String(row[effectiveMapping.qtyCol] || '').trim()) ||
+       /^(rate|price|unit\s*rate)$/i.test(String(row[effectiveMapping.rateCol] || '').trim()))
     );
     if (isRepeatedHeader) continue;
 
     // Fallback: If description column was not mapped or is empty, inspect other columns for text
     if (!rawDesc && !rawItem) {
       for (let c = 0; c < row.length; c++) {
-        if (c === mapping.itemNumberCol || c === mapping.unitCol || c === mapping.qtyCol || c === mapping.rateCol || c === mapping.amountCol) {
+        if (c === effectiveMapping.itemNumberCol || c === effectiveMapping.unitCol || c === effectiveMapping.qtyCol || c === effectiveMapping.rateCol || c === effectiveMapping.amountCol) {
           continue;
         }
         const candidate = String(row[c] || '').trim();
@@ -768,7 +936,7 @@ export function extractBoqItemsFromRows(
     }
 
     // Check if subtotal or collection row
-    if (isNonMeasurementRow(rawDesc, rawItem, rawUnit, qty, rawRate, rawAmount)) {
+    if (params.filterSummaryRows && isNonMeasurementRow(rawDesc, rawItem, rawUnit, qty, rawRate, rawAmount)) {
       continue;
     }
 
@@ -782,9 +950,9 @@ export function extractBoqItemsFromRows(
 
     // Handle multiline specification continuation notes
     // If a row has text but no unit, qty, rate, or amount, append it to the preceding item's description
-    if ((!qty || qty === 0) && (!rawRate || rawRate === 0) && (!rawAmount || rawAmount === 0) && (!rawUnit || rawUnit === '')) {
-      if (items.length > 0 && rawDesc.length > 3) {
-        items[items.length - 1].description += `\n${rawDesc}`;
+    if (params.mergeMultilineNotes && (!qty || qty === 0) && (!rawRate || rawRate === 0) && (!rawAmount || rawAmount === 0) && (!rawUnit || rawUnit === '')) {
+      if (items.length > 0 && rawDesc.length > 2) {
+        items[items.length - 1].description += ` ${rawDesc}`;
         continue;
       }
     }
@@ -794,8 +962,8 @@ export function extractBoqItemsFromRows(
       continue;
     }
 
-    // Normalize quantity: if 0 or missing, default to 1 (e.g. provisional sum or unpriced tender item)
-    if (qty === 0) {
+    // Quantity normalization
+    if (qty === 0 && !params.allowUnpricedItems) {
       qty = 1;
     }
 
@@ -805,9 +973,9 @@ export function extractBoqItemsFromRows(
     let calculatedRate = rawRate;
     let calculatedAmount = rawAmount;
 
-    if (calculatedRate > 0 && calculatedAmount === 0 && qty > 0) {
+    if (params.autoCalculateAmount && calculatedRate > 0 && calculatedAmount === 0 && qty > 0) {
       calculatedAmount = Math.round(qty * calculatedRate);
-    } else if (calculatedAmount > 0 && calculatedRate === 0 && qty > 0) {
+    } else if (params.autoDeriveRate && calculatedAmount > 0 && calculatedRate === 0 && qty > 0) {
       calculatedRate = Math.round((calculatedAmount / qty) * 100) / 100;
     } else if (calculatedAmount === 0 && calculatedRate === 0) {
       calculatedAmount = 0;
@@ -819,14 +987,15 @@ export function extractBoqItemsFromRows(
     // 1. Explicit normalized section column on row
     // 2. Section header active from preceding rows (e.g. "BILL NO. 2 - SUPERSTRUCTURE")
     // 3. Keyword analysis on item description
-    // 4. Default to 'Substructure'
+    // 4. Default section parameter
     const descSection = categorizeBesmm4Section(rawDesc, rawItem);
     const finalSection = (rawSection ? normalizeBesmm4Section(rawSection) : '') ||
                          currentSection ||
                          descSection ||
+                         params.defaultSection ||
                          'Substructure';
 
-    const finalUnit = normalizeUnit(rawUnit || (calculatedAmount > 0 && calculatedRate === 0 ? 'sum' : 'item'));
+    const finalUnit = normalizeUnit(rawUnit || params.defaultUnit || (calculatedAmount > 0 && calculatedRate === 0 ? 'sum' : 'item'));
     const finalItemTitle = rawItem || (rawDesc.length > 40 ? rawDesc.substring(0, 40).trim() + '...' : rawDesc);
 
     items.push({
@@ -857,7 +1026,8 @@ export function extractBoqItemsFromRows(
  */
 export function extractAllSheetsItems(
   allSheets: Record<string, any[][]>,
-  sheetNames: string[]
+  sheetNames: string[],
+  customParams?: Partial<BoqImportParameters>
 ): {
   allItems: BoqItem[];
   sheetItemCounts: Record<string, number>;
@@ -881,7 +1051,8 @@ export function extractAllSheetsItems(
     }
 
     const { headerIndex, mapping } = detectHeaderAndColumns(rows);
-    const sheetItems = extractBoqItemsFromRows(rows, headerIndex, mapping, 'Imported', name);
+    const effectiveMapping = customParams?.mapping || mapping;
+    const sheetItems = extractBoqItemsFromRows(rows, headerIndex, effectiveMapping, 'Imported', name, customParams);
     sheetItemCounts[name] = sheetItems.length;
 
     for (const it of sheetItems) {
@@ -894,11 +1065,12 @@ export function extractAllSheetsItems(
 }
 
 /**
- * Parse an uploaded file (Excel, CSV, TSV, or JSON) into raw sheets and extracted BOQ items
+ * Parse an uploaded file (Excel, CSV, TSV, PDF, TXT, or JSON) into raw sheets and extracted BOQ items
  */
-export async function parseBoqFile(file: File): Promise<ParsedBoqResult> {
+export async function parseBoqFile(file: File, customParams?: Partial<BoqImportParameters>): Promise<ParsedBoqResult> {
   const extension = file.name.split('.').pop()?.toLowerCase() || '';
 
+  // 1. JSON Files
   if (extension === 'json') {
     const text = await file.text();
     const data = JSON.parse(text);
@@ -943,7 +1115,45 @@ export async function parseBoqFile(file: File): Promise<ParsedBoqResult> {
     };
   }
 
-  // Excel or Delimited text file (.xlsx, .xls, .csv, .tsv)
+  // 2. PDF BOQ Documents
+  if (extension === 'pdf') {
+    const buffer = await file.arrayBuffer();
+    const { sheetNames, allSheets } = await parsePdfToSheets(buffer);
+    if (sheetNames.length === 0) {
+      throw new Error('No pages or readable text found in this PDF file.');
+    }
+
+    const { allItems: combinedItems, sheetItemCounts } = extractAllSheetsItems(allSheets, sheetNames, customParams);
+    const firstSheet = sheetNames[0] || 'Page 1';
+    const firstRows = allSheets[firstSheet] || [];
+    const { headerIndex, mapping, headers } = detectHeaderAndColumns(firstRows);
+    const effectiveMapping = customParams?.mapping || mapping;
+    const items = sheetNames.length > 1 && combinedItems.length > 0 
+      ? combinedItems 
+      : extractBoqItemsFromRows(firstRows, headerIndex, effectiveMapping, 'Imported', firstSheet, customParams);
+
+    return {
+      fileName: file.name,
+      sheetNames,
+      activeSheet: sheetNames.length > 1 && combinedItems.length > 0 ? '__ALL_SHEETS__' : firstSheet,
+      allSheets,
+      headers,
+      headerRowIndex: headerIndex,
+      mapping: effectiveMapping,
+      items,
+      rawRowsCount: items.length,
+      sheetItemCounts,
+      combinedAllSheetsItems: combinedItems,
+    };
+  }
+
+  // 3. Plain Text Files (.txt)
+  if (extension === 'txt') {
+    const text = await file.text();
+    return parsePastedBoqText(text, file.name, customParams);
+  }
+
+  // 4. Excel or Delimited text file (.xlsx, .xls, .csv, .tsv)
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, {
     type: 'array',
@@ -984,7 +1194,7 @@ export async function parseBoqFile(file: File): Promise<ParsedBoqResult> {
     if (rows.length === 0) continue;
 
     const { headerIndex, mapping, headers } = detectHeaderAndColumns(rows);
-    const items = extractBoqItemsFromRows(rows, headerIndex, mapping, 'Imported', name);
+    const items = extractBoqItemsFromRows(rows, headerIndex, mapping, 'Imported', name, customParams);
 
     // Calculate sheet relevance score
     let score = items.length * 10;
@@ -1016,7 +1226,7 @@ export async function parseBoqFile(file: File): Promise<ParsedBoqResult> {
   }
 
   // Extract combined items across all non-summary worksheets in the workbook
-  const { allItems: combinedItems, sheetItemCounts } = extractAllSheetsItems(allSheets, sheetNames);
+  const { allItems: combinedItems, sheetItemCounts } = extractAllSheetsItems(allSheets, sheetNames, customParams);
 
   // Sort candidates by score descending
   candidates.sort((a, b) => b.score - a.score);
@@ -1025,14 +1235,15 @@ export async function parseBoqFile(file: File): Promise<ParsedBoqResult> {
   const bestCandidate = candidates.length > 0 ? candidates[0] : null;
 
   // If multi-sheet workbook contains more total items across sheets than a single sheet,
-  // default to '__ALL_SHEETS__' so the full 500-item BOQ is imported in one click!
+  // default to '__ALL_SHEETS__' so the full BOQ is imported in one click!
   const hasMultipleProductiveSheets = sheetNames.length > 1 && combinedItems.length > (bestCandidate ? bestCandidate.items.length : 0);
   const activeSheet = hasMultipleProductiveSheets ? '__ALL_SHEETS__' : (bestCandidate ? bestCandidate.name : sheetNames[0]);
   const activeRows = allSheets[bestCandidate ? bestCandidate.name : sheetNames[0]] || [];
   const headerIndex = bestCandidate ? bestCandidate.headerIndex : 0;
   const mapping = bestCandidate ? bestCandidate.mapping : detectHeaderAndColumns(activeRows).mapping;
   const headers = bestCandidate ? bestCandidate.headers : (activeRows[0] || []).map((h, i) => String(h || `Column ${i + 1}`).trim());
-  const items = hasMultipleProductiveSheets ? combinedItems : (bestCandidate ? bestCandidate.items : extractBoqItemsFromRows(activeRows, headerIndex, mapping));
+  const effectiveMapping = customParams?.mapping || mapping;
+  const items = hasMultipleProductiveSheets ? combinedItems : (bestCandidate ? bestCandidate.items : extractBoqItemsFromRows(activeRows, headerIndex, effectiveMapping, 'Imported', activeSheet, customParams));
 
   return {
     fileName: file.name,
@@ -1041,7 +1252,7 @@ export async function parseBoqFile(file: File): Promise<ParsedBoqResult> {
     allSheets,
     headers,
     headerRowIndex: headerIndex,
-    mapping,
+    mapping: effectiveMapping,
     items,
     rawRowsCount: items.length,
     sheetItemCounts,
@@ -1050,9 +1261,9 @@ export async function parseBoqFile(file: File): Promise<ParsedBoqResult> {
 }
 
 /**
- * Parse raw pasted spreadsheet text (e.g. copied from Excel or Word table)
+ * Parse raw pasted spreadsheet text (e.g. copied from Excel, Word table, or PDF text)
  */
-export function parsePastedBoqText(text: string): ParsedBoqResult {
+export function parsePastedBoqText(text: string, fileName = 'Pasted_Spreadsheet_Data', customParams?: Partial<BoqImportParameters>): ParsedBoqResult {
   const lines = text.trim().split(/\r?\n/);
   const rows: any[][] = lines.map(line => {
     // If line has tabs, split by tab; otherwise split by comma if valid CSV
@@ -1064,18 +1275,21 @@ export function parsePastedBoqText(text: string): ParsedBoqResult {
   });
 
   const { headerIndex, mapping, headers } = detectHeaderAndColumns(rows);
-  const items = extractBoqItemsFromRows(rows, headerIndex, mapping);
+  const effectiveMapping = customParams?.mapping || mapping;
+  const items = extractBoqItemsFromRows(rows, headerIndex, effectiveMapping, 'Imported', 'Pasted Data', customParams);
 
   return {
-    fileName: 'Pasted_Spreadsheet_Data',
+    fileName,
     sheetNames: ['Pasted Data'],
     activeSheet: 'Pasted Data',
     allSheets: { 'Pasted Data': rows },
     headers,
     headerRowIndex: headerIndex,
-    mapping,
+    mapping: effectiveMapping,
     items,
     rawRowsCount: rows.length,
+    sheetItemCounts: { 'Pasted Data': items.length },
+    combinedAllSheetsItems: items,
   };
 }
 

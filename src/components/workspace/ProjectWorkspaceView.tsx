@@ -47,6 +47,7 @@ import { ProjectControlsView } from '../controls/ProjectControlsView';
 import { CalculatorsHubView } from '../calculators/CalculatorsHubView';
 import { DrawingUploader } from '../DrawingUploader';
 import { ManualTakeoffWorkspace } from '../estimating/ManualTakeoffWorkspace';
+import { MarketRatesEngine } from '../estimating/MarketRatesEngine';
 import { ProjectEditModal } from '../projects/ProjectEditModal';
 import { DeleteProjectModal } from '../projects/DeleteProjectModal';
 
@@ -1037,115 +1038,12 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
       {/* TAB 6: RATES */}
       {/* ========================================================================= */}
       {activeTab === 'rates' && (
-        <div className="space-y-6">
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-              <div>
-                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                  <Calculator className="w-5 h-5 text-emerald-700" />
-                  <span>Nigerian Construction Market Rates Engine</span>
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Live localized prices in Nigerian Naira (₦) for <strong>{project.location || 'Lagos'}</strong> calibrated against NIQS standards.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={onApplyMarketRates}
-                className="px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs cursor-pointer inline-flex items-center space-x-1.5"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                <span>Apply Market Rates to All BOQ Items</span>
-              </button>
-            </div>
-
-            {/* Rates Table Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-              
-              {/* Material Rates */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
-                <span className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px] block border-b border-slate-200 pb-1">
-                  Core Materials (Lagos / SW)
-                </span>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Dangote Cement 42.5N (50kg):</span>
-                  <span className="font-mono font-bold text-slate-900">₦9,800 / bag</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Clean Sharp Sand (20-ton):</span>
-                  <span className="font-mono font-bold text-slate-900">₦14,000 / ton</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Granite Chippings 3/4" (30-ton):</span>
-                  <span className="font-mono font-bold text-slate-900">₦18,500 / ton</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">High-Yield Rebar (TMT Fe500):</span>
-                  <span className="font-mono font-bold text-slate-900">₦1,350,000 / ton</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-600">225mm Vibrated Sandcrete Block:</span>
-                  <span className="font-mono font-bold text-slate-900">₦650 / pc</span>
-                </div>
-              </div>
-
-              {/* Direct Labour Rates */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
-                <span className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px] block border-b border-slate-200 pb-1">
-                  Direct Daily Labour Wages
-                </span>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Skilled Mason / Bricklayer:</span>
-                  <span className="font-mono font-bold text-slate-900">₦8,500 / day</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Steel Fixer / Iron Bender:</span>
-                  <span className="font-mono font-bold text-slate-900">₦8,500 / day</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Formwork Carpenter:</span>
-                  <span className="font-mono font-bold text-slate-900">₦8,000 / day</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Unskilled Labourer / Attendant:</span>
-                  <span className="font-mono font-bold text-slate-900">₦4,500 / day</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-600">Site QS / Resident Supervisor:</span>
-                  <span className="font-mono font-bold text-slate-900">₦25,000 / day</span>
-                </div>
-              </div>
-
-              {/* Composite Trade Rates */}
-              <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5">
-                <span className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px] block border-b border-slate-200 pb-1">
-                  All-In Composite Trade Rates
-                </span>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">RC Grade 25 Concrete in Foundation:</span>
-                  <span className="font-mono font-bold text-slate-900">₦95,000 / m³</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">225mm Blockwork in Mortar (1:4):</span>
-                  <span className="font-mono font-bold text-slate-900">₦14,500 / m²</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">12mm High-Yield Rebar Fixed:</span>
-                  <span className="font-mono font-bold text-slate-900">₦1,650 / kg</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-600">Internal Wall Plastering 15mm:</span>
-                  <span className="font-mono font-bold text-slate-900">₦3,800 / m²</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-600">Aluminium Longspan 0.55mm:</span>
-                  <span className="font-mono font-bold text-slate-900">₦11,200 / m²</span>
-                </div>
-              </div>
-
-            </div>
-          </div>
+        <div className="py-2">
+          <MarketRatesEngine
+            project={project}
+            onUpdateBoqItem={onUpdateBoqItem}
+            onUpdateProject={onUpdateProject}
+          />
         </div>
       )}
 

@@ -19,13 +19,15 @@ import {
   Calculator, 
   X, 
   RefreshCw, 
-  ShieldCheck, 
-  ChevronDown, 
-  ChevronUp, 
+  Sliders,
   HelpCircle,
-  Search
+  Search,
+  Eye,
+  Settings2,
+  Table,
+  Hash
 } from 'lucide-react';
-import { Project, BoqItem, BESMM4_SECTIONS, QsVerificationStatus } from '../../types';
+import { Project, BoqItem, BESMM4_SECTIONS } from '../../types';
 import { formatNaira, formatNumber } from '../../utils/format';
 import { FormattedNumberInput } from '../common/FormattedNumberInput';
 import { ALL_NIGERIAN_STATES } from '../../data/nigerianLocations';
@@ -35,6 +37,8 @@ import {
   downloadBoqTemplate, 
   getSampleNigerianBoq, 
   ColumnMapping, 
+  BoqImportParameters,
+  DEFAULT_IMPORT_PARAMETERS,
   extractBoqItemsFromRows, 
   extractAllSheetsItems,
   detectHeaderAndColumns,
@@ -53,6 +57,7 @@ interface BoqImportModalProps {
 }
 
 type ImportSourceTab = 'file' | 'paste' | 'sample';
+type WorkspaceTab = 'parameters' | 'review';
 
 export const BoqImportModal: React.FC<BoqImportModalProps> = ({
   isOpen,
@@ -63,36 +68,28 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
   onCreateProjectWithBoq,
 }) => {
   const [activeSourceTab, setActiveSourceTab] = useState<ImportSourceTab>('file');
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('parameters');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // File Upload State
+  // File Upload & Data State
   const [selectedFileName, setSelectedFileName] = useState<string>('');
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [activeSheetName, setActiveSheetName] = useState<string>('');
   const [rawSheets, setRawSheets] = useState<Record<string, any[][]>>({});
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
-  const [headerRowIdx, setHeaderRowIdx] = useState<number>(0);
-  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({
-    itemNumberCol: -1,
-    sectionCol: -1,
-    itemCol: -1,
-    descriptionCol: -1,
-    unitCol: -1,
-    qtyCol: -1,
-    rateCol: -1,
-    amountCol: -1,
-  });
+
+  // Comprehensive BOQ Import Parameters
+  const [importParams, setImportParams] = useState<BoqImportParameters>({ ...DEFAULT_IMPORT_PARAMETERS });
 
   // Pasted Text State
   const [pastedText, setPastedText] = useState('');
 
-  // Review Stage & Items
-  const [step, setStep] = useState<'upload' | 'review'>('upload');
+  // Items State
+  const [step, setStep] = useState<'upload' | 'workspace'>('upload');
   const [reviewedItems, setReviewedItems] = useState<BoqItem[]>([]);
   const [combinedAllSheetsItems, setCombinedAllSheetsItems] = useState<BoqItem[]>([]);
   const [sheetItemCounts, setSheetItemCounts] = useState<Record<string, number>>({});
-  const [showColumnConfig, setShowColumnConfig] = useState(false);
 
   // Search & Pagination for 500+ Items BOQ
   const [searchQuery, setSearchQuery] = useState('');
@@ -122,6 +119,43 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Active raw rows for live preview in the parameters tab
+  const activeRawRows = useMemo(() => {
+    if (!activeSheetName || activeSheetName === '__ALL_SHEETS__') {
+      const firstKey = sheetNames[0] || '';
+      return rawSheets[firstKey] || [];
+    }
+    return rawSheets[activeSheetName] || [];
+  }, [rawSheets, activeSheetName, sheetNames]);
+
+  // Execute extraction with given parameters
+  const runExtraction = (
+    sheetName: string,
+    params: BoqImportParameters,
+    sheetsDict: Record<string, any[][]> = rawSheets,
+    allNames: string[] = sheetNames
+  ) => {
+    if (sheetName === '__ALL_SHEETS__') {
+      const { allItems, sheetItemCounts: counts } = extractAllSheetsItems(sheetsDict, allNames, params);
+      setCombinedAllSheetsItems(allItems);
+      setSheetItemCounts(counts);
+      setReviewedItems(allItems);
+      return allItems;
+    } else {
+      const rows = sheetsDict[sheetName] || [];
+      const extracted = extractBoqItemsFromRows(
+        rows,
+        params.headerRowIndex,
+        params.mapping,
+        'Imported',
+        params.defaultSection,
+        params
+      );
+      setReviewedItems(extracted);
+      return extracted;
+    }
+  };
+
   // Handle File Selected
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -140,14 +174,21 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
     setIsProcessing(true);
     setErrorMessage(null);
     try {
-      const result = await parseBoqFile(file);
+      const result = await parseBoqFile(file, importParams);
       setSelectedFileName(result.fileName || file.name);
       setSheetNames(result.sheetNames);
       setActiveSheetName(result.activeSheet);
       setRawSheets(result.allSheets);
       setSheetHeaders(result.headers);
-      setHeaderRowIdx(result.headerRowIndex);
-      setColumnMapping(result.mapping);
+
+      const newParams: BoqImportParameters = {
+        ...importParams,
+        headerRowIndex: result.headerRowIndex,
+        dataStartRowIndex: result.headerRowIndex + 1,
+        mapping: result.mapping,
+      };
+      setImportParams(newParams);
+
       setReviewedItems(result.items);
       setCombinedAllSheetsItems(result.combinedAllSheetsItems || result.items);
       setSheetItemCounts(result.sheetItemCounts || {});
@@ -156,16 +197,18 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
       setNewProjectTitle((file.name.replace(/\.[^/.]+$/, '') || 'Imported BOQ') + ' (Reviewed)');
 
       if (result.items.length === 0) {
-        setShowColumnConfig(true);
+        setWorkspaceTab('parameters');
         setErrorMessage(
-          `Worksheet "${result.activeSheet}" loaded (${result.rawRowsCount} rows), but line items could not be identified automatically. Please choose your Header Row and map the columns below.`
+          `Document loaded (${result.rawRowsCount} rows), but line items could not be auto-detected. Use the Parameters & Mapping workspace below to map the columns.`
         );
+      } else {
+        setWorkspaceTab('review');
       }
 
-      setStep('review');
+      setStep('workspace');
     } catch (err: any) {
       console.error('BOQ parse error:', err);
-      setErrorMessage(err.message || 'Failed to read file. Please ensure it is a valid .xlsx, .xls, or .csv file.');
+      setErrorMessage(err.message || 'Failed to read file. Please ensure it is a valid Excel, PDF, CSV, or Text file.');
     } finally {
       setIsProcessing(false);
     }
@@ -175,16 +218,7 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
   const handleSelectAllSheets = () => {
     setActiveSheetName('__ALL_SHEETS__');
     setCurrentPage(1);
-    if (combinedAllSheetsItems.length > 0) {
-      setReviewedItems(combinedAllSheetsItems);
-      setErrorMessage(null);
-    } else {
-      const { allItems, sheetItemCounts: counts } = extractAllSheetsItems(rawSheets, sheetNames);
-      setCombinedAllSheetsItems(allItems);
-      setSheetItemCounts(counts);
-      setReviewedItems(allItems);
-      setErrorMessage(null);
-    }
+    runExtraction('__ALL_SHEETS__', importParams);
   };
 
   // Handle Single Sheet Selection
@@ -197,46 +231,86 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
       return;
     }
     const detection = detectHeaderAndColumns(rows);
-    setHeaderRowIdx(detection.headerIndex);
+    const updatedParams: BoqImportParameters = {
+      ...importParams,
+      headerRowIndex: detection.headerIndex,
+      dataStartRowIndex: detection.headerIndex + 1,
+      mapping: detection.mapping,
+    };
+    setImportParams(updatedParams);
     setSheetHeaders(detection.headers);
-    setColumnMapping(detection.mapping);
-    const reExtracted = extractBoqItemsFromRows(rows, detection.headerIndex, detection.mapping, 'Imported', sheetName);
-    setReviewedItems(reExtracted);
+
+    const reExtracted = runExtraction(sheetName, updatedParams);
     if (reExtracted.length === 0) {
-      setShowColumnConfig(true);
-      setErrorMessage(`No measurement items detected on sheet "${sheetName}". Please adjust the Header Row or Column Mapping below.`);
+      setErrorMessage(`No items detected on "${sheetName}". Please adjust the parameters or column mapping.`);
     } else {
       setErrorMessage(null);
     }
   };
 
-  // Handle Header Row Selection Change
-  const handleHeaderRowChange = (newHeaderIdx: number) => {
-    setHeaderRowIdx(newHeaderIdx);
-    const targetSheet = activeSheetName === '__ALL_SHEETS__' ? sheetNames[0] : activeSheetName;
+  // Set Header Row directly
+  const handleSetHeaderRow = (newHeaderIdx: number) => {
+    const targetSheet = activeSheetName === '__ALL_SHEETS__' ? (sheetNames[0] || '') : activeSheetName;
     const rows = rawSheets[targetSheet] || [];
-    if (rows.length === 0) return;
     const newHeaders = (rows[newHeaderIdx] || []).map((h, i) => String(h || `Column ${i + 1}`).trim());
     setSheetHeaders(newHeaders);
-    const reExtracted = extractBoqItemsFromRows(rows, newHeaderIdx, columnMapping, 'Imported', targetSheet);
-    setReviewedItems(reExtracted);
-    if (reExtracted.length > 0) {
-      setErrorMessage(null);
-    }
+
+    const updatedParams: BoqImportParameters = {
+      ...importParams,
+      headerRowIndex: newHeaderIdx,
+      dataStartRowIndex: Math.max(importParams.dataStartRowIndex, newHeaderIdx + 1),
+    };
+    setImportParams(updatedParams);
+    runExtraction(activeSheetName, updatedParams);
   };
 
-  // Handle Re-parse when mapping changes
-  const handleReapplyMapping = (newMapping: ColumnMapping) => {
-    setColumnMapping(newMapping);
-    const targetSheet = activeSheetName === '__ALL_SHEETS__' ? sheetNames[0] : activeSheetName;
-    const rows = rawSheets[targetSheet] || [];
-    if (rows.length > 0) {
-      const reExtracted = extractBoqItemsFromRows(rows, headerRowIdx, newMapping, 'Imported', targetSheet);
-      setReviewedItems(reExtracted);
-      if (reExtracted.length > 0) {
-        setErrorMessage(null);
-      }
+  // Set Data Start Row directly
+  const handleSetDataStartRow = (newStartIdx: number) => {
+    const updatedParams: BoqImportParameters = {
+      ...importParams,
+      dataStartRowIndex: newStartIdx,
+    };
+    setImportParams(updatedParams);
+    runExtraction(activeSheetName, updatedParams);
+  };
+
+  // Update a single column mapping
+  const handleSetColumnRole = (colIdx: number, role: keyof ColumnMapping | 'ignore') => {
+    const newMapping: ColumnMapping = { ...importParams.mapping };
+
+    // Clear old assignment for this role if unique
+    if (role !== 'ignore') {
+      (Object.keys(newMapping) as Array<keyof ColumnMapping>).forEach((key) => {
+        if (newMapping[key] === colIdx) {
+          newMapping[key] = -1;
+        }
+      });
+      newMapping[role] = colIdx;
+    } else {
+      // Remove any role pointing to this colIdx
+      (Object.keys(newMapping) as Array<keyof ColumnMapping>).forEach((key) => {
+        if (newMapping[key] === colIdx) {
+          newMapping[key] = -1;
+        }
+      });
     }
+
+    const updatedParams: BoqImportParameters = {
+      ...importParams,
+      mapping: newMapping,
+    };
+    setImportParams(updatedParams);
+    runExtraction(activeSheetName, updatedParams);
+  };
+
+  // Toggle a parameter switch
+  const handleToggleParam = (paramKey: keyof BoqImportParameters) => {
+    const updatedParams: BoqImportParameters = {
+      ...importParams,
+      [paramKey]: !importParams[paramKey],
+    };
+    setImportParams(updatedParams);
+    runExtraction(activeSheetName, updatedParams);
   };
 
   // Handle Pasted Text Parsing
@@ -248,21 +322,30 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
     setIsProcessing(true);
     setErrorMessage(null);
     try {
-      const result = parsePastedBoqText(pastedText);
+      const result = parsePastedBoqText(pastedText, 'Pasted Clipboard BOQ', importParams);
       setSelectedFileName('Pasted Clipboard BOQ');
-      setSheetNames(['Pasted']);
-      setActiveSheetName('Pasted');
+      setSheetNames(['Pasted Data']);
+      setActiveSheetName('Pasted Data');
       setRawSheets(result.allSheets);
       setSheetHeaders(result.headers);
-      setHeaderRowIdx(result.headerRowIndex);
-      setColumnMapping(result.mapping);
+
+      const updatedParams: BoqImportParameters = {
+        ...importParams,
+        headerRowIndex: result.headerRowIndex,
+        dataStartRowIndex: result.headerRowIndex + 1,
+        mapping: result.mapping,
+      };
+      setImportParams(updatedParams);
       setReviewedItems(result.items);
       setNewProjectTitle('Pasted Bill of Quantities ' + new Date().toLocaleDateString('en-GB'));
+
       if (result.items.length === 0) {
-        setShowColumnConfig(true);
-        setErrorMessage('Pasted rows loaded, but no measurement columns were recognized automatically. Please map the columns below.');
+        setWorkspaceTab('parameters');
+        setErrorMessage('Pasted rows loaded, but no measurement columns were recognized. Please map the parameters below.');
+      } else {
+        setWorkspaceTab('review');
       }
-      setStep('review');
+      setStep('workspace');
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to parse pasted text.');
     } finally {
@@ -279,7 +362,8 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
       setReviewedItems(sample);
       setNewProjectTitle('Sample 4-Bedroom Duplex BOQ (Reviewed)');
       setNewProjectLocation('Lagos');
-      setStep('review');
+      setWorkspaceTab('review');
+      setStep('workspace');
       setIsProcessing(false);
     }, 200);
   };
@@ -350,7 +434,6 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
             ...it,
             rate: bench,
             amount: Math.round(it.qty * bench),
-            verification_status: 'AI Suggested',
           };
         }
         return it;
@@ -358,17 +441,17 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
     });
   };
 
-  // Add Empty Row to the top or bottom of review table
+  // Add Empty Row to the review table
   const handleAddEmptyRow = () => {
     const newNum = reviewedItems.length + 1;
     const newItem: BoqItem = {
       id: `manual-new-${Date.now()}-${newNum}`,
       item_number: newNum,
       item_code: `${newNum}`,
-      section: filterSection !== 'All' ? filterSection : 'Substructure',
+      section: filterSection !== 'All' ? filterSection : importParams.defaultSection,
       item: 'New Line Item',
       description: 'Specification description of measurement works',
-      unit: 'm2',
+      unit: importParams.defaultUnit || 'm2',
       qty: 1,
       rate: 0,
       amount: 0,
@@ -417,7 +500,7 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
   // Final Submit Handler
   const handleConfirmImport = async () => {
     if (reviewedItems.length === 0) {
-      setErrorMessage('Cannot import an empty list of items.');
+      setErrorMessage('Cannot import an empty list of items. Please review parameters and make sure items are recognized.');
       return;
     }
 
@@ -458,51 +541,81 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
     }
   };
 
+  // Helper to get active mapping role for a column index
+  const getColRole = (colIdx: number): string => {
+    const m = importParams.mapping;
+    if (m.descriptionCol === colIdx) return 'description';
+    if (m.qtyCol === colIdx) return 'qty';
+    if (m.rateCol === colIdx) return 'rate';
+    if (m.amountCol === colIdx) return 'amount';
+    if (m.unitCol === colIdx) return 'unit';
+    if (m.itemNumberCol === colIdx) return 'itemNumber';
+    if (m.sectionCol === colIdx) return 'section';
+    if (m.itemCol === colIdx) return 'item';
+    return 'ignore';
+  };
+
   if (!isOpen) return null;
 
   return (
     <div 
       id="boq-import-modal-overlay" 
-      className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 overflow-y-auto"
+      className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-5 overflow-y-auto"
     >
       <div 
         id="boq-import-modal-container"
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl max-h-[94vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
       >
         {/* Top Header */}
-        <div className="bg-emerald-900 text-white px-6 py-4 flex items-center justify-between border-b border-emerald-800 shrink-0">
+        <div className="bg-emerald-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-emerald-800 shrink-0">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-800/90 border border-emerald-700/60 flex items-center justify-center text-emerald-200 shadow-inner">
+            <div className="w-9 h-9 rounded-xl bg-emerald-800 border border-emerald-700/60 flex items-center justify-center text-emerald-200 shadow-inner">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
                 <h2 className="text-base sm:text-lg font-black tracking-tight">
-                  Import Bill of Quantities (BOQ) for Manual Review
+                  Import &amp; Understand Bill of Quantities (BOQ)
                 </h2>
-                <span className="bg-emerald-800 text-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-700 uppercase">
-                  BESMM4 / NIQS
+                <span className="bg-emerald-800/80 text-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-md border border-emerald-700/80 uppercase">
+                  PDF • Excel • CSV • Text
                 </span>
               </div>
               <p className="text-xs text-emerald-200/90 mt-0.5">
-                Load external Excel (.xlsx), CSV or clipboard tables, verify trade columns, and manually review rates before committing.
+                Full parameter controls for headers, rows, columns, BESMM4 trade sections, and Nigerian market rates.
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-emerald-300 hover:text-white p-1.5 rounded-lg hover:bg-emerald-800/60 transition cursor-pointer"
-            title="Close modal"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center space-x-2">
+            {step === 'workspace' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStep('upload');
+                  setErrorMessage(null);
+                }}
+                className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-emerald-100 text-xs font-semibold transition cursor-pointer border border-emerald-700/60"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload Another</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-emerald-300 hover:text-white p-1.5 rounded-lg hover:bg-emerald-800/60 transition cursor-pointer"
+              title="Close modal"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Error Alert if any */}
         {errorMessage && (
-          <div className="bg-rose-50 border-b border-rose-200 px-6 py-2.5 text-xs text-rose-800 flex items-center justify-between">
+          <div className="bg-rose-50 border-b border-rose-200 px-5 py-2.5 text-xs text-rose-800 flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
               <span className="font-semibold">{errorMessage}</span>
@@ -510,21 +623,72 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
             <button 
               type="button" 
               onClick={() => setErrorMessage(null)} 
-              className="text-rose-600 hover:text-rose-900 font-bold"
+              className="text-rose-600 hover:text-rose-900 font-bold cursor-pointer"
             >
               Dismiss
             </button>
           </div>
         )}
 
+        {/* Workspace Top Tabs (Only visible when document is loaded) */}
+        {step === 'workspace' && (
+          <div className="bg-slate-100 border-b border-slate-200 px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center space-x-2">
+              <button
+                type="button"
+                onClick={() => setWorkspaceTab('parameters')}
+                className={`inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  workspaceTab === 'parameters'
+                    ? 'bg-emerald-800 text-white shadow-xs'
+                    : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-200'
+                }`}
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                <span>1. Parameters &amp; Column Mapping</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  workspaceTab === 'parameters' ? 'bg-emerald-950/50 text-emerald-200' : 'bg-slate-200 text-slate-700'
+                }`}>
+                  {totalItemsCount} Recognized
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setWorkspaceTab('review')}
+                className={`inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  workspaceTab === 'review'
+                    ? 'bg-emerald-800 text-white shadow-xs'
+                    : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-200'
+                }`}
+              >
+                <Table className="w-3.5 h-3.5" />
+                <span>2. Review Line Items &amp; Destination</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  workspaceTab === 'review' ? 'bg-emerald-950/50 text-emerald-200' : 'bg-slate-200 text-slate-700'
+                }`}>
+                  {formatNaira(totalSubtotal)}
+                </span>
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 flex items-center space-x-2">
+              <span className="font-semibold truncate max-w-xs">{selectedFileName}</span>
+              <span className="text-slate-300">|</span>
+              <span className="text-emerald-700 font-bold">
+                {totalItemsCount} items ready
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
 
           {/* ========================================================================= */}
           {/* STEP 1: UPLOAD / SOURCE SELECTION */}
           {/* ========================================================================= */}
           {step === 'upload' && (
-            <div className="space-y-6">
+            <div className="space-y-5">
               {/* Source Tabs */}
               <div className="flex items-center space-x-2 border-b border-slate-200 pb-3">
                 <button
@@ -537,7 +701,7 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
                   }`}
                 >
                   <Upload className="w-4 h-4" />
-                  <span>Upload Spreadsheet File (.xlsx, .csv)</span>
+                  <span>Upload File (PDF, Excel, CSV, Text)</span>
                 </button>
 
                 <button
@@ -550,7 +714,7 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
                   }`}
                 >
                   <Clipboard className="w-4 h-4" />
-                  <span>Paste Spreadsheet Data</span>
+                  <span>Paste Spreadsheet Text</span>
                 </button>
 
                 <button
@@ -574,12 +738,12 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleDrop}
                     onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-emerald-300 hover:border-emerald-600 rounded-2xl p-8 sm:p-12 text-center bg-emerald-50/40 hover:bg-emerald-50/80 transition cursor-pointer group"
+                    className="border-2 border-dashed border-emerald-300 hover:border-emerald-600 rounded-2xl p-8 sm:p-10 text-center bg-emerald-50/40 hover:bg-emerald-50/80 transition cursor-pointer group"
                   >
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".xlsx,.xls,.csv,.tsv,.json"
+                      accept=".xlsx,.xls,.csv,.tsv,.txt,.pdf,.json"
                       onChange={handleFileChange}
                       className="hidden"
                     />
@@ -589,10 +753,10 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
                     </div>
 
                     <h3 className="mt-4 text-sm font-bold text-slate-900">
-                      Click to choose or drag &amp; drop your BOQ spreadsheet
+                      Click to choose or drag &amp; drop your BOQ document
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                      Supports Excel workbooks (<strong>.xlsx, .xls</strong>), Comma-Separated Values (<strong>.csv</strong>), Tab-Delimited (<strong>.tsv</strong>), or JSON files.
+                    <p className="text-xs text-slate-500 mt-1 max-w-lg mx-auto">
+                      Supports PDF Bills of Quantities (<strong>.pdf</strong>), Excel spreadsheets (<strong>.xlsx, .xls</strong>), Comma-Separated Values (<strong>.csv</strong>), Tab-Delimited (<strong>.tsv</strong>), Text (<strong>.txt</strong>), or JSON files.
                     </p>
 
                     <div className="mt-4 inline-flex items-center space-x-2 px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs">
@@ -635,11 +799,11 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
               {activeSourceTab === 'paste' && (
                 <div className="space-y-4">
                   <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600">
-                    <p className="font-bold text-slate-800 mb-1">How to paste from Excel or Google Sheets:</p>
+                    <p className="font-bold text-slate-800 mb-1">How to paste from Excel, Word, or PDF tables:</p>
                     <p>
-                      1. Open your BOQ in Microsoft Excel, Google Sheets, or Word. <br />
-                      2. Select the rows including columns like <em>Item, Description, Unit, Qty, Rate, Amount</em> and press <strong>Ctrl+C</strong>. <br />
-                      3. Paste directly into the box below and click <strong>&quot;Parse &amp; Review Manually&quot;</strong>.
+                      1. Open your BOQ in Excel, Google Sheets, or PDF viewer. <br />
+                      2. Highlight the rows containing columns such as <em>Description, Unit, Quantity, Rate, Amount</em> and press <strong>Ctrl+C</strong>. <br />
+                      3. Paste directly into the box below and click <strong>&quot;Parse &amp; Configure Parameters&quot;</strong>.
                     </p>
                   </div>
 
@@ -648,913 +812,1066 @@ export const BoqImportModal: React.FC<BoqImportModalProps> = ({
                     value={pastedText}
                     onChange={(e) => setPastedText(e.target.value)}
                     placeholder="Paste copied tabular rows here... Example:
-1.1	Substructure	Excavate foundation trenches	m3	48	3800	182400
-1.2	Substructure	Consolidated hardcore bed	m2	140	4500	630000
-2.1	RC Frame	Grade 25 in floor beams	m3	16	120000	1920000"
-                    className="w-full font-mono text-xs p-3.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white text-slate-800"
+Item | Description of Works | Unit | Quantity | Rate | Amount
+1.1  | Excavate foundation trenches n.e 1.50m deep | m3 | 48 | 3800 | 182400
+1.2  | Plain in-situ concrete 1:3:6 in blinding | m3 | 12 | 65000 | 780000"
+                    className="w-full p-3 font-mono text-xs border border-slate-300 rounded-xl bg-slate-50/50 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-700/50"
                   />
 
-                  <div className="flex justify-end">
+                  <div className="flex items-center justify-end">
                     <button
                       type="button"
+                      disabled={!pastedText.trim() || isProcessing}
                       onClick={handleParsePastedText}
-                      disabled={isProcessing || !pastedText.trim()}
-                      className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs cursor-pointer"
+                      className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold shadow-xs cursor-pointer"
                     >
-                      <ArrowRight className="w-4 h-4" />
-                      <span>Parse &amp; Review Manually</span>
+                      {isProcessing ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Parsing Rows...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Parse &amp; Configure Parameters</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* TAB 3: SAMPLE 1-CLICK DEMO */}
+              {/* TAB 3: SAMPLE 1-CLICK */}
               {activeSourceTab === 'sample' && (
-                <div className="p-6 bg-amber-50/60 rounded-2xl border border-amber-200 space-y-4 text-xs">
-                  <div className="flex items-start space-x-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-amber-800 shrink-0">
-                      <Sparkles className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-sm text-slate-900">Standard 4-Bedroom Duplex Nigerian BOQ</h4>
-                      <p className="text-slate-600 mt-1">
-                        Load 26 fully priced, professional BESMM4 measurement line items covering Substructure, Concrete Frame, Sandcrete Blockwork, Aluminium Longspan Roof, Finishes, Mechanical &amp; Electrical services.
-                      </p>
-                    </div>
+                <div className="p-6 bg-emerald-50/60 rounded-2xl border border-emerald-200 text-center space-y-4">
+                  <div className="w-14 h-14 mx-auto rounded-2xl bg-white border border-emerald-300 flex items-center justify-center text-emerald-800 shadow-sm">
+                    <Sparkles className="w-7 h-7 text-amber-500" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900">
+                      Standard Nigerian 2-Storey Residential Duplex BOQ
+                    </h4>
+                    <p className="text-xs text-slate-600 max-w-md mx-auto mt-1">
+                      Pre-loaded with 14 verified measurement items spanning Substructure, RC Frame, Blockwork, Roofing, Finishes, and Services measured to BESMM4 standards with current Nigerian market rates.
+                    </p>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                    <div className="p-3 bg-white rounded-xl border border-amber-200">
-                      <span className="text-slate-500 block text-[11px]">Trade Scope</span>
-                      <strong className="text-slate-900">Full Structural &amp; Services</strong>
-                    </div>
-                    <div className="p-3 bg-white rounded-xl border border-amber-200">
-                      <span className="text-slate-500 block text-[11px]">Rate Standards</span>
-                      <strong className="text-slate-900">Lagos Current 2026 Rates</strong>
-                    </div>
-                    <div className="p-3 bg-white rounded-xl border border-amber-200">
-                      <span className="text-slate-500 block text-[11px]">Item Count</span>
-                      <strong className="text-slate-900">26 BESMM4 Line Items</strong>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={handleLoadSample}
-                      disabled={isProcessing}
-                      className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs cursor-pointer"
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-300" />
-                      <span>Load Sample &amp; Review Manually</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={handleLoadSample}
+                    className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    <span>Load Demo BOQ to Review</span>
+                  </button>
                 </div>
               )}
             </div>
           )}
 
           {/* ========================================================================= */}
-          {/* STEP 2: INTERACTIVE PRE-IMPORT MANUAL REVIEW */}
+          {/* STEP 2: WORKSPACE (PARAMETERS OR REVIEW) */}
           {/* ========================================================================= */}
-          {step === 'review' && (
+          {step === 'workspace' && (
             <div className="space-y-5">
-              
-              {/* Review Overview Bar & Sheet Selector */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center space-x-2">
-                    <span className="font-extrabold text-sm text-slate-900">
-                      {selectedFileName || 'Imported BOQ'}
-                    </span>
-                    <span className="bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
-                      {totalItemsCount} Valid Items
-                    </span>
-                    {unpricedCount > 0 && (
-                      <span className="bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full text-[10px]">
-                        {unpricedCount} Zero Rate Items
-                      </span>
-                    )}
-                  </div>
 
-                  {sheetNames.length > 1 && (
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      <span className="text-xs text-slate-500 font-semibold shrink-0">Worksheet:</span>
-                      <div className="flex flex-wrap gap-1 items-center">
-                        <button
-                          type="button"
-                          onClick={handleSelectAllSheets}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
-                            activeSheetName === '__ALL_SHEETS__'
-                              ? 'bg-emerald-800 text-white shadow-2xs'
-                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100'
-                          }`}
-                        >
-                          <span>All Sheets</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                            activeSheetName === '__ALL_SHEETS__' ? 'bg-emerald-900 text-emerald-100' : 'bg-emerald-200 text-emerald-900'
-                          }`}>
-                            {combinedAllSheetsItems.length || totalItemsCount}
-                          </span>
-                        </button>
+              {/* --------------------------------------------------------------------- */}
+              {/* TAB 1: PARAMETERS & COLUMN MAPPING */}
+              {/* --------------------------------------------------------------------- */}
+              {workspaceTab === 'parameters' && (
+                <div className="space-y-4">
 
-                        {sheetNames.map((sName) => {
-                          const count = sheetItemCounts[sName];
-                          return (
+                  {/* Sheet / Page Selector */}
+                  {sheetNames.length > 0 && (
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 flex flex-wrap items-center justify-between gap-2.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                          Sheet / Page:
+                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {sheetNames.length > 1 && (
                             <button
-                              key={sName}
                               type="button"
-                              onClick={() => handleSelectSheet(sName)}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer flex items-center space-x-1 ${
-                                activeSheetName === sName
-                                  ? 'bg-slate-800 text-white shadow-2xs'
-                                  : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'
+                              onClick={handleSelectAllSheets}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                activeSheetName === '__ALL_SHEETS__'
+                                  ? 'bg-emerald-800 text-white shadow-2xs'
+                                  : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
                               }`}
                             >
-                              <span>{sName}</span>
-                              {count !== undefined && (
-                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                                  activeSheetName === sName ? 'bg-slate-700 text-slate-200' : 'bg-slate-100 text-slate-600'
-                                }`}>
-                                  {count}
-                                </span>
-                              )}
+                              All Sheets Combined ({combinedAllSheetsItems.length} items)
                             </button>
-                          );
-                        })}
+                          )}
+
+                          {sheetNames.map((name) => {
+                            const count = sheetItemCounts[name];
+                            return (
+                              <button
+                                key={name}
+                                type="button"
+                                onClick={() => handleSelectSheet(name)}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                                  activeSheetName === name
+                                    ? 'bg-emerald-800 text-white shadow-2xs'
+                                    : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-100'
+                                }`}
+                              >
+                                {name} {count !== undefined && count > 0 ? `(${count})` : ''}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-slate-500 font-medium">
+                        Showing rows from <strong>{activeSheetName === '__ALL_SHEETS__' ? (sheetNames[0] || 'Sheet 1') : activeSheetName}</strong>
                       </div>
                     </div>
                   )}
-                </div>
 
-                {/* Total Cost Value Summary */}
-                <div className="flex items-center space-x-4 bg-white px-4 py-2.5 rounded-xl border border-slate-200 shadow-2xs">
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                      Calculated Total Bill Value
-                    </span>
-                    <span className="text-base font-extrabold text-emerald-800">
-                      {formatNaira(totalSubtotal)}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowColumnConfig(!showColumnConfig)}
-                    className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
-                  >
-                    <span>Column Mapping</span>
-                    {showColumnConfig ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
+                  {/* Parameters Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    
+                    {/* Card 1: Row Boundaries */}
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 text-xs">
+                      <div className="flex items-center space-x-1.5 font-bold text-slate-800 border-b border-slate-200 pb-1.5">
+                        <Hash className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Row Boundaries</span>
+                      </div>
 
-              {/* Expandable Column Mapping Bar */}
-              {showColumnConfig && (
-                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3 text-xs animate-in fade-in duration-150">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
-                    <div>
-                      <span className="font-bold text-slate-800">Column Auto-Detection &amp; Overrides</span>
-                      <span className="text-slate-500 text-[11px] block sm:inline sm:ml-2">Select which column in your sheet corresponds to each field:</span>
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                          Header Row (Column Titles):
+                        </label>
+                        <select
+                          value={importParams.headerRowIndex}
+                          onChange={(e) => handleSetHeaderRow(Number(e.target.value))}
+                          className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
+                        >
+                          {activeRawRows.slice(0, 15).map((r, idx) => {
+                            const snippet = (r || []).slice(0, 3).filter(Boolean).join(' | ');
+                            return (
+                              <option key={idx} value={idx}>
+                                Row {idx + 1}: {snippet || '(Empty Row)'}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Where Description, Qty, Rate labels reside.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                          Items Start At Row:
+                        </label>
+                        <select
+                          value={importParams.dataStartRowIndex}
+                          onChange={(e) => handleSetDataStartRow(Number(e.target.value))}
+                          className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
+                        >
+                          {activeRawRows.slice(0, 20).map((r, idx) => {
+                            if (idx <= importParams.headerRowIndex) return null;
+                            const snippet = (r || []).slice(0, 3).filter(Boolean).join(' | ');
+                            return (
+                              <option key={idx} value={idx}>
+                                Row {idx + 1}: {snippet || '(Row Content)'}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
                     </div>
+
+                    {/* Card 2: Trade & Unit Defaults */}
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2.5 text-xs">
+                      <div className="flex items-center space-x-1.5 font-bold text-slate-800 border-b border-slate-200 pb-1.5">
+                        <Layers className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Trade &amp; Unit Fallbacks</span>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                          Default Trade Section:
+                        </label>
+                        <select
+                          value={importParams.defaultSection}
+                          onChange={(e) => {
+                            const updated = { ...importParams, defaultSection: e.target.value };
+                            setImportParams(updated);
+                            runExtraction(activeSheetName, updated);
+                          }}
+                          className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
+                        >
+                          {BESMM4_SECTIONS.map((sec) => (
+                            <option key={sec} value={sec}>{sec}</option>
+                          ))}
+                        </select>
+                        <p className="text-[10px] text-slate-400 mt-0.5">
+                          Assigned when item row lacks an explicit trade header.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] font-semibold text-slate-600 block mb-1">
+                          Default Measurement Unit:
+                        </label>
+                        <select
+                          value={importParams.defaultUnit}
+                          onChange={(e) => {
+                            const updated = { ...importParams, defaultUnit: e.target.value };
+                            setImportParams(updated);
+                            runExtraction(activeSheetName, updated);
+                          }}
+                          className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
+                        >
+                          <option value="item">item (General Item)</option>
+                          <option value="m2">m2 (Square Metres)</option>
+                          <option value="m3">m3 (Cubic Metres)</option>
+                          <option value="m">m (Linear Metres)</option>
+                          <option value="nr">nr (Number / Quantity)</option>
+                          <option value="kg">kg (Kilograms)</option>
+                          <option value="t">t (Metric Tonnes)</option>
+                          <option value="sum">sum (Lump Sum)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Card 3: Interpretation Rules */}
+                    <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-xs">
+                      <div className="flex items-center space-x-1.5 font-bold text-slate-800 border-b border-slate-200 pb-1.5">
+                        <Calculator className="w-3.5 h-3.5 text-emerald-700" />
+                        <span>Calculation &amp; Filter Rules</span>
+                      </div>
+
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={importParams.autoCalculateAmount}
+                          onChange={() => handleToggleParam('autoCalculateAmount')}
+                          className="rounded text-emerald-700 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] text-slate-700 font-medium">
+                          Auto-calculate <strong>Amount = Qty × Rate</strong>
+                        </span>
+                      </label>
+
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={importParams.autoDeriveRate}
+                          onChange={() => handleToggleParam('autoDeriveRate')}
+                          className="rounded text-emerald-700 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] text-slate-700 font-medium">
+                          Auto-derive <strong>Rate = Amount ÷ Qty</strong>
+                        </span>
+                      </label>
+
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={importParams.filterSummaryRows}
+                          onChange={() => handleToggleParam('filterSummaryRows')}
+                          className="rounded text-emerald-700 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] text-slate-700 font-medium">
+                          Ignore Collection &amp; Summary rows
+                        </span>
+                      </label>
+
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={importParams.mergeMultilineNotes}
+                          onChange={() => handleToggleParam('mergeMultilineNotes')}
+                          className="rounded text-emerald-700 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] text-slate-700 font-medium">
+                          Merge multi-line specification notes
+                        </span>
+                      </label>
+
+                      <label className="flex items-center space-x-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={importParams.allowUnpricedItems}
+                          onChange={() => handleToggleParam('allowUnpricedItems')}
+                          className="rounded text-emerald-700 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] text-slate-700 font-medium">
+                          Allow unpriced tender items (Rate = ₦0)
+                        </span>
+                      </label>
+                    </div>
+
+                  </div>
+
+                  {/* Live Status Callout */}
+                  <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex flex-wrap items-center justify-between gap-3 text-xs">
                     <div className="flex items-center space-x-2">
-                      <span className="text-[11px] font-bold text-slate-600">Header Row:</span>
-                      <select
-                        value={headerRowIdx}
-                        onChange={(e) => handleHeaderRowChange(Number(e.target.value))}
-                        className="p-1 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 shadow-2xs"
-                      >
-                        {(rawSheets[activeSheetName] || []).slice(0, 30).map((row, rIdx) => {
-                          const snippet = (row || []).filter(Boolean).slice(0, 3).join(' | ');
-                          return (
-                            <option key={rIdx} value={rIdx}>
-                              Row {rIdx + 1}: {snippet ? snippet.substring(0, 35) + '...' : '(empty)'}
-                            </option>
-                          );
-                        })}
-                      </select>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span className="text-emerald-950 font-semibold">
+                        Engine Status: <strong>{totalItemsCount} line items</strong> successfully recognized
+                        {totalSubtotal > 0 ? ` (Total Bill: ${formatNaira(totalSubtotal)})` : ''}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={totalItemsCount === 0}
+                      onClick={() => setWorkspaceTab('review')}
+                      className="inline-flex items-center space-x-1.5 px-4 py-1.5 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-xs cursor-pointer transition"
+                    >
+                      <span>Review Recognized Items ({totalItemsCount})</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Interactive Raw Data Table with Column Mapping Badges */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="bg-slate-100 px-4 py-2 border-b border-slate-200 flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-bold text-slate-800">
+                          Raw Document Preview &amp; Column Mapping
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          (Use dropdowns above each column to teach the engine which column is which)
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        Header Row: {importParams.headerRowIndex + 1} | Data Starts: Row {importParams.dataStartRowIndex + 1}
+                      </span>
+                    </div>
+
+                    <div className="max-h-[460px] overflow-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="bg-slate-50 text-slate-700 sticky top-0 z-20 border-b border-slate-200">
+                          {/* Column Mapping Selector Row */}
+                          <tr className="bg-slate-100/90 border-b border-slate-200">
+                            <th className="p-2 w-28 text-center text-slate-500 font-semibold uppercase text-[10px]">
+                              Column Role:
+                            </th>
+                            {activeRawRows[0]?.map((_, colIdx) => {
+                              const role = getColRole(colIdx);
+                              return (
+                                <th key={colIdx} className="p-1.5 min-w-[150px]">
+                                  <select
+                                    value={role}
+                                    onChange={(e) => handleSetColumnRole(colIdx, e.target.value as any)}
+                                    className={`w-full p-1 rounded-md text-[11px] font-bold border transition ${
+                                      role === 'description'
+                                        ? 'bg-emerald-100 border-emerald-500 text-emerald-900 ring-1 ring-emerald-500'
+                                        : role === 'qty'
+                                        ? 'bg-blue-100 border-blue-500 text-blue-900 ring-1 ring-blue-500'
+                                        : role === 'rate'
+                                        ? 'bg-indigo-100 border-indigo-500 text-indigo-900 ring-1 ring-indigo-500'
+                                        : role === 'amount'
+                                        ? 'bg-purple-100 border-purple-500 text-purple-900 ring-1 ring-purple-500'
+                                        : role === 'unit'
+                                        ? 'bg-amber-100 border-amber-500 text-amber-900 ring-1 ring-amber-500'
+                                        : role === 'itemNumber'
+                                        ? 'bg-slate-200 border-slate-400 text-slate-800'
+                                        : role === 'section'
+                                        ? 'bg-teal-100 border-teal-500 text-teal-900'
+                                        : 'bg-white border-slate-300 text-slate-500'
+                                    }`}
+                                  >
+                                    <option value="ignore">-- Ignore --</option>
+                                    <option value="description">★ Description of Works</option>
+                                    <option value="qty">Quantity</option>
+                                    <option value="unit">Unit of Measure</option>
+                                    <option value="rate">Unit Rate (₦)</option>
+                                    <option value="amount">Total Amount (₦)</option>
+                                    <option value="itemNumber">Item No / S/N</option>
+                                    <option value="section">Trade Section</option>
+                                    <option value="item">Short Title</option>
+                                  </select>
+                                </th>
+                              );
+                            })}
+                          </tr>
+
+                          {/* Raw Header Row preview */}
+                          <tr className="text-slate-600 font-mono text-[11px]">
+                            <th className="p-2 text-center text-slate-400">Row #</th>
+                            {activeRawRows[0]?.map((_, colIdx) => (
+                              <th key={colIdx} className="p-2 text-slate-500 font-semibold truncate max-w-[200px]">
+                                {sheetHeaders[colIdx] || `Col ${colIdx + 1}`}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {activeRawRows.slice(0, 25).map((row, rIdx) => {
+                            const isHeaderRow = rIdx === importParams.headerRowIndex;
+                            const isDataStartRow = rIdx === importParams.dataStartRowIndex;
+                            const isBeforeData = rIdx < importParams.dataStartRowIndex;
+
+                            return (
+                              <tr 
+                                key={rIdx}
+                                className={`transition ${
+                                  isHeaderRow 
+                                    ? 'bg-emerald-100/60 font-bold border-y-2 border-emerald-600' 
+                                    : isDataStartRow
+                                    ? 'bg-blue-50/60 border-t-2 border-blue-400'
+                                    : isBeforeData
+                                    ? 'bg-slate-50 text-slate-400'
+                                    : 'hover:bg-slate-50'
+                                }`}
+                              >
+                                {/* Row Control Cell */}
+                                <td className="p-2 text-center whitespace-nowrap">
+                                  <div className="flex items-center justify-center space-x-1">
+                                    <span className="font-mono text-[10px] text-slate-500 font-bold">
+                                      #{rIdx + 1}
+                                    </span>
+                                    {isHeaderRow ? (
+                                      <span className="px-1.5 py-0.5 bg-emerald-800 text-white rounded text-[9px] font-black uppercase tracking-wider">
+                                        Header
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSetHeaderRow(rIdx)}
+                                        className="text-[9px] px-1 py-0.5 bg-slate-200 hover:bg-emerald-700 hover:text-white rounded text-slate-600 transition cursor-pointer"
+                                        title="Set this row as table header"
+                                      >
+                                        Set Header
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+
+                                {/* Column Data Cells with Role Highlighting */}
+                                {row.map((cell, colIdx) => {
+                                  const role = getColRole(colIdx);
+                                  return (
+                                    <td 
+                                      key={colIdx} 
+                                      className={`p-2 text-xs truncate max-w-[240px] font-mono ${
+                                        role === 'description'
+                                          ? 'bg-emerald-50/40 text-emerald-950 font-sans font-medium'
+                                          : role === 'qty'
+                                          ? 'bg-blue-50/40 text-blue-950 text-right'
+                                          : role === 'rate'
+                                          ? 'bg-indigo-50/40 text-indigo-950 text-right'
+                                          : role === 'amount'
+                                          ? 'bg-purple-50/40 text-purple-950 text-right'
+                                          : role === 'unit'
+                                          ? 'bg-amber-50/40 text-amber-950 text-center font-bold'
+                                          : ''
+                                      }`}
+                                    >
+                                      {cell !== null && cell !== undefined ? String(cell) : ''}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Item No / S/N</label>
-                      <select
-                        value={columnMapping.itemNumberCol}
-                        onChange={(e) => handleReapplyMapping({ ...columnMapping, itemNumberCol: Number(e.target.value) })}
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium"
-                      >
-                        <option value="-1">-- Ignore / Auto --</option>
-                        {sheetHeaders.map((h, i) => (
-                          <option key={i} value={i}>Col {i + 1}: {h}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Trade / Section</label>
-                      <select
-                        value={columnMapping.sectionCol}
-                        onChange={(e) => handleReapplyMapping({ ...columnMapping, sectionCol: Number(e.target.value) })}
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium"
-                      >
-                        <option value="-1">-- Auto BESMM4 --</option>
-                        {sheetHeaders.map((h, i) => (
-                          <option key={i} value={i}>Col {i + 1}: {h}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Description / Spec</label>
-                      <select
-                        value={columnMapping.descriptionCol}
-                        onChange={(e) => handleReapplyMapping({ ...columnMapping, descriptionCol: Number(e.target.value) })}
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium"
-                      >
-                        <option value="-1">-- None --</option>
-                        {sheetHeaders.map((h, i) => (
-                          <option key={i} value={i}>Col {i + 1}: {h}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Unit of Measure</label>
-                      <select
-                        value={columnMapping.unitCol}
-                        onChange={(e) => handleReapplyMapping({ ...columnMapping, unitCol: Number(e.target.value) })}
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium"
-                      >
-                        <option value="-1">-- None --</option>
-                        {sheetHeaders.map((h, i) => (
-                          <option key={i} value={i}>Col {i + 1}: {h}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Quantity</label>
-                      <select
-                        value={columnMapping.qtyCol}
-                        onChange={(e) => handleReapplyMapping({ ...columnMapping, qtyCol: Number(e.target.value) })}
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium"
-                      >
-                        <option value="-1">-- None --</option>
-                        {sheetHeaders.map((h, i) => (
-                          <option key={i} value={i}>Col {i + 1}: {h}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Unit Rate (₦)</label>
-                      <select
-                        value={columnMapping.rateCol}
-                        onChange={(e) => handleReapplyMapping({ ...columnMapping, rateCol: Number(e.target.value) })}
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium"
-                      >
-                        <option value="-1">-- None --</option>
-                        {sheetHeaders.map((h, i) => (
-                          <option key={i} value={i}>Col {i + 1}: {h}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-500 block mb-1">Total Amount (₦)</label>
-                      <select
-                        value={columnMapping.amountCol}
-                        onChange={(e) => handleReapplyMapping({ ...columnMapping, amountCol: Number(e.target.value) })}
-                        className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium"
-                      >
-                        <option value="-1">-- Calculate Qty * Rate --</option>
-                        {sheetHeaders.map((h, i) => (
-                          <option key={i} value={i}>Col {i + 1}: {h}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
                 </div>
               )}
 
-              {/* Review Filter & Action Toolbar */}
-              <div className="flex flex-col gap-2.5 text-xs border-b border-slate-200 pb-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  {/* Search Input */}
-                  <div className="relative flex-1 min-w-[240px] max-w-sm">
-                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setCurrentPage(1);
-                      }}
-                      placeholder="Search items, specs, or codes..."
-                      className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-300 rounded-lg text-xs placeholder:text-slate-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-700"
-                    />
-                    {searchQuery && (
+              {/* --------------------------------------------------------------------- */}
+              {/* TAB 2: REVIEW LINE ITEMS & DESTINATION */}
+              {/* --------------------------------------------------------------------- */}
+              {workspaceTab === 'review' && (
+                <div className="space-y-4">
+
+                  {/* Review Filter & Action Toolbar */}
+                  <div className="flex flex-col gap-2.5 text-xs border-b border-slate-200 pb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      {/* Search Input */}
+                      <div className="relative flex-1 min-w-[240px] max-w-sm">
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                        <input
+                          type="text"
+                          value={searchQuery}
+                          onChange={(e) => {
+                            setSearchQuery(e.target.value);
+                            setCurrentPage(1);
+                          }}
+                          placeholder="Search items, specs, or codes..."
+                          className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-300 rounded-lg text-xs placeholder:text-slate-400 focus:outline-hidden focus:ring-1 focus:ring-emerald-700"
+                        />
+                        {searchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSearchQuery('');
+                              setCurrentPage(1);
+                            }}
+                            className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                            title="Clear search"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Quick Sanitation & Rate Utilities */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setWorkspaceTab('parameters')}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold cursor-pointer shadow-2xs"
+                          title="Open parameters and column mapping configuration"
+                        >
+                          <Sliders className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Tweak Parameters</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handlePruneNonMeasurementRows}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold cursor-pointer shadow-2xs"
+                          title="Remove collection headers, page totals and subtotal rows"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>Prune Subtotals</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleAutoCategorizeSections}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold cursor-pointer shadow-2xs"
+                          title="Auto-classify any missing trade sections into standard BESMM4 trades"
+                        >
+                          <Layers className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Auto-Assign BESMM4</span>
+                        </button>
+
+                        {unpricedCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleAutoPopulateMarketRates}
+                            className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold cursor-pointer"
+                            title="Apply default Nigerian market rates to zero-priced items"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Benchmark {unpricedCount} Unpriced</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={handleAddEmptyRow}
+                          className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-semibold cursor-pointer shadow-xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Item</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Section filter pills */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-slate-500 font-semibold mr-1 flex items-center gap-1">
+                        <Filter className="w-3.5 h-3.5" />
+                        <span>Filter:</span>
+                      </span>
+
                       <button
                         type="button"
                         onClick={() => {
-                          setSearchQuery('');
+                          setFilterSection('All');
                           setCurrentPage(1);
                         }}
-                        className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
-                        title="Clear search"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Quick Sanitation & Rate Utilities */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handlePruneNonMeasurementRows}
-                      className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold cursor-pointer shadow-2xs"
-                      title="Remove collection headers, page totals and subtotal rows"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Prune Subtotals</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleAutoCategorizeSections}
-                      className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-semibold cursor-pointer shadow-2xs"
-                      title="Auto-classify any missing trade sections into standard BESMM4 trades"
-                    >
-                      <Layers className="w-3.5 h-3.5 text-emerald-700" />
-                      <span>Auto-Assign BESMM4</span>
-                    </button>
-
-                    {unpricedCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleAutoPopulateMarketRates}
-                        className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold cursor-pointer"
-                        title="Apply default Nigerian market rates to zero-priced items"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Benchmark {unpricedCount} Unpriced</span>
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleAddEmptyRow}
-                      className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-semibold cursor-pointer shadow-xs"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Item</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Section filter pills */}
-                <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                  <span className="text-slate-500 font-semibold mr-1 flex items-center gap-1">
-                    <Filter className="w-3.5 h-3.5" />
-                    <span>Filter:</span>
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFilterSection('All');
-                      setCurrentPage(1);
-                    }}
-                    className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
-                      filterSection === 'All'
-                        ? 'bg-emerald-800 text-white'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    All Sections ({reviewedItems.length})
-                  </button>
-
-                  {BESMM4_SECTIONS.map((sec) => {
-                    const count = reviewedItems.filter(i => i.section === sec).length;
-                    if (count === 0) return null;
-                    return (
-                      <button
-                        key={sec}
-                        type="button"
-                        onClick={() => {
-                          setFilterSection(sec);
-                          setCurrentPage(1);
-                        }}
-                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
-                          filterSection === sec
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer ${
+                          filterSection === 'All'
                             ? 'bg-emerald-800 text-white'
                             : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                         }`}
                       >
-                        {sec.split(' ')[0]} ({count})
+                        All Sections ({reviewedItems.length})
                       </button>
-                    );
-                  })}
-                </div>
-              </div>
 
-              {/* Editable Manual Review Table Grid */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
-                <div className="max-h-[440px] overflow-y-auto">
-                  <table className="w-full text-left text-xs border-collapse">
-                    <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 z-10 border-b border-slate-200">
-                      <tr>
-                        <th className="py-2.5 px-3 w-12 text-center">#</th>
-                        <th className="py-2.5 px-3 w-48">BESMM4 Section</th>
-                        <th className="py-2.5 px-3">Description &amp; Technical Spec</th>
-                        <th className="py-2.5 px-3 w-20 text-center">Unit</th>
-                        <th className="py-2.5 px-3 w-24 text-right">Quantity</th>
-                        <th className="py-2.5 px-3 w-28 text-right">Rate (₦)</th>
-                        <th className="py-2.5 px-3 w-32 text-right">Amount (₦)</th>
-                        <th className="py-2.5 px-3 w-28 text-center">QS Status</th>
-                        <th className="py-2.5 px-3 w-10 text-center">Del</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {paginatedItems.map((item, index) => {
-                        const isUnpriced = !item.rate || item.rate === 0;
-
+                      {BESMM4_SECTIONS.map((sec) => {
+                        const count = reviewedItems.filter(i => i.section === sec).length;
+                        if (count === 0) return null;
                         return (
-                          <tr 
-                            key={item.id || index}
-                            className={`hover:bg-slate-50 transition ${isUnpriced ? 'bg-amber-50/30' : ''}`}
+                          <button
+                            key={sec}
+                            type="button"
+                            onClick={() => {
+                              setFilterSection(sec);
+                              setCurrentPage(1);
+                            }}
+                            className={`px-2.5 py-1 rounded-md text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                              filterSection === sec
+                                ? 'bg-emerald-800 text-white'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            }`}
                           >
-                            {/* Row number */}
-                            <td className="py-2 px-3 text-center text-slate-400 font-mono text-[11px]">
-                              {item.item_number || (itemsPerPage === -1 ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1)}
-                            </td>
-
-                            {/* Section Dropdown */}
-                            <td className="py-2 px-3">
-                              <select
-                                value={item.section}
-                                onChange={(e) => handleUpdateItem(item.id, 'section', e.target.value)}
-                                className="w-full text-[11px] p-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-200 rounded font-semibold text-slate-800"
-                              >
-                                {BESMM4_SECTIONS.map((sec) => (
-                                  <option key={sec} value={sec}>{sec}</option>
-                                ))}
-                              </select>
-                            </td>
-
-                            {/* Description Input */}
-                            <td className="py-2 px-3">
-                              <input
-                                type="text"
-                                value={item.description}
-                                onChange={(e) => handleUpdateItem(item.id, 'description', e.target.value)}
-                                className="w-full text-xs p-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-300 rounded text-slate-900 focus:bg-white focus:ring-1 focus:ring-emerald-500"
-                              />
-                            </td>
-
-                            {/* Unit Input */}
-                            <td className="py-2 px-3 text-center">
-                              <input
-                                type="text"
-                                value={item.unit}
-                                onChange={(e) => handleUpdateItem(item.id, 'unit', normalizeUnit(e.target.value))}
-                                className="w-16 text-center text-xs p-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-300 rounded font-mono font-medium text-slate-700 focus:bg-white"
-                              />
-                            </td>
-
-                            {/* Quantity Input */}
-                            <td className="py-2 px-3 text-right">
-                              <FormattedNumberInput
-                                value={item.qty || ''}
-                                onChange={(val) => handleUpdateItem(item.id, 'qty', val)}
-                                maxDecimals={2}
-                                placeholder="0"
-                                className="w-20 text-right text-xs p-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-300 rounded font-mono font-medium text-slate-900 focus:bg-white"
-                              />
-                            </td>
-
-                            {/* Unit Rate Input */}
-                            <td className="py-2 px-3 text-right">
-                              <FormattedNumberInput
-                                value={item.rate || ''}
-                                onChange={(val) => handleUpdateItem(item.id, 'rate', val)}
-                                maxDecimals={2}
-                                className={`w-24 text-right text-xs p-1 rounded font-mono font-semibold focus:bg-white ${
-                                  isUnpriced 
-                                    ? 'bg-amber-100 text-amber-900 border border-amber-300' 
-                                    : 'bg-transparent hover:bg-white border border-transparent hover:border-slate-300 text-emerald-800'
-                                }`}
-                                placeholder="0"
-                              />
-                            </td>
-
-                            {/* Amount */}
-                            <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
-                              {formatNaira(item.amount)}
-                            </td>
-
-                            {/* Status */}
-                            <td className="py-2 px-3 text-center">
-                              <select
-                                value={item.verification_status || 'Imported'}
-                                onChange={(e) => handleUpdateItem(item.id, 'verification_status', e.target.value as QsVerificationStatus)}
-                                className="text-[10px] font-bold p-1 rounded bg-slate-100 border-none text-slate-700"
-                              >
-                                <option value="Imported">Imported</option>
-                                <option value="QS Verified">QS Verified</option>
-                                <option value="Requires Verification">Needs Check</option>
-                                <option value="AI Suggested">AI Suggested</option>
-                              </select>
-                            </td>
-
-                            {/* Delete */}
-                            <td className="py-2 px-3 text-center">
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteRow(item.id)}
-                                className="text-slate-400 hover:text-rose-600 p-1 rounded hover:bg-rose-50 transition cursor-pointer"
-                                title="Delete row"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </td>
-                          </tr>
+                            {sec.split(' ')[0]} ({count})
+                          </button>
                         );
                       })}
+                    </div>
+                  </div>
 
-                      {displayItems.length === 0 && (
-                        <tr>
-                          <td colSpan={9} className="py-12 px-4 text-center">
-                            <div className="max-w-md mx-auto space-y-3">
-                              <div className="w-10 h-10 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
-                                <AlertTriangle className="w-5 h-5" />
-                              </div>
-                              {searchQuery.trim() ? (
-                                <>
+                  {/* Editable Review Table Grid */}
+                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <div className="max-h-[440px] overflow-y-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 z-10 border-b border-slate-200">
+                          <tr>
+                            <th className="py-2.5 px-3 w-12 text-center">#</th>
+                            <th className="py-2.5 px-3 w-48">BESMM4 Section</th>
+                            <th className="py-2.5 px-3">Description &amp; Technical Spec</th>
+                            <th className="py-2.5 px-3 w-20 text-center">Unit</th>
+                            <th className="py-2.5 px-3 w-24 text-right">Quantity</th>
+                            <th className="py-2.5 px-3 w-28 text-right">Rate (₦)</th>
+                            <th className="py-2.5 px-3 w-32 text-right">Amount (₦)</th>
+                            <th className="py-2.5 px-3 w-10 text-center">Del</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 bg-white">
+                          {paginatedItems.map((item, index) => {
+                            const isUnpriced = !item.rate || item.rate === 0;
+
+                            return (
+                              <tr 
+                                key={item.id || index}
+                                className={`hover:bg-slate-50 transition ${isUnpriced ? 'bg-amber-50/30' : ''}`}
+                              >
+                                {/* Row number */}
+                                <td className="py-2 px-3 text-center text-slate-400 font-mono text-[11px]">
+                                  {item.item_number || (itemsPerPage === -1 ? index + 1 : (currentPage - 1) * itemsPerPage + index + 1)}
+                                </td>
+
+                                {/* Section Dropdown */}
+                                <td className="py-2 px-3">
+                                  <select
+                                    value={item.section}
+                                    onChange={(e) => handleUpdateItem(item.id, 'section', e.target.value)}
+                                    className="w-full text-[11px] p-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-200 rounded font-semibold text-slate-800"
+                                  >
+                                    {BESMM4_SECTIONS.map((sec) => (
+                                      <option key={sec} value={sec}>{sec}</option>
+                                    ))}
+                                  </select>
+                                </td>
+
+                                {/* Description Field */}
+                                <td className="py-2 px-3">
+                                  <textarea
+                                    rows={1}
+                                    value={item.description}
+                                    onChange={(e) => handleUpdateItem(item.id, 'description', e.target.value)}
+                                    className="w-full text-xs p-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-200 rounded font-medium text-slate-900 resize-y"
+                                  />
+                                </td>
+
+                                {/* Unit Field */}
+                                <td className="py-2 px-3 text-center">
+                                  <input
+                                    type="text"
+                                    value={item.unit}
+                                    onChange={(e) => handleUpdateItem(item.id, 'unit', e.target.value)}
+                                    className="w-14 text-center font-bold text-xs p-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-200 rounded text-slate-700"
+                                  />
+                                </td>
+
+                                {/* Quantity Field */}
+                                <td className="py-2 px-3 text-right">
+                                  <input
+                                    type="number"
+                                    value={item.qty || ''}
+                                    onChange={(e) => handleUpdateItem(item.id, 'qty', Number(e.target.value))}
+                                    className="w-20 text-right font-mono text-xs p-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-200 rounded font-semibold text-slate-900"
+                                  />
+                                </td>
+
+                                {/* Rate Field */}
+                                <td className="py-2 px-3 text-right">
+                                  <FormattedNumberInput
+                                    value={item.rate}
+                                    onChange={(val) => handleUpdateItem(item.id, 'rate', val)}
+                                    className="w-24 text-right font-mono text-xs p-1 bg-transparent hover:bg-white border border-transparent hover:border-slate-200 rounded font-bold text-slate-900"
+                                  />
+                                </td>
+
+                                {/* Amount Field */}
+                                <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">
+                                  {formatNaira(item.amount)}
+                                </td>
+
+                                {/* Delete Row */}
+                                <td className="py-2 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteRow(item.id)}
+                                    className="text-slate-400 hover:text-rose-600 p-1 rounded transition cursor-pointer"
+                                    title="Delete line item"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+
+                          {reviewedItems.length === 0 && (
+                            <tr>
+                              <td colSpan={8} className="py-12 text-center text-slate-400">
+                                <div className="max-w-sm mx-auto space-y-3">
+                                  <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto" />
                                   <p className="font-semibold text-slate-800 text-sm">
-                                    No items match &quot;{searchQuery}&quot;
+                                    No line items detected yet
                                   </p>
                                   <p className="text-slate-500 text-xs">
-                                    Try searching with a different term or clear the search filter.
+                                    Click <strong>&quot;Parameters &amp; Column Mapping&quot;</strong> tab above to teach the engine which columns represent Description, Quantity, and Rate.
                                   </p>
-                                  <div className="pt-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setSearchQuery('');
-                                        setCurrentPage(1);
-                                      }}
-                                      className="px-3.5 py-1.5 bg-emerald-800 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition cursor-pointer"
-                                    >
-                                      Clear Search Filter
-                                    </button>
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <p className="font-semibold text-slate-800 text-sm">
-                                    No line items found on worksheet &quot;{activeSheetName}&quot;
-                                  </p>
-                                  <p className="text-slate-500 text-xs leading-relaxed">
-                                    This sheet may begin lower down or use custom headings. You can use the <strong>Header Row</strong> and <strong>Column Mapping</strong> bar above to map your columns, or add line items manually.
-                                  </p>
-                                  <div className="flex items-center justify-center gap-2 pt-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => setShowColumnConfig(true)}
-                                      className="px-3.5 py-1.5 bg-emerald-800 text-white rounded-lg text-xs font-semibold hover:bg-emerald-700 transition cursor-pointer"
-                                    >
-                                      Configure Columns &amp; Header Row
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={handleAddEmptyRow}
-                                      className="px-3.5 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
-                                    >
-                                      Add Manual Item
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Pagination Controls for Large 500+ Item BOQs */}
-                <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
-                  <div className="flex items-center space-x-2">
-                    <span>
-                      Showing{' '}
-                      <strong>
-                        {displayItems.length === 0
-                          ? 0
-                          : itemsPerPage === -1
-                          ? 1
-                          : (currentPage - 1) * itemsPerPage + 1}
-                      </strong>{' '}
-                      to{' '}
-                      <strong>
-                        {itemsPerPage === -1
-                          ? displayItems.length
-                          : Math.min(currentPage * itemsPerPage, displayItems.length)}
-                      </strong>{' '}
-                      of <strong>{displayItems.length}</strong> items
-                      {reviewedItems.length !== displayItems.length && (
-                        <span className="text-slate-400 ml-1">(filtered from {reviewedItems.length} total)</span>
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center space-x-3">
-                    <div className="flex items-center space-x-1.5">
-                      <span className="text-slate-500 font-medium">Page size:</span>
-                      <select
-                        value={itemsPerPage}
-                        onChange={(e) => {
-                          setItemsPerPage(Number(e.target.value));
-                          setCurrentPage(1);
-                        }}
-                        className="p-1 bg-white border border-slate-300 rounded-md text-xs font-semibold text-slate-700 shadow-2xs"
-                      >
-                        <option value={25}>25 items</option>
-                        <option value={50}>50 items</option>
-                        <option value={100}>100 items</option>
-                        <option value={200}>200 items</option>
-                        <option value={-1}>All ({displayItems.length})</option>
-                      </select>
+                                  <button
+                                    type="button"
+                                    onClick={() => setWorkspaceTab('parameters')}
+                                    className="px-4 py-2 bg-emerald-800 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition cursor-pointer"
+                                  >
+                                    Open Parameters &amp; Mapping
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
 
-                    {itemsPerPage !== -1 && totalPages > 1 && (
-                      <div className="flex items-center space-x-1">
-                        <button
-                          type="button"
-                          disabled={currentPage <= 1}
-                          onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                          className="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                        >
-                          Prev
-                        </button>
-                        <span className="px-2 font-medium text-slate-700">
-                          {currentPage} / {totalPages}
+                    {/* Pagination Controls */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-3.5 py-2.5 bg-slate-50 border-t border-slate-200 text-xs text-slate-600">
+                      <div className="flex items-center space-x-2">
+                        <span>
+                          Showing{' '}
+                          <strong>
+                            {displayItems.length === 0
+                              ? 0
+                              : itemsPerPage === -1
+                              ? 1
+                              : (currentPage - 1) * itemsPerPage + 1}
+                          </strong>{' '}
+                          to{' '}
+                          <strong>
+                            {itemsPerPage === -1
+                              ? displayItems.length
+                              : Math.min(currentPage * itemsPerPage, displayItems.length)}
+                          </strong>{' '}
+                          of <strong>{displayItems.length}</strong> items
+                          {reviewedItems.length !== displayItems.length && (
+                            <span className="text-slate-400 ml-1">(filtered from {reviewedItems.length} total)</span>
+                          )}
                         </span>
-                        <button
-                          type="button"
-                          disabled={currentPage >= totalPages}
-                          onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                          className="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
-                        >
-                          Next
-                        </button>
                       </div>
-                    )}
-                  </div>
-                </div>
-              </div>
 
-              {/* ========================================================================= */}
-              {/* DESTINATION SELECTION */}
-              {/* ========================================================================= */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                  <span className="font-bold text-xs text-slate-800 uppercase tracking-wider">
-                    Import Destination
-                  </span>
-                  <span className="text-[11px] text-slate-500">
-                    Choose how to save these reviewed {reviewedItems.length} items
-                  </span>
-                </div>
+                      <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="text-slate-500 font-medium">Page size:</span>
+                          <select
+                            value={itemsPerPage}
+                            onChange={(e) => {
+                              setItemsPerPage(Number(e.target.value));
+                              setCurrentPage(1);
+                            }}
+                            className="p-1 bg-white border border-slate-300 rounded-md text-xs font-semibold text-slate-700 shadow-2xs"
+                          >
+                            <option value={25}>25 items</option>
+                            <option value={50}>50 items</option>
+                            <option value={100}>100 items</option>
+                            <option value={200}>200 items</option>
+                            <option value={-1}>All ({displayItems.length})</option>
+                          </select>
+                        </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  {/* Option 1: Current Project (if one is open) */}
-                  {activeProject && activeProject.id && (
-                    <label 
-                      className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
-                        destinationMode === 'current'
-                          ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs'
-                          : 'bg-white/60 border-slate-200 hover:bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="destination"
-                          checked={destinationMode === 'current'}
-                          onChange={() => setDestinationMode('current')}
-                          className="text-emerald-700 focus:ring-emerald-500"
-                        />
-                        <strong className="text-slate-900 truncate">Current Active Project</strong>
+                        {itemsPerPage !== -1 && totalPages > 1 && (
+                          <div className="flex items-center space-x-1">
+                            <button
+                              type="button"
+                              disabled={currentPage <= 1}
+                              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                              className="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                            >
+                              Prev
+                            </button>
+                            <span className="px-2 font-medium text-slate-700">
+                              {currentPage} / {totalPages}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={currentPage >= totalPages}
+                              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                              className="px-2.5 py-1 bg-white border border-slate-300 rounded-md font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                            >
+                              Next
+                            </button>
+                          </div>
+                        )}
                       </div>
-                      <span className="text-[11px] text-slate-500 mt-1 block truncate">
-                        &quot;{activeProject.title}&quot; ({activeProject.items?.length || 0} existing items)
-                      </span>
-                    </label>
-                  )}
-
-                  {/* Option 2: Create New Project */}
-                  <label 
-                    className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
-                      destinationMode === 'new'
-                        ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs'
-                        : 'bg-white/60 border-slate-200 hover:bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="radio"
-                        name="destination"
-                        checked={destinationMode === 'new'}
-                        onChange={() => setDestinationMode('new')}
-                        className="text-emerald-700 focus:ring-emerald-500"
-                      />
-                      <strong className="text-slate-900">Create New Project</strong>
-                    </div>
-                    <span className="text-[11px] text-slate-500 mt-1 block">
-                      Initialize a brand new estimate with these imported items
-                    </span>
-                  </label>
-
-                  {/* Option 3: Existing Project from Portfolio */}
-                  {projects.length > 0 && (
-                    <label 
-                      className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
-                        destinationMode === 'existing'
-                          ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs'
-                          : 'bg-white/60 border-slate-200 hover:bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="radio"
-                          name="destination"
-                          checked={destinationMode === 'existing'}
-                          onChange={() => setDestinationMode('existing')}
-                          className="text-emerald-700 focus:ring-emerald-500"
-                        />
-                        <strong className="text-slate-900">Select Existing Project</strong>
-                      </div>
-                      <span className="text-[11px] text-slate-500 mt-1 block">
-                        Choose another project from your portfolio ({projects.length} available)
-                      </span>
-                    </label>
-                  )}
-                </div>
-
-                {/* Sub-options for Current or Existing Project (Replace vs Append) */}
-                {(destinationMode === 'current' || destinationMode === 'existing') && (
-                  <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    {destinationMode === 'existing' && (
-                      <div className="flex-1 max-w-sm">
-                        <label className="text-[11px] font-bold text-slate-700 block mb-1">Target Project:</label>
-                        <select
-                          value={selectedExistingProjectId}
-                          onChange={(e) => setSelectedExistingProjectId(e.target.value)}
-                          className="w-full p-2 bg-white rounded-lg border border-slate-300 text-xs font-semibold text-slate-800"
-                        >
-                          {projects.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.title} ({p.items?.length || 0} items - {p.location})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <div className="flex items-center space-x-4">
-                      <span className="text-slate-600 font-semibold">Mode:</span>
-                      <label className="inline-flex items-center space-x-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="importMode"
-                          checked={importMode === 'replace'}
-                          onChange={() => setImportMode('replace')}
-                          className="text-emerald-700"
-                        />
-                        <span className="font-semibold text-slate-800">Replace BOQ</span>
-                      </label>
-                      <label className="inline-flex items-center space-x-1.5 cursor-pointer">
-                        <input
-                          type="radio"
-                          name="importMode"
-                          checked={importMode === 'append'}
-                          onChange={() => setImportMode('append')}
-                          className="text-emerald-700"
-                        />
-                        <span className="font-semibold text-slate-800">Append to Existing</span>
-                      </label>
                     </div>
                   </div>
-                )}
 
-                {/* Sub-form for New Project */}
-                {destinationMode === 'new' && (
-                  <div className="p-3.5 bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
-                    <div className="sm:col-span-2">
-                      <label className="text-[11px] font-bold text-slate-700 block mb-1">Project Title</label>
-                      <input
-                        type="text"
-                        value={newProjectTitle}
-                        onChange={(e) => setNewProjectTitle(e.target.value)}
-                        className="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
-                        placeholder="e.g. 4-Bedroom Detached Duplex BOQ"
-                      />
+                  {/* Destination Options */}
+                  <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                      <span className="font-bold text-xs text-slate-800 uppercase tracking-wider">
+                        Import Destination
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        Choose how to save these reviewed {reviewedItems.length} items
+                      </span>
                     </div>
 
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-1">Nigerian State / Location</label>
-                      <select
-                        value={newProjectLocation}
-                        onChange={(e) => setNewProjectLocation(e.target.value)}
-                        className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      {/* Option 1: Current Project */}
+                      {activeProject && activeProject.id && (
+                        <label 
+                          className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                            destinationMode === 'current'
+                              ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs'
+                              : 'bg-white/60 border-slate-200 hover:bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              name="destination"
+                              checked={destinationMode === 'current'}
+                              onChange={() => setDestinationMode('current')}
+                              className="text-emerald-700 focus:ring-emerald-500"
+                            />
+                            <strong className="text-slate-900 truncate">Current Active Project</strong>
+                          </div>
+                          <span className="text-[11px] text-slate-500 mt-1 block truncate">
+                            &quot;{activeProject.title}&quot; ({activeProject.items?.length || 0} existing items)
+                          </span>
+                        </label>
+                      )}
+
+                      {/* Option 2: Create New Project */}
+                      <label 
+                        className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                          destinationMode === 'new'
+                            ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs'
+                            : 'bg-white/60 border-slate-200 hover:bg-white'
+                        }`}
                       >
-                        {ALL_NIGERIAN_STATES.map((s) => (
-                          <option key={s.name} value={s.name}>{s.name}</option>
-                        ))}
-                      </select>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="radio"
+                            name="destination"
+                            checked={destinationMode === 'new'}
+                            onChange={() => setDestinationMode('new')}
+                            className="text-emerald-700 focus:ring-emerald-500"
+                          />
+                          <strong className="text-slate-900">Create New Project</strong>
+                        </div>
+                        <span className="text-[11px] text-slate-500 mt-1 block">
+                          Initialize a brand new estimate with these imported items
+                        </span>
+                      </label>
+
+                      {/* Option 3: Existing Project */}
+                      {projects.length > 0 && (
+                        <label 
+                          className={`p-3.5 rounded-xl border cursor-pointer transition flex flex-col justify-between ${
+                            destinationMode === 'existing'
+                              ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-xs'
+                              : 'bg-white/60 border-slate-200 hover:bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="radio"
+                              name="destination"
+                              checked={destinationMode === 'existing'}
+                              onChange={() => setDestinationMode('existing')}
+                              className="text-emerald-700 focus:ring-emerald-500"
+                            />
+                            <strong className="text-slate-900">Select Existing Project</strong>
+                          </div>
+                          <span className="text-[11px] text-slate-500 mt-1 block">
+                            Choose another project from your portfolio ({projects.length} available)
+                          </span>
+                        </label>
+                      )}
                     </div>
 
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-1">Client Name</label>
-                      <input
-                        type="text"
-                        value={newProjectClient}
-                        onChange={(e) => setNewProjectClient(e.target.value)}
-                        className="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
-                        placeholder="e.g. Chief Adeleke / Prime Estates"
-                      />
-                    </div>
+                    {/* Sub-options for Current or Existing Project */}
+                    {(destinationMode === 'current' || destinationMode === 'existing') && (
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                        {destinationMode === 'existing' && (
+                          <div className="flex-1 max-w-sm">
+                            <label className="text-[11px] font-bold text-slate-700 block mb-1">Target Project:</label>
+                            <select
+                              value={selectedExistingProjectId}
+                              onChange={(e) => setSelectedExistingProjectId(e.target.value)}
+                              className="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
+                            >
+                              {projects.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.title} ({p.items?.length || 0} items)
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
 
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-1">Profit &amp; Overhead (%)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="50"
-                        value={newProjectPoPercent}
-                        onChange={(e) => setNewProjectPoPercent(parseFloat(e.target.value) || 0)}
-                        className="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
-                      />
-                    </div>
+                        <div className="flex items-center space-x-4">
+                          <span className="font-semibold text-slate-700">Merge Strategy:</span>
+                          <label className="inline-flex items-center space-x-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="import_mode"
+                              value="replace"
+                              checked={importMode === 'replace'}
+                              onChange={() => setImportMode('replace')}
+                              className="text-emerald-700"
+                            />
+                            <span>Replace Existing Items</span>
+                          </label>
+                          <label className="inline-flex items-center space-x-1.5 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="import_mode"
+                              value="append"
+                              checked={importMode === 'append'}
+                              onChange={() => setImportMode('append')}
+                              className="text-emerald-700"
+                            />
+                            <span>Append to Existing</span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
 
-                    <div>
-                      <label className="text-[11px] font-bold text-slate-700 block mb-1">Swamp Terrain Surcharge (%)</label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="30"
-                        value={newProjectSwampPercent}
-                        onChange={(e) => setNewProjectSwampPercent(parseFloat(e.target.value) || 0)}
-                        className="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
-                        placeholder="0% (Dry) or 15% (Lekki / Swamp)"
-                      />
-                    </div>
+                    {/* New Project Form */}
+                    {destinationMode === 'new' && (
+                      <div className="p-3.5 bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                        <div className="sm:col-span-2">
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">New Project Title</label>
+                          <input
+                            type="text"
+                            value={newProjectTitle}
+                            onChange={(e) => setNewProjectTitle(e.target.value)}
+                            placeholder="e.g. 4-Bedroom Duplex at Lekki Phase 1"
+                            className="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">Nigerian State</label>
+                          <select
+                            value={newProjectLocation}
+                            onChange={(e) => setNewProjectLocation(e.target.value)}
+                            className="w-full p-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800"
+                          >
+                            {ALL_NIGERIAN_STATES.map((state) => (
+                              <option key={state.name} value={state.name}>{state.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">Client Name</label>
+                          <input
+                            type="text"
+                            value={newProjectClient}
+                            onChange={(e) => setNewProjectClient(e.target.value)}
+                            placeholder="Client Name or Org"
+                            className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">Profit &amp; Overhead (%)</label>
+                          <input
+                            type="number"
+                            value={newProjectPoPercent}
+                            onChange={(e) => setNewProjectPoPercent(Number(e.target.value))}
+                            className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[11px] font-bold text-slate-700 block mb-1">VAT (%)</label>
+                          <input
+                            type="number"
+                            value={newProjectVatPercent}
+                            onChange={(e) => setNewProjectVatPercent(Number(e.target.value))}
+                            className="w-full p-2 border border-slate-300 rounded-lg text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+
+                </div>
+              )}
+
             </div>
           )}
 
         </div>
 
-        {/* Footer Actions */}
-        <div className="bg-slate-100 px-6 py-4 flex items-center justify-between border-t border-slate-200 shrink-0">
-          <div>
-            {step === 'review' ? (
-              <button
-                type="button"
-                onClick={() => setStep('upload')}
-                className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-white hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-300 transition cursor-pointer"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Change File / Re-upload</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 rounded-xl text-slate-600 hover:text-slate-900 text-xs font-bold transition cursor-pointer"
-              >
-                Cancel
-              </button>
+        {/* Modal Footer */}
+        <div className="bg-slate-50 border-t border-slate-200 px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div className="text-xs text-slate-500">
+            {step === 'workspace' && (
+              <span>
+                <strong>{totalItemsCount}</strong> items ready &bull; Total Subtotal:{' '}
+                <strong className="text-emerald-800 font-mono text-sm">{formatNaira(totalSubtotal)}</strong>
+              </span>
             )}
           </div>
 
-          <div className="flex items-center space-x-3">
-            {step === 'review' && (
+          <div className="flex items-center space-x-2.5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition cursor-pointer"
+            >
+              Cancel
+            </button>
+
+            {step === 'workspace' && workspaceTab === 'parameters' && (
               <button
                 type="button"
-                onClick={handleConfirmImport}
-                disabled={isProcessing || reviewedItems.length === 0}
-                className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs shadow-md transition active:scale-95 cursor-pointer"
+                onClick={() => setWorkspaceTab('review')}
+                disabled={totalItemsCount === 0}
+                className="inline-flex items-center space-x-1.5 px-5 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition shadow-xs cursor-pointer"
               >
-                <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-                <span>
-                  Confirm &amp; Import {reviewedItems.length} Items ({formatNaira(totalSubtotal)})
-                </span>
+                <span>Go to Review ({totalItemsCount} Items)</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
+
+            {step === 'workspace' && workspaceTab === 'review' && (
+              <button
+                type="button"
+                disabled={reviewedItems.length === 0 || isProcessing}
+                onClick={handleConfirmImport}
+                className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+              >
+                {isProcessing ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Importing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Confirm &amp; Import BOQ ({reviewedItems.length} Items)</span>
+                  </>
+                )}
               </button>
             )}
           </div>

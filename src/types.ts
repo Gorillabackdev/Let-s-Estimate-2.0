@@ -234,6 +234,7 @@ export interface ManualMeasurement {
   id: string;
   sheetId?: string;
   sheetName?: string;
+  pageNumber?: number;
   toolType: 'linear' | 'polyline' | 'area' | 'count' | 'volume' | 'wall' | 'annotation';
   label: string;
   tradeSection: string;
@@ -309,6 +310,8 @@ export interface Project {
   inflation_percent?: number;     // 0%
   retention_percent?: number;     // e.g. 5%
   advance_payment_percent?: number; // e.g. 15%
+  target_budget?: number;         // Target overall construction budget
+  trade_budgets?: Array<{ id: string; name: string; budget: number; actual_spend?: number; notes?: string }>;
   payment_terms?: string;
   subtotal: number;
   po_amount: number;
@@ -345,6 +348,7 @@ export interface RateItem {
 }
 
 export interface StandardRate {
+  id?: string;
   category: string;
   item: string;
   unit: string;
@@ -352,6 +356,12 @@ export interface StandardRate {
   abuja: number;
   ph: number;
   spec: string;
+  description?: string;
+  lagosRate?: number;
+  abujaRate?: number;
+  portHarcourtRate?: number;
+  regionalRate?: number;
+  rate?: number;
 }
 
 export interface ProjectActivity {

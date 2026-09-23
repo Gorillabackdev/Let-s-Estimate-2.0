@@ -51,6 +51,7 @@ import { ExecutiveDossierModal } from './components/ExecutiveDossierModal';
 import { ProjectQuestionnaireModal } from './components/ProjectQuestionnaireModal';
 import { DuplicateItemModal, DuplicatePromptData } from './components/estimating/DuplicateItemModal';
 import { BoqImportModal } from './components/estimating/BoqImportModal';
+import { CreateProjectModal } from './components/projects/CreateProjectModal';
 import { LandingPage } from './components/landing/LandingPage';
 import { generateDeterministicBoq } from './utils/constructionKnowledgeBase';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -134,6 +135,7 @@ function MainApp() {
   const [isExecutiveDossierModalOpen, setIsExecutiveDossierModalOpen] = useState(false);
   const [isQuestionnaireModalOpen, setIsQuestionnaireModalOpen] = useState(false);
   const [isBoqImportModalOpen, setIsBoqImportModalOpen] = useState(false);
+  const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
   const [duplicatePromptData, setDuplicatePromptData] = useState<DuplicatePromptData | null>(null);
   const [subscriptionInfo, setSubscriptionInfo] = useState<UserSubscriptionInfo | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -248,33 +250,44 @@ function MainApp() {
     }
   };
 
-  // Switch to or create a new project
-  const handleNewProject = async () => {
-    const newId = 'proj-' + Date.now();
-    const newProj: Project = {
-      ...DEFAULT_NEW_PROJECT,
-      id: newId,
-      title: 'New Building Estimate ' + new Date().toLocaleDateString('en-GB'),
-      items: [],
-    };
-    setActiveProject(newProj);
-    setProjects((prev) => [newProj, ...prev]);
-    setHasUnsavedChanges(false);
-    navigateView('project-workspace');
-    showToast('Created new project workspace.');
+  // Open modal to create a new project
+  const handleNewProject = () => {
+    setIsCreateProjectModalOpen(true);
+  };
 
+  // Handle creating project from detailed QS parameters modal
+  const handleCreateProjectFromModal = async (projectData: Partial<Project>) => {
     try {
+      const newId = 'proj-' + Date.now();
+      const newProj: Project = {
+        ...DEFAULT_NEW_PROJECT,
+        ...projectData,
+        id: newId,
+        items: [],
+      };
+      setActiveProject(newProj);
+      setProjects((prev) => [newProj, ...prev]);
+      setHasUnsavedChanges(false);
+      setIsCreateProjectModalOpen(false);
+      navigateView('project-workspace');
+      showToast(`Created new project workspace: "${newProj.title}".`);
+
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
-      await safeFetchJson('/api/projects', {
+      const { ok, data } = await safeFetchJson<{ project: Project; error?: string }>('/api/projects', {
         method: 'POST',
         headers,
         body: JSON.stringify(newProj),
       });
+      if (ok && data?.project) {
+        setActiveProject(data.project);
+        setProjects(prev => prev.map(p => p.id === newId ? data.project : p));
+      }
       loadProjects();
       refreshStats();
-    } catch (e) {
+    } catch (e: any) {
       console.warn('Initial project persist failed:', e);
+      showToast('Error persisting project: ' + (e?.message || 'Network error'));
     }
   };
 
@@ -627,11 +640,11 @@ function MainApp() {
 
   // Add a new row to BOQ (with duplicate item detection)
   const handleAddItem = (customItem?: Partial<BoqItem>) => {
-    const q = customItem?.qty !== undefined ? customItem.qty : 100;
-    const r = customItem?.rate !== undefined ? customItem.rate : 14500;
-    const section = customItem?.section || 'Reinforced Concrete Frame';
-    const item = customItem?.item || 'Blockwork';
-    const description = customItem?.description || '225mm sandcrete hollow blockwork in cement mortar';
+    const q = customItem?.qty !== undefined ? customItem.qty : 0;
+    const r = customItem?.rate !== undefined ? customItem.rate : 0;
+    const section = customItem?.section || 'Substructure';
+    const item = customItem?.item || '';
+    const description = customItem?.description || '';
     const unit = customItem?.unit || 'm2';
 
     const incomingItem: BoqItem = {
@@ -646,7 +659,7 @@ function MainApp() {
       rate: r,
       amount: q * r,
       is_ai_generated: customItem?.is_ai_generated,
-      verification_status: customItem?.verification_status || (customItem?.is_ai_generated ? 'Requires Verification' : 'QS Verified'),
+      verification_status: customItem?.verification_status,
       source: customItem?.source,
       evidence: customItem?.evidence,
     };
@@ -1184,6 +1197,10 @@ function MainApp() {
               }}
               onOpenRateLibrary={() => setIsRatesModalOpen(true)}
               onUpdateBoqItem={handleUpdateItem}
+              onUpdateProject={(upd) => {
+                setActiveProject((prev) => ({ ...prev, ...upd }));
+                setHasUnsavedChanges(true);
+              }}
               onAddBoqItem={handleAddItem}
               onDeleteBoqItem={handleDeleteItem}
               onApplyMarketRates={handleApplyMarketRates}
@@ -1200,6 +1217,10 @@ function MainApp() {
             projects={projects}
             initialSubView={(activeSubView as ProjectControlsSubView) || 'budget'}
             onSelectProject={handleOpenProject}
+            onEditProject={handleEditProject}
+            onNewProject={handleNewProject}
+            onDeleteProject={handleDeleteProject}
+            token={token}
           />
         );
 
@@ -1512,6 +1533,12 @@ function MainApp() {
         projects={projects}
         onImportToProject={handleImportToProject}
         onCreateProjectWithBoq={handleCreateProjectWithBoq}
+      />
+
+      <CreateProjectModal
+        isOpen={isCreateProjectModalOpen}
+        onClose={() => setIsCreateProjectModalOpen(false)}
+        onCreateProject={handleCreateProjectFromModal}
       />
 
       <AuthModal />

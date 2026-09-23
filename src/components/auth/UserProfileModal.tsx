@@ -321,7 +321,7 @@ export const UserProfileModal: React.FC = () => {
 
                 <div>
                   <label className="block text-xs font-semibold text-neutral-700 mb-1">
-                    Phone Number
+                    WhatsApp / Official Contact Phone
                   </label>
                   <input
                     type="tel"
