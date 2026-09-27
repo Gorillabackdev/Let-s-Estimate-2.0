@@ -1,6 +1,7 @@
 /**
  * Let's Estimate - Authentication & User Account Service
- * Server-side cryptographic authentication, sessions, and user management.
+ * Server-side cryptographic authentication, sessions, role-based access control,
+ * and Master Super Admin Key management.
  */
 
 import crypto from 'crypto';
@@ -22,8 +23,22 @@ export interface UserRecord {
   measurement_system: string;
   avatar_url: string;
   email_verified: number; // 0 or 1
-  role: string;
+  role: string; // 'superadmin' | 'admin' | 'Owner' | 'Estimator'
   company_type: string;
+  access_status?: 'active' | 'pending' | 'suspended';
+  subscription_tier?: string;
+  subscription_status?: string;
+  subscription_expires_at?: string;
+  boq_credits?: number;
+  license_key?: string;
+  admin_notes?: string;
+  can_ai_takeoff?: number;
+  can_valuations?: number;
+  can_variations?: number;
+  can_export_pdf_excel?: number;
+  can_rates_library?: number;
+  can_team_collab?: number;
+  max_projects?: number;
   created_at: string;
   updated_at: string;
 }
@@ -51,6 +66,11 @@ export interface AuthRequest extends Request {
   user?: UserRecord;
   sessionToken?: string;
 }
+
+/**
+ * Master Super Admin Key for Emmanuel Isaac to have instant, non-expiring master access.
+ */
+export const MASTER_ADMIN_KEY = process.env.MASTER_ADMIN_KEY || 'QS-MASTER-KEY-2026-EMMANUEL-ADMIN';
 
 /**
  * Hash a password using scrypt with unique salt
@@ -104,14 +124,17 @@ export async function getUserByEmail(email: string): Promise<(UserRecord & { pas
 export async function getUserById(id: string): Promise<UserRecord | null> {
   const database = await getDb();
   const safeId = id.replace(/'/g, "''");
-  const res = database.exec(`SELECT id, email, full_name, phone, profession, company, job_title, country, state, currency, measurement_system, avatar_url, email_verified, role, company_type, created_at, updated_at FROM users WHERE id = '${safeId}'`);
+  const res = database.exec(`SELECT * FROM users WHERE id = '${safeId}'`);
   if (res.length === 0 || res[0].values.length === 0) return null;
 
   const cols = res[0].columns;
   const row = res[0].values[0];
   const userObj: Record<string, any> = {};
   cols.forEach((col, idx) => {
-    userObj[col] = row[idx];
+    // Strip sensitive security hashes
+    if (col !== 'password_hash' && col !== 'salt') {
+      userObj[col] = row[idx];
+    }
   });
   return userObj as UserRecord;
 }
@@ -220,6 +243,50 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
     return;
   }
 
+  if (user.access_status === 'suspended') {
+    res.status(403).json({ error: 'Your account access has been suspended. Please contact the administrator.' });
+    return;
+  }
+
+  req.user = user;
+  req.sessionToken = token;
+  next();
+}
+
+/**
+ * Express Middleware: Require Admin / Super Admin Privileges
+ */
+export async function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  let token = '';
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7).trim();
+  } else if (req.query.auth_token) {
+    token = String(req.query.auth_token);
+  }
+
+  if (!token) {
+    res.status(401).json({ error: 'Admin authentication required.' });
+    return;
+  }
+
+  const user = await validateSession(token);
+  if (!user) {
+    res.status(401).json({ error: 'Session expired or invalid.' });
+    return;
+  }
+
+  const isAdmin =
+    user.role === 'admin' ||
+    user.role === 'superadmin' ||
+    user.email.toLowerCase() === 'emmanuelisaac888@gmail.com';
+
+  if (!isAdmin) {
+    res.status(403).json({ error: 'Access denied. Master Admin privileges required to manage users and access.' });
+    return;
+  }
+
   req.user = user;
   req.sessionToken = token;
   next();
@@ -253,27 +320,38 @@ export async function optionalAuth(req: AuthRequest, _res: Response, next: NextF
 }
 
 /**
- * Seed default Quantity Surveyor user if no users exist
+ * Seed or update default Quantity Surveyor Master Admin account
  */
 export async function ensureDefaultUser(database: Database): Promise<UserRecord> {
-  const check = database.exec("SELECT COUNT(*) as count FROM users");
-  const count = (check.length > 0 && check[0].values.length > 0) ? Number(check[0].values[0][0]) : 0;
-
   const defaultEmail = 'emmanuelisaac888@gmail.com';
   const existing = await getUserByEmail(defaultEmail);
+  
   if (existing) {
-    return getUserById(existing.id) as Promise<UserRecord>;
+    // Ensure Emmanuel Isaac always has SuperAdmin privileges and active access
+    database.run(
+      `UPDATE users SET 
+        role = 'superadmin', 
+        access_status = 'active', 
+        subscription_tier = 'lifetime_license', 
+        subscription_status = 'active', 
+        email_verified = 1 
+       WHERE id = ?`,
+      [existing.id]
+    );
+    saveDbToDisk();
+    return (await getUserById(existing.id))!;
   }
 
-  console.log('Seeding default professional QS account: emmanuelisaac888@gmail.com ...');
-  const userId = 'usr-lead-qs-01';
+  console.log('Seeding Master Admin QS account: emmanuelisaac888@gmail.com ...');
+  const userId = 'usr-superadmin-emmanuel-01';
   const { hash, salt } = hashPassword('Estimate@2026'); // Standard initial password
 
   database.run(
     `INSERT INTO users (
       id, email, password_hash, salt, full_name, phone, profession, company,
-      job_title, country, state, currency, measurement_system, avatar_url, email_verified, role, company_type
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      job_title, country, state, currency, measurement_system, avatar_url, email_verified,
+      role, company_type, access_status, subscription_tier, subscription_status, boq_credits, license_key
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       userId,
       defaultEmail,
@@ -281,17 +359,22 @@ export async function ensureDefaultUser(database: Database): Promise<UserRecord>
       salt,
       'Emmanuel Isaac, MNIQS',
       '+234 803 123 4567',
-      'Registered Quantity Surveyor',
+      'Registered Quantity Surveyor (NIQS)',
       'Niger Delta Cost Consultants',
-      'Principal Cost Consultant & Estimator',
+      'Principal Cost Consultant & Master Admin',
       'Nigeria',
       'Rivers (Port Harcourt)',
       'NGN',
       'Metric',
       'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       1, // Verified
-      'Owner',
-      'Individual'
+      'superadmin',
+      'Individual',
+      'active',
+      'lifetime_license',
+      'active',
+      9999,
+      'QS-MASTER-KEY-2026-EMMANUEL-ADMIN'
     ]
   );
 

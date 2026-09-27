@@ -90,8 +90,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenSubscriptionMo
                 <label className="font-bold text-slate-700 block mb-1">Default Profit &amp; Overheads (%)</label>
                 <input
                   type="number"
-                  value={defaultPo}
-                  onChange={(e) => setDefaultPo(Number(e.target.value))}
+                  value={defaultPo === 0 ? '' : defaultPo}
+                  placeholder="0"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setDefaultPo(e.target.value === '' ? 0 : Number(e.target.value))}
                   className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                 />
               </div>
@@ -99,8 +101,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenSubscriptionMo
                 <label className="font-bold text-slate-700 block mb-1">Default Material Waste (%)</label>
                 <input
                   type="number"
-                  value={defaultWaste}
-                  onChange={(e) => setDefaultWaste(Number(e.target.value))}
+                  value={defaultWaste === 0 ? '' : defaultWaste}
+                  placeholder="0"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setDefaultWaste(e.target.value === '' ? 0 : Number(e.target.value))}
                   className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                 />
               </div>
@@ -109,8 +113,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenSubscriptionMo
                 <input
                   type="number"
                   step="0.5"
-                  value={defaultVat}
-                  onChange={(e) => setDefaultVat(Number(e.target.value))}
+                  value={defaultVat === 0 ? '' : defaultVat}
+                  placeholder="0"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setDefaultVat(e.target.value === '' ? 0 : Number(e.target.value))}
                   className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                 />
               </div>

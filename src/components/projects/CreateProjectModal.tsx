@@ -15,6 +15,7 @@ import {
   FileSpreadsheet
 } from 'lucide-react';
 import { Project } from '../../types';
+import { FormattedNumberInput } from '../common/FormattedNumberInput';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -260,37 +261,33 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">GFA (m²)</label>
-                <input
-                  type="number"
-                  min="10"
+                <FormattedNumberInput
                   value={gfa}
-                  onChange={(e) => setGfa(Number(e.target.value))}
+                  onChange={setGfa}
+                  placeholder="e.g. 350"
+                  maxDecimals={1}
                   className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900"
                 />
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">P&amp;O Markup (%)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  max="50"
+                <FormattedNumberInput
                   value={poPercent}
-                  onChange={(e) => setPoPercent(Number(e.target.value))}
+                  onChange={setPoPercent}
+                  placeholder="0"
+                  maxDecimals={1}
                   className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900"
                 />
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">Contingency (%)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  max="30"
+                <FormattedNumberInput
                   value={contingencyPercent}
-                  onChange={(e) => setContingencyPercent(Number(e.target.value))}
+                  onChange={setContingencyPercent}
+                  placeholder="0"
+                  maxDecimals={1}
                   className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900"
                 />
               </div>
@@ -304,13 +301,11 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₦</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="10000"
-                    value={targetBudget || ''}
-                    onChange={(e) => setTargetBudget(Number(e.target.value))}
-                    placeholder="e.g. 85000000"
+                  <FormattedNumberInput
+                    value={targetBudget || 0}
+                    onChange={setTargetBudget}
+                    placeholder="e.g. 85,000,000"
+                    maxDecimals={0}
                     className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-600"
                   />
                 </div>

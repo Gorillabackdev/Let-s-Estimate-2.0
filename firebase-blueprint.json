@@ -1,0 +1,23 @@
+{
+  "entities": {
+    "users": {
+      "fields": {
+        "email": { "type": "string" },
+        "fullName": { "type": "string" },
+        "role": { "type": "string" },
+        "accessStatus": { "type": "string" },
+        "subscriptionPlan": { "type": "string" },
+        "emailVerified": { "type": "boolean" },
+        "createdAt": { "type": "timestamp" }
+      }
+    },
+    "projects": {
+      "fields": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "grandTotal": { "type": "number" },
+        "createdAt": { "type": "timestamp" }
+      }
+    }
+  }
+}

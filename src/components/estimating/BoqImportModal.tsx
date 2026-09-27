@@ -1460,6 +1460,9 @@ Item | Description of Works | Unit | Quantity | Rate | Amount
                                     {BESMM4_SECTIONS.map((sec) => (
                                       <option key={sec} value={sec}>{sec}</option>
                                     ))}
+                                    {!BESMM4_SECTIONS.includes(item.section as any) && item.section && (
+                                      <option value={item.section}>{item.section} (Custom)</option>
+                                    )}
                                   </select>
                                 </td>
 
@@ -1795,8 +1798,10 @@ Item | Description of Works | Unit | Quantity | Rate | Amount
                           <label className="text-[11px] font-bold text-slate-700 block mb-1">Profit &amp; Overhead (%)</label>
                           <input
                             type="number"
-                            value={newProjectPoPercent}
-                            onChange={(e) => setNewProjectPoPercent(Number(e.target.value))}
+                            value={newProjectPoPercent === 0 ? '' : newProjectPoPercent}
+                            placeholder="0"
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setNewProjectPoPercent(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                             className="w-full p-2 border border-slate-300 rounded-lg text-xs"
                           />
                         </div>
@@ -1805,8 +1810,10 @@ Item | Description of Works | Unit | Quantity | Rate | Amount
                           <label className="text-[11px] font-bold text-slate-700 block mb-1">VAT (%)</label>
                           <input
                             type="number"
-                            value={newProjectVatPercent}
-                            onChange={(e) => setNewProjectVatPercent(Number(e.target.value))}
+                            value={newProjectVatPercent === 0 ? '' : newProjectVatPercent}
+                            placeholder="0"
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setNewProjectVatPercent(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                             className="w-full p-2 border border-slate-300 rounded-lg text-xs"
                           />
                         </div>

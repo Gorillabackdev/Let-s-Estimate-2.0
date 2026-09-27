@@ -2576,6 +2576,7 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
                   type="number"
                   step="0.05"
                   value={inputRealMeters}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => setInputRealMeters(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm font-mono text-white outline-none focus:border-amber-500"
                   placeholder="e.g. 4.5"
@@ -2634,8 +2635,10 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
                 <input
                   type="number"
                   step="0.1"
-                  value={wallHeight}
-                  onChange={(e) => setWallHeight(parseFloat(e.target.value) || 3.0)}
+                  value={wallHeight === 0 ? '' : wallHeight}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setWallHeight(e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                  placeholder="3.0"
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono"
                 />
               </div>
@@ -2658,8 +2661,9 @@ export const RealDrawingViewer: React.FC<RealDrawingViewerProps> = ({
                 <input
                   type="number"
                   step="0.5"
-                  value={wallDeductionsM2}
-                  onChange={(e) => setWallDeductionsM2(parseFloat(e.target.value) || 0)}
+                  value={wallDeductionsM2 === 0 ? '' : wallDeductionsM2}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setWallDeductionsM2(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                   className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono"
                   placeholder="0.0"
                 />

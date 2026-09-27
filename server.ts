@@ -85,14 +85,17 @@ import {
   revokeAllUserSessions, 
   recordLogin, 
   requireAuth, 
+  requireAdmin,
   optionalAuth, 
   ensureDefaultUser, 
+  MASTER_ADMIN_KEY,
   AuthRequest 
 } from './server/auth.js';
 import { performAiTakeoff, estimateFromDescription, analyzeBoqItems, auditValueEngineeringAndRisks } from './server/ai.js';
 import { runDrawingTakeoffPipeline } from './server/takeoffPipeline.js';
 import { generateExcelBuffer, generatePdfBuffer, generateUserGuidePdfBuffer, calculateMaterialRequirements, ExportData } from './server/export.js';
 import { getRateLibrary, getUserCustomRates, saveUserCustomRate, deleteUserCustomRate, updateUserCustomRate } from './server/rates.js';
+import { sendVerificationEmail, sendPasswordResetEmail } from './server/email.js';
 
 dotenv.config();
 
@@ -139,6 +142,60 @@ app.get('/api/health', (_req: Request, res: Response) => {
 // PHASE 1: AUTHENTICATION & USER MANAGEMENT API
 // ========================================================================
 
+// 0. Master Super Admin Key Login (Bypasses regular barriers with full control)
+app.post('/api/auth/admin-key-login', async (req: Request, res: Response) => {
+  try {
+    const { adminKey } = req.body;
+    if (!adminKey || typeof adminKey !== 'string') {
+      res.status(400).json({ error: 'Master Admin Key is required.' });
+      return;
+    }
+
+    if (adminKey.trim() !== MASTER_ADMIN_KEY) {
+      res.status(401).json({ error: 'Invalid Master Admin Key. Please check the key provided.' });
+      return;
+    }
+
+    const database = await getDb();
+    let superAdmin = await getUserByEmail('emmanuelisaac888@gmail.com');
+    if (!superAdmin) {
+      await ensureDefaultUser(database);
+      superAdmin = await getUserByEmail('emmanuelisaac888@gmail.com');
+    }
+
+    // Ensure status is active, verified, lifetime license, and role is superadmin
+    database.run(
+      `UPDATE users SET 
+        role = 'superadmin', 
+        access_status = 'active', 
+        email_verified = 1, 
+        subscription_tier = 'lifetime_license', 
+        subscription_status = 'active',
+        boq_credits = 9999,
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [superAdmin!.id]
+    );
+    saveDbToDisk();
+
+    const ip = req.ip || (req.headers['x-forwarded-for'] as string) || '';
+    const userAgent = req.headers['user-agent'] || '';
+    const token = await createSession(superAdmin!.id, userAgent, ip);
+    await recordLogin(superAdmin!.id, ip, userAgent, 'success_master_admin_key');
+    const user = await getUserById(superAdmin!.id);
+
+    res.json({
+      success: true,
+      message: 'Master Super Admin Access Granted. Welcome, Emmanuel Isaac (Lead QS).',
+      token,
+      user
+    });
+  } catch (error: any) {
+    console.error('Admin key login error:', error);
+    res.status(500).json({ error: 'Failed to authenticate master admin key: ' + error.message });
+  }
+});
+
 // 1. Register new user
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   try {
@@ -177,14 +234,17 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     const { hash, salt } = hashPassword(password);
     const userId = 'usr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
     const verificationToken = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit verification code
+    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(); // 14-day free trial
+    const licenseKey = 'QS-TRIAL-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const database = await getDb();
     database.run(
       `INSERT INTO users (
         id, email, password_hash, salt, full_name, phone, profession, company,
         job_title, country, state, currency, measurement_system, verification_token,
-        email_verified, role, company_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        email_verified, role, company_type, access_status, subscription_tier, subscription_status,
+        subscription_expires_at, boq_credits, license_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         cleanEmail,
@@ -201,8 +261,14 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
         measurement_system,
         verificationToken,
         0, // initially unverified
-        'Owner',
-        company_type
+        cleanEmail === 'emmanuelisaac888@gmail.com' ? 'superadmin' : 'Owner',
+        company_type,
+        'active', // active access by default with trial
+        'free_trial',
+        'active',
+        expiresAt,
+        5,
+        licenseKey
       ]
     );
     saveDbToDisk();
@@ -213,12 +279,17 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     const token = await createSession(userId, userAgent, ip);
     await recordLogin(userId, ip, userAgent, 'success');
 
+    // Asynchronously dispatch real email via Nodemailer
+    sendVerificationEmail(cleanEmail, full_name.trim(), verificationToken).catch(err => {
+      console.warn('Background email dispatch warning:', err?.message || err);
+    });
+
     res.status(201).json({
       success: true,
-      message: 'Account created successfully.',
+      message: 'Account created successfully. A 6-digit verification code has been sent to your email.',
       token,
       user,
-      verificationCode: verificationToken // included for quick instant verification in prototype/preview
+      verificationCode: verificationToken // included so preview/testing users are never blocked
     });
   } catch (error: any) {
     console.error('Registration error:', error);
@@ -245,6 +316,11 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
         await recordLogin(userRecord.id, ip, userAgent, 'failed_password');
       }
       res.status(401).json({ error: 'Invalid email or password. Please check your credentials.' });
+      return;
+    }
+
+    if (userRecord.access_status === 'suspended') {
+      res.status(403).json({ error: 'Your account access has been suspended. Please contact the administrator.' });
       return;
     }
 
@@ -421,9 +497,14 @@ app.post('/api/auth/resend-verification', async (req: Request, res: Response) =>
     database.run(`UPDATE users SET verification_token = ? WHERE id = ?`, [newCode, user.id]);
     saveDbToDisk();
 
+    // Asynchronously dispatch real email
+    sendVerificationEmail(user.email, user.full_name, newCode).catch(err => {
+      console.warn('Background email dispatch warning:', err?.message || err);
+    });
+
     res.json({
       success: true,
-      message: 'New verification code generated.',
+      message: 'New verification code has been sent to your email.',
       verificationCode: newCode
     });
   } catch (error: any) {
@@ -452,9 +533,13 @@ app.post('/api/auth/forgot-password', async (req: Request, res: Response) => {
     database.run(`UPDATE users SET reset_token = ?, reset_token_expires = ? WHERE id = ?`, [resetCode, expires, user.id]);
     saveDbToDisk();
 
+    sendPasswordResetEmail(user.email, user.full_name, resetCode).catch(err => {
+      console.warn('Background reset email warning:', err?.message || err);
+    });
+
     res.json({
       success: true,
-      message: 'Password reset code generated.',
+      message: 'Password reset code sent to your email.',
       resetCode // returned for instant demo testing
     });
   } catch (error: any) {
@@ -647,6 +732,400 @@ app.post('/api/auth/delete-account', requireAuth, async (req: AuthRequest, res: 
     res.json({ success: true, message: 'Account deleted successfully.' });
   } catch (error: any) {
     res.status(500).json({ error: 'Delete account error: ' + error.message });
+  }
+});
+
+// ========================================================================
+// PHASE 1.5: SUPER ADMIN DASHBOARD & USER ACCESS CONTROL API
+// ========================================================================
+
+// A. Super Admin Platform Overview & User Statistics
+app.get('/api/admin/overview', requireAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const database = await getDb();
+    
+    // User metrics
+    const userStats = database.exec(`
+      SELECT 
+        COUNT(*) as totalUsers,
+        SUM(CASE WHEN email_verified = 1 THEN 1 ELSE 0 END) as verifiedUsers,
+        SUM(CASE WHEN access_status = 'active' OR access_status IS NULL OR access_status = '' THEN 1 ELSE 0 END) as activeUsers,
+        SUM(CASE WHEN access_status = 'pending' THEN 1 ELSE 0 END) as pendingUsers,
+        SUM(CASE WHEN access_status = 'suspended' THEN 1 ELSE 0 END) as suspendedUsers,
+        SUM(CASE WHEN subscription_tier = 'free_trial' OR subscription_tier IS NULL OR subscription_tier = '' THEN 1 ELSE 0 END) as trialUsers,
+        SUM(CASE WHEN subscription_tier = 'monthly' THEN 1 ELSE 0 END) as monthlyUsers,
+        SUM(CASE WHEN subscription_tier = 'yearly' THEN 1 ELSE 0 END) as yearlyUsers,
+        SUM(CASE WHEN subscription_tier = 'lifetime_license' THEN 1 ELSE 0 END) as lifetimeUsers
+      FROM users
+    `);
+
+    // Project metrics
+    const projectStats = database.exec(`
+      SELECT COUNT(*) as totalProjects, COALESCE(SUM(grand_total), 0) as totalPortfolioValue
+      FROM projects
+    `);
+
+    // Recent user signups
+    const recentUsersRes = database.exec(`
+      SELECT id, email, full_name, profession, company, state, role, access_status, email_verified, subscription_tier, subscription_status, created_at
+      FROM users ORDER BY created_at DESC LIMIT 10
+    `);
+
+    const metrics = {
+      totalUsers: 0,
+      verifiedUsers: 0,
+      activeUsers: 0,
+      pendingUsers: 0,
+      suspendedUsers: 0,
+      plans: {
+        trial: 0,
+        monthly: 0,
+        yearly: 0,
+        lifetime: 0
+      },
+      totalProjects: 0,
+      totalPortfolioValue: 0
+    };
+
+    if (userStats.length > 0 && userStats[0].values.length > 0) {
+      const row = userStats[0].values[0];
+      metrics.totalUsers = Number(row[0] || 0);
+      metrics.verifiedUsers = Number(row[1] || 0);
+      metrics.activeUsers = Number(row[2] || 0);
+      metrics.pendingUsers = Number(row[3] || 0);
+      metrics.suspendedUsers = Number(row[4] || 0);
+      metrics.plans.trial = Number(row[5] || 0);
+      metrics.plans.monthly = Number(row[6] || 0);
+      metrics.plans.yearly = Number(row[7] || 0);
+      metrics.plans.lifetime = Number(row[8] || 0);
+    }
+
+    if (projectStats.length > 0 && projectStats[0].values.length > 0) {
+      metrics.totalProjects = Number(projectStats[0].values[0][0] || 0);
+      metrics.totalPortfolioValue = Number(projectStats[0].values[0][1] || 0);
+    }
+
+    const recentUsers: any[] = [];
+    if (recentUsersRes.length > 0) {
+      const cols = recentUsersRes[0].columns;
+      recentUsersRes[0].values.forEach(v => {
+        const u: any = {};
+        cols.forEach((c, idx) => { u[c] = v[idx]; });
+        recentUsers.push(u);
+      });
+    }
+
+    res.json({
+      success: true,
+      metrics,
+      recentUsers,
+      masterAdminKey: MASTER_ADMIN_KEY,
+      systemInfo: {
+        serverTime: new Date().toISOString(),
+        database: 'SQLite 3 + Firebase Firestore Sync',
+        version: '2.5.0-Enterprise',
+        leadQs: 'Emmanuel Isaac, MNIQS'
+      }
+    });
+  } catch (error: any) {
+    console.error('Admin overview error:', error);
+    res.status(500).json({ error: 'Failed to retrieve admin overview: ' + error.message });
+  }
+});
+
+// B. Super Admin: List All Registered Users with Full Details
+app.get('/api/admin/users', requireAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const database = await getDb();
+    const resUsers = database.exec(`
+      SELECT 
+        u.id, u.email, u.full_name, u.phone, u.profession, u.company, u.job_title,
+        u.country, u.state, u.currency, u.role, u.company_type, u.access_status,
+        u.subscription_tier, u.subscription_status, u.subscription_expires_at,
+        u.boq_credits, u.license_key, u.email_verified, u.admin_notes, u.created_at,
+        COALESCE(u.can_ai_takeoff, 1) as can_ai_takeoff,
+        COALESCE(u.can_valuations, 1) as can_valuations,
+        COALESCE(u.can_variations, 1) as can_variations,
+        COALESCE(u.can_export_pdf_excel, 1) as can_export_pdf_excel,
+        COALESCE(u.can_rates_library, 1) as can_rates_library,
+        COALESCE(u.can_team_collab, 1) as can_team_collab,
+        COALESCE(u.max_projects, 10) as max_projects,
+        (SELECT COUNT(*) FROM projects p WHERE p.user_id = u.id) as project_count,
+        (SELECT MAX(created_at) FROM login_history lh WHERE lh.user_id = u.id) as last_login
+      FROM users u
+      ORDER BY u.created_at DESC
+    `);
+
+    const users: any[] = [];
+    if (resUsers.length > 0) {
+      const cols = resUsers[0].columns;
+      resUsers[0].values.forEach(r => {
+        const obj: any = {};
+        cols.forEach((col, idx) => {
+          obj[col] = r[idx];
+        });
+        users.push(obj);
+      });
+    }
+
+    res.json({ success: true, users });
+  } catch (error: any) {
+    console.error('Admin users error:', error);
+    res.status(500).json({ error: 'Failed to retrieve users: ' + error.message });
+  }
+});
+
+// C. Super Admin: Update User Access Status (active, pending, suspended)
+app.put('/api/admin/users/:userId/access', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { access_status, admin_notes } = req.body;
+    if (!['active', 'pending', 'suspended'].includes(access_status)) {
+      res.status(400).json({ error: 'Invalid access status. Must be active, pending, or suspended.' });
+      return;
+    }
+
+    const database = await getDb();
+    database.run(
+      `UPDATE users SET access_status = ?, admin_notes = COALESCE(?, admin_notes), updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [access_status, admin_notes || null, userId]
+    );
+    saveDbToDisk();
+
+    const user = await getUserById(userId);
+    res.json({ success: true, message: `Access status updated to ${access_status}.`, user });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update access: ' + error.message });
+  }
+});
+
+// D. Super Admin: Update User Subscription Plan & Credits
+app.put('/api/admin/users/:userId/subscription', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { tier, status = 'active', duration_days = 30, boq_credits } = req.body;
+    
+    let expiresAt = '';
+    if (duration_days && duration_days > 0) {
+      expiresAt = new Date(Date.now() + duration_days * 24 * 60 * 60 * 1000).toISOString();
+    } else if (tier === 'lifetime_license') {
+      expiresAt = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString();
+    }
+
+    const database = await getDb();
+    database.run(
+      `UPDATE users SET 
+        subscription_tier = ?, 
+        subscription_status = ?, 
+        subscription_expires_at = ?, 
+        boq_credits = COALESCE(?, boq_credits), 
+        updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ?`,
+      [tier, status, expiresAt, boq_credits !== undefined ? boq_credits : null, userId]
+    );
+    saveDbToDisk();
+
+    const user = await getUserById(userId);
+    res.json({ success: true, message: `Subscription plan updated successfully.`, user });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update subscription: ' + error.message });
+  }
+});
+
+// E. Super Admin: Manually Verify User Email Address
+app.put('/api/admin/users/:userId/verify-email', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const database = await getDb();
+    database.run(`UPDATE users SET email_verified = 1, verification_token = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [userId]);
+    saveDbToDisk();
+    const user = await getUserById(userId);
+    res.json({ success: true, message: 'User email manually verified by Administrator.', user });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to verify email: ' + error.message });
+  }
+});
+
+// F. Super Admin: Update User Role (promote to admin or standard QS)
+app.put('/api/admin/users/:userId/role', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+    if (!['superadmin', 'admin', 'Owner', 'Estimator'].includes(role)) {
+      res.status(400).json({ error: 'Invalid role.' });
+      return;
+    }
+    const database = await getDb();
+    database.run(`UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [role, userId]);
+    saveDbToDisk();
+    const user = await getUserById(userId);
+    res.json({ success: true, message: `User role changed to ${role}.`, user });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update role: ' + error.message });
+  }
+});
+
+// G. Super Admin: Delete User Account
+app.delete('/api/admin/users/:userId', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const database = await getDb();
+    const user = await getUserById(userId);
+    if (user?.role === 'superadmin' || user?.email === 'emmanuelisaac888@gmail.com') {
+      res.status(403).json({ error: 'Cannot delete the Master Super Admin account.' });
+      return;
+    }
+    database.run(`DELETE FROM sessions WHERE user_id = ?`, [userId]);
+    database.run(`DELETE FROM login_history WHERE user_id = ?`, [userId]);
+    database.run(`DELETE FROM users WHERE id = ?`, [userId]);
+    saveDbToDisk();
+    res.json({ success: true, message: 'User account removed successfully.' });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to delete user: ' + error.message });
+  }
+});
+
+// H. Super Admin: List All System Login Activities
+app.get('/api/admin/login-history', requireAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const database = await getDb();
+    const resHistory = database.exec(`
+      SELECT 
+        lh.id, 
+        lh.user_id, 
+        COALESCE(u.email, 'Unknown / Key Access') as user_email, 
+        COALESCE(u.full_name, 'QS User') as user_name,
+        lh.ip_address, 
+        lh.user_agent, 
+        lh.status, 
+        lh.created_at
+      FROM login_history lh
+      LEFT JOIN users u ON u.id = lh.user_id
+      ORDER BY lh.created_at DESC
+      LIMIT 250
+    `);
+
+    const activities: any[] = [];
+    if (resHistory.length > 0) {
+      const cols = resHistory[0].columns;
+      resHistory[0].values.forEach(r => {
+        const obj: any = {};
+        cols.forEach((col, idx) => { obj[col] = r[idx]; });
+        activities.push(obj);
+      });
+    }
+
+    res.json({ success: true, activities });
+  } catch (error: any) {
+    console.error('Failed to get login history:', error);
+    res.status(500).json({ error: 'Failed to get login history: ' + error.message });
+  }
+});
+
+// I. Super Admin: List All Payments & Submissions
+app.get('/api/admin/payments', requireAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const database = await getDb();
+    const resTx = database.exec(`
+      SELECT 
+        pt.*,
+        u.full_name as current_user_name,
+        u.subscription_tier as current_user_tier
+      FROM payment_transfers pt
+      LEFT JOIN users u ON u.id = pt.user_id
+      ORDER BY pt.created_at DESC
+    `);
+
+    const payments: any[] = [];
+    if (resTx.length > 0) {
+      const cols = resTx[0].columns;
+      resTx[0].values.forEach(r => {
+        const obj: any = {};
+        cols.forEach((col, idx) => { obj[col] = r[idx]; });
+        payments.push(obj);
+      });
+    }
+
+    res.json({ success: true, payments });
+  } catch (error: any) {
+    console.error('Failed to get admin payments:', error);
+    res.status(500).json({ error: 'Failed to retrieve payments: ' + error.message });
+  }
+});
+
+// J. Super Admin: Approve Payment
+app.post('/api/admin/payments/:id/approve', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const verifiedBy = req.user?.full_name || 'Isaac Emmanuel, Lead QS';
+    const tx = await verifyPaymentTransfer(req.params.id, 'approved', verifiedBy, req.body?.notes || 'Approved by Super Admin');
+    if (!tx) {
+      res.status(404).json({ error: 'Payment transfer record not found.' });
+      return;
+    }
+    res.json({ success: true, message: `Payment approved! Plan "${tx.plan_name}" activated for user.`, payment: tx });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to approve payment: ' + error.message });
+  }
+});
+
+// K. Super Admin: Reject Payment
+app.post('/api/admin/payments/:id/reject', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const verifiedBy = req.user?.full_name || 'Isaac Emmanuel, Lead QS';
+    const tx = await verifyPaymentTransfer(req.params.id, 'rejected', verifiedBy, req.body?.notes || 'Rejected by Admin');
+    if (!tx) {
+      res.status(404).json({ error: 'Payment transfer record not found.' });
+      return;
+    }
+    res.json({ success: true, message: 'Payment rejected.', payment: tx });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to reject payment: ' + error.message });
+  }
+});
+
+// L. Super Admin: Update Granular Service Limitations for User
+app.put('/api/admin/users/:userId/services', requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const {
+      can_ai_takeoff,
+      can_valuations,
+      can_variations,
+      can_export_pdf_excel,
+      can_rates_library,
+      can_team_collab,
+      max_projects
+    } = req.body;
+
+    const database = await getDb();
+    database.run(
+      `UPDATE users SET
+        can_ai_takeoff = COALESCE(?, can_ai_takeoff),
+        can_valuations = COALESCE(?, can_valuations),
+        can_variations = COALESCE(?, can_variations),
+        can_export_pdf_excel = COALESCE(?, can_export_pdf_excel),
+        can_rates_library = COALESCE(?, can_rates_library),
+        can_team_collab = COALESCE(?, can_team_collab),
+        max_projects = COALESCE(?, max_projects),
+        updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        can_ai_takeoff !== undefined ? Number(can_ai_takeoff) : null,
+        can_valuations !== undefined ? Number(can_valuations) : null,
+        can_variations !== undefined ? Number(can_variations) : null,
+        can_export_pdf_excel !== undefined ? Number(can_export_pdf_excel) : null,
+        can_rates_library !== undefined ? Number(can_rates_library) : null,
+        can_team_collab !== undefined ? Number(can_team_collab) : null,
+        max_projects !== undefined ? Number(max_projects) : null,
+        userId
+      ]
+    );
+    saveDbToDisk();
+
+    const user = await getUserById(userId);
+    res.json({ success: true, message: 'User service permissions updated successfully.', user });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update service limits: ' + error.message });
   }
 });
 

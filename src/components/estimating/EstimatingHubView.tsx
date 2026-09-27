@@ -230,8 +230,10 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
                   <label className="font-bold text-slate-700 block mb-1">Material Cost (₦)</label>
                   <input
                     type="number"
-                    value={materialCost}
-                    onChange={(e) => setMaterialCost(Number(e.target.value))}
+                    value={materialCost === 0 ? '' : materialCost}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setMaterialCost(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -239,8 +241,10 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
                   <label className="font-bold text-slate-700 block mb-1">Labour Cost (₦)</label>
                   <input
                     type="number"
-                    value={labourCost}
-                    onChange={(e) => setLabourCost(Number(e.target.value))}
+                    value={labourCost === 0 ? '' : labourCost}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setLabourCost(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -248,8 +252,10 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
                   <label className="font-bold text-slate-700 block mb-1">Plant / Tools (₦)</label>
                   <input
                     type="number"
-                    value={plantCost}
-                    onChange={(e) => setPlantCost(Number(e.target.value))}
+                    value={plantCost === 0 ? '' : plantCost}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setPlantCost(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -257,8 +263,10 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
                   <label className="font-bold text-slate-700 block mb-1">Transport / Haulage (₦)</label>
                   <input
                     type="number"
-                    value={transportCost}
-                    onChange={(e) => setTransportCost(Number(e.target.value))}
+                    value={transportCost === 0 ? '' : transportCost}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setTransportCost(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -273,8 +281,10 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
                   <label className="font-bold text-slate-700 block mb-1">Material Waste (%)</label>
                   <input
                     type="number"
-                    value={wastePercent}
-                    onChange={(e) => setWastePercent(Number(e.target.value))}
+                    value={wastePercent === 0 ? '' : wastePercent}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setWastePercent(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -282,8 +292,10 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
                   <label className="font-bold text-slate-700 block mb-1">Overheads (%)</label>
                   <input
                     type="number"
-                    value={overheadsPercent}
-                    onChange={(e) => setOverheadsPercent(Number(e.target.value))}
+                    value={overheadsPercent === 0 ? '' : overheadsPercent}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setOverheadsPercent(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>
@@ -291,8 +303,10 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
                   <label className="font-bold text-slate-700 block mb-1">Profit Margin (%)</label>
                   <input
                     type="number"
-                    value={profitPercent}
-                    onChange={(e) => setProfitPercent(Number(e.target.value))}
+                    value={profitPercent === 0 ? '' : profitPercent}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setProfitPercent(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>

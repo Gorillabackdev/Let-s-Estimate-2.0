@@ -536,8 +536,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                 <label className="block text-slate-600 font-medium mb-1">Basic Depot Invoice (₦/{rateUnit})</label>
                 <input
                   type="number"
-                  value={matBasicCost}
-                  onChange={(e) => setMatBasicCost(Number(e.target.value) || 0)}
+                  value={matBasicCost === 0 ? '' : matBasicCost}
+                  placeholder="0"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setMatBasicCost(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                   className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-bold text-slate-900"
                 />
               </div>
@@ -547,8 +549,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <label className="block text-slate-600 font-medium mb-1">Haulage (₦/{rateUnit})</label>
                   <input
                     type="number"
-                    value={matHaulage}
-                    onChange={(e) => setMatHaulage(Number(e.target.value) || 0)}
+                    value={matHaulage === 0 ? '' : matHaulage}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setMatHaulage(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-medium text-slate-800"
                   />
                 </div>
@@ -556,8 +560,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <label className="block text-slate-600 font-medium mb-1">Offloading (₦)</label>
                   <input
                     type="number"
-                    value={matOffloading}
-                    onChange={(e) => setMatOffloading(Number(e.target.value) || 0)}
+                    value={matOffloading === 0 ? '' : matOffloading}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setMatOffloading(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-medium text-slate-800"
                   />
                 </div>
@@ -624,8 +630,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <label className="block text-slate-600 font-medium mb-1">Daily Hire (₦/day)</label>
                   <input
                     type="number"
-                    value={plantDailyHire}
-                    onChange={(e) => setPlantDailyHire(Number(e.target.value) || 0)}
+                    value={plantDailyHire === 0 ? '' : plantDailyHire}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setPlantDailyHire(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-bold text-slate-900"
                   />
                 </div>
@@ -633,8 +641,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <label className="block text-slate-600 font-medium mb-1">Daily Fuel / Diesel (₦)</label>
                   <input
                     type="number"
-                    value={plantFuelPerDay}
-                    onChange={(e) => setPlantFuelPerDay(Number(e.target.value) || 0)}
+                    value={plantFuelPerDay === 0 ? '' : plantFuelPerDay}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setPlantFuelPerDay(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-medium text-slate-800"
                   />
                 </div>
@@ -645,8 +655,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <label className="block text-slate-600 font-medium mb-1">Operator Daily (₦)</label>
                   <input
                     type="number"
-                    value={plantOperatorPerDay}
-                    onChange={(e) => setPlantOperatorPerDay(Number(e.target.value) || 0)}
+                    value={plantOperatorPerDay === 0 ? '' : plantOperatorPerDay}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setPlantOperatorPerDay(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-medium text-slate-800"
                   />
                 </div>
@@ -654,8 +666,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <label className="block text-slate-600 font-medium mb-1">Mob/Demob Share (₦)</label>
                   <input
                     type="number"
-                    value={plantMobilizationShared}
-                    onChange={(e) => setPlantMobilizationShared(Number(e.target.value) || 0)}
+                    value={plantMobilizationShared === 0 ? '' : plantMobilizationShared}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setPlantMobilizationShared(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-medium text-slate-800"
                   />
                 </div>
@@ -666,8 +680,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                 <input
                   type="number"
                   min="1"
-                  value={plantDailyOutput}
-                  onChange={(e) => setPlantDailyOutput(Math.max(1, Number(e.target.value) || 1))}
+                  value={plantDailyOutput === 0 ? '' : plantDailyOutput}
+                  placeholder="1"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setPlantDailyOutput(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                   className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-bold text-slate-900"
                 />
               </div>
@@ -717,8 +733,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <label className="block text-slate-600 font-medium mb-1">Craftsman Daily (₦)</label>
                   <input
                     type="number"
-                    value={craftsmanWage}
-                    onChange={(e) => setCraftsmanWage(Number(e.target.value) || 0)}
+                    value={craftsmanWage === 0 ? '' : craftsmanWage}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setCraftsmanWage(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-bold text-slate-900"
                   />
                 </div>
@@ -727,8 +745,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <input
                     type="number"
                     min="0"
-                    value={craftsmenCount}
-                    onChange={(e) => setCraftsmenCount(Math.max(0, Number(e.target.value) || 0))}
+                    value={craftsmenCount === 0 ? '' : craftsmenCount}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setCraftsmenCount(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-medium text-slate-800"
                   />
                 </div>
@@ -739,8 +759,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <label className="block text-slate-600 font-medium mb-1">Helper Wage (₦/day)</label>
                   <input
                     type="number"
-                    value={helperWage}
-                    onChange={(e) => setHelperWage(Number(e.target.value) || 0)}
+                    value={helperWage === 0 ? '' : helperWage}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setHelperWage(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-medium text-slate-800"
                   />
                 </div>
@@ -749,8 +771,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <input
                     type="number"
                     min="0"
-                    value={helpersCount}
-                    onChange={(e) => setHelpersCount(Math.max(0, Number(e.target.value) || 0))}
+                    value={helpersCount === 0 ? '' : helpersCount}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setHelpersCount(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-medium text-slate-800"
                   />
                 </div>
@@ -762,8 +786,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <input
                     type="number"
                     min="1"
-                    value={gangDailyOutput}
-                    onChange={(e) => setGangDailyOutput(Math.max(1, Number(e.target.value) || 1))}
+                    value={gangDailyOutput === 0 ? '' : gangDailyOutput}
+                    placeholder="1"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setGangDailyOutput(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-bold text-slate-900"
                   />
                 </div>
@@ -771,8 +797,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   <label className="block text-slate-600 font-medium mb-1">Union / PPE Levy (%)</label>
                   <input
                     type="number"
-                    value={labourLevyPercent}
-                    onChange={(e) => setLabourLevyPercent(Number(e.target.value) || 0)}
+                    value={labourLevyPercent === 0 ? '' : labourLevyPercent}
+                    placeholder="0"
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setLabourLevyPercent(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 font-mono font-medium text-slate-800"
                   />
                 </div>
@@ -822,8 +850,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   type="number"
                   min="0"
                   max="30"
-                  value={overheadsPercent}
-                  onChange={(e) => setOverheadsPercent(Number(e.target.value) || 0)}
+                  value={overheadsPercent === 0 ? '' : overheadsPercent}
+                  placeholder="0"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setOverheadsPercent(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                   className="w-16 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 font-mono font-bold text-center"
                 />
                 <span className="font-bold text-slate-400">%</span>
@@ -837,8 +867,10 @@ export const RateBuilderCalculator: React.FC<RateBuilderCalculatorProps> = ({
                   type="number"
                   min="0"
                   max="40"
-                  value={profitPercent}
-                  onChange={(e) => setProfitPercent(Number(e.target.value) || 0)}
+                  value={profitPercent === 0 ? '' : profitPercent}
+                  placeholder="0"
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setProfitPercent(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))}
                   className="w-16 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200 font-mono font-bold text-center"
                 />
                 <span className="font-bold text-slate-400">%</span>

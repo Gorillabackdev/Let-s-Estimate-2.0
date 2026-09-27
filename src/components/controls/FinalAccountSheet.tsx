@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { ProjectFinalAccount } from '../../types';
 import { formatNaira } from '../../utils/format';
+import { FormattedNumberInput } from '../common/FormattedNumberInput';
 
 interface FinalAccountSheetProps {
   finalAccount: ProjectFinalAccount | null;
@@ -278,10 +279,11 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
               <td className="p-3 font-bold text-slate-800">1. Original Contract Sum</td>
               <td className="p-3 text-right font-mono font-bold text-slate-900 w-48">
                 {isEditing ? (
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={formData.original_contract_sum}
-                    onChange={(e) => setFormData({ ...formData, original_contract_sum: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, original_contract_sum: val })}
+                    placeholder="0"
+                    maxDecimals={0}
                     className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold"
                   />
                 ) : (
@@ -297,10 +299,11 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
               </td>
               <td className={`p-3 text-right font-mono font-bold ${formData.net_variations >= 0 ? 'text-emerald-800' : 'text-rose-700'}`}>
                 {isEditing ? (
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={formData.net_variations}
-                    onChange={(e) => setFormData({ ...formData, net_variations: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, net_variations: val })}
+                    placeholder="0"
+                    maxDecimals={0}
                     className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold"
                   />
                 ) : (
@@ -316,10 +319,11 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
               </td>
               <td className="p-3 text-right font-mono font-bold text-slate-900">
                 {isEditing ? (
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={formData.provisional_sums_adjustment}
-                    onChange={(e) => setFormData({ ...formData, provisional_sums_adjustment: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, provisional_sums_adjustment: val })}
+                    placeholder="0"
+                    maxDecimals={0}
                     className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold"
                   />
                 ) : (
@@ -335,10 +339,11 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
               </td>
               <td className="p-3 text-right font-mono font-bold text-slate-900">
                 {isEditing ? (
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={formData.prime_cost_adjustment}
-                    onChange={(e) => setFormData({ ...formData, prime_cost_adjustment: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, prime_cost_adjustment: val })}
+                    placeholder="0"
+                    maxDecimals={0}
                     className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold"
                   />
                 ) : (
@@ -354,10 +359,11 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
               </td>
               <td className="p-3 text-right font-mono font-bold text-emerald-800">
                 {isEditing ? (
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={formData.fluctuation_claim_amount}
-                    onChange={(e) => setFormData({ ...formData, fluctuation_claim_amount: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, fluctuation_claim_amount: val })}
+                    placeholder="0"
+                    maxDecimals={0}
                     className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold text-emerald-800"
                   />
                 ) : (
@@ -373,10 +379,11 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
               </td>
               <td className="p-3 text-right font-mono font-bold text-rose-600">
                 {isEditing ? (
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={formData.liquidated_damages_deduction}
-                    onChange={(e) => setFormData({ ...formData, liquidated_damages_deduction: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, liquidated_damages_deduction: val })}
+                    placeholder="0"
+                    maxDecimals={0}
                     className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold text-rose-600"
                   />
                 ) : (
@@ -402,10 +409,11 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
               </td>
               <td className="p-3 text-right font-mono font-bold text-slate-700">
                 {isEditing ? (
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={formData.total_previous_payments}
-                    onChange={(e) => setFormData({ ...formData, total_previous_payments: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, total_previous_payments: val })}
+                    placeholder="0"
+                    maxDecimals={0}
                     className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold"
                   />
                 ) : (
@@ -421,10 +429,11 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
               </td>
               <td className="p-3 text-right font-mono font-bold text-emerald-800">
                 {isEditing ? (
-                  <input
-                    type="number"
+                  <FormattedNumberInput
                     value={formData.retention_released}
-                    onChange={(e) => setFormData({ ...formData, retention_released: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, retention_released: val })}
+                    placeholder="0"
+                    maxDecimals={0}
                     className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold text-emerald-800"
                   />
                 ) : (

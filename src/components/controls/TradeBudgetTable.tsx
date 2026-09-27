@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { BoqItem } from '../../types';
 import { formatNaira } from '../../utils/format';
+import { FormattedNumberInput } from '../common/FormattedNumberInput';
 
 export interface TradeBudgetItem {
   id: string;
@@ -285,24 +286,22 @@ export const TradeBudgetTable: React.FC<TradeBudgetTableProps> = ({
 
                     {/* Budget Ceiling */}
                     <td className="p-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1000"
+                      <FormattedNumberInput
                         value={trade.budget}
-                        onChange={(e) => handleUpdateField(trade.id, 'budget', Number(e.target.value))}
+                        onChange={(val) => handleUpdateField(trade.id, 'budget', val)}
+                        placeholder="0"
+                        maxDecimals={0}
                         className="w-full px-2.5 py-1.5 bg-slate-50 hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-emerald-600 rounded-lg text-right font-mono font-bold text-slate-900 transition"
                       />
                     </td>
 
                     {/* Actual Spend */}
                     <td className="p-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="1000"
+                      <FormattedNumberInput
                         value={trade.actual_spend || 0}
-                        onChange={(e) => handleUpdateField(trade.id, 'actual_spend', Number(e.target.value))}
+                        onChange={(val) => handleUpdateField(trade.id, 'actual_spend', val)}
+                        placeholder="0"
+                        maxDecimals={0}
                         className="w-full px-2.5 py-1.5 bg-slate-50 hover:bg-white focus:bg-white border border-transparent hover:border-slate-300 focus:border-emerald-600 rounded-lg text-right font-mono font-semibold text-slate-900 transition"
                       />
                     </td>

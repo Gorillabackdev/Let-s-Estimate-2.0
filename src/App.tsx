@@ -53,6 +53,8 @@ import { DuplicateItemModal, DuplicatePromptData } from './components/estimating
 import { BoqImportModal } from './components/estimating/BoqImportModal';
 import { CreateProjectModal } from './components/projects/CreateProjectModal';
 import { LandingPage } from './components/landing/LandingPage';
+import { AdminDashboard } from './components/admin/AdminDashboard';
+import { AdminLoginGateway } from './components/admin/AdminLoginGateway';
 import { generateDeterministicBoq } from './utils/constructionKnowledgeBase';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AuthModal } from './components/auth/AuthModal';
@@ -64,7 +66,8 @@ import {
   CheckCircle2, 
   AlertTriangle, 
   CreditCard, 
-  ShieldCheck 
+  ShieldCheck,
+  Ban 
 } from 'lucide-react';
 
 const DEFAULT_NEW_PROJECT: Project = {
@@ -86,7 +89,7 @@ const DEFAULT_NEW_PROJECT: Project = {
 };
 
 function MainApp() {
-  const { user, token, refreshStats, openAuthModal } = useAuth();
+  const { user, token, logout, refreshStats, openAuthModal } = useAuth();
   
   // Navigation state
   const [currentView, setCurrentView] = useState<AppGlobalView>(() => {
@@ -95,6 +98,7 @@ function MainApp() {
       if (hash === '#landing' || hash === '#home' || hash === '#pricing' || hash === '#standards') {
         return 'landing';
       }
+      if (hash === '#admin-portal' || hash === '#sys-admin' || hash === '#admin') return 'admin-portal';
       if (hash === '#projects') return 'projects';
       if (hash === '#calculators') return 'calculators';
       if (hash === '#estimating') return 'estimating';
@@ -109,6 +113,7 @@ function MainApp() {
 
   const [activeSubView, setActiveSubView] = useState<string | undefined>();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Projects and active work
   const [projects, setProjects] = useState<Project[]>([]);
@@ -169,6 +174,8 @@ function MainApp() {
       const hash = window.location.hash.toLowerCase().replace('#', '');
       if (hash === 'landing' || hash === 'home' || hash === 'pricing') {
         setCurrentView('landing');
+      } else if (hash === 'admin-portal' || hash === 'sys-admin' || hash === 'admin') {
+        setCurrentView('admin-portal');
       } else if (hash === 'dashboard' || hash === 'workspace') {
         setCurrentView('dashboard');
       } else if (hash === 'projects') {
@@ -231,16 +238,20 @@ function MainApp() {
           items: Array.isArray(p.items) ? p.items : []
         }));
         setProjects(safeProjects);
-        if (!activeProject.id && safeProjects.length > 0) {
-          const first = safeProjects[0];
-          setActiveProject({
-            ...first,
-            status: first.status || 'Draft',
-            po_percent: first.po_percent ?? 15,
-            vat_percent: first.vat_percent ?? 7.5,
-            swamp_premium_percent: first.swamp_premium_percent ?? 0,
-            items: first.items || [],
-          });
+        if (safeProjects.length > 0) {
+          if (!activeProject.id || !safeProjects.some(p => p.id === activeProject.id)) {
+            const first = safeProjects[0];
+            setActiveProject({
+              ...first,
+              status: first.status || 'Draft',
+              po_percent: first.po_percent ?? 15,
+              vat_percent: first.vat_percent ?? 7.5,
+              swamp_premium_percent: first.swamp_premium_percent ?? 0,
+              items: first.items || [],
+            });
+          }
+        } else {
+          setActiveProject(DEFAULT_NEW_PROJECT);
         }
       }
     } catch {
@@ -1046,6 +1057,61 @@ function MainApp() {
     );
   }
 
+  // If user account is suspended or restricted by administrator
+  if (user && user.access_status === 'suspended' && currentView !== 'admin-portal' && currentView !== 'admin') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-900 border border-red-800/80 rounded-2xl p-6 sm:p-8 text-center shadow-2xl space-y-5 animate-fade-in">
+          <div className="w-16 h-16 rounded-full bg-red-950/80 border border-red-700/60 flex items-center justify-center mx-auto text-red-400 shadow-lg">
+            <Ban className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white tracking-tight">Account Access Restricted</h2>
+            <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+              Your account (<strong>{user.email}</strong>) has been temporarily restricted or suspended by the platform administrator.
+            </p>
+          </div>
+          <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-xs text-slate-300 text-left space-y-1.5">
+            <div className="font-bold text-amber-300 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>To Restore System Access:</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Please contact Lead QS Emmanuel Isaac regarding your subscription plan approval:
+            </p>
+            <div className="font-mono text-emerald-400 font-bold text-xs pt-1">
+              emmanuelisaac888@gmail.com
+            </div>
+          </div>
+          <button
+            onClick={() => logout()}
+            className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl transition cursor-pointer"
+          >
+            Sign Out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // If user navigated to separate Admin Portal URL (#/admin-portal or #/sys-admin)
+  if (currentView === 'admin-portal' || currentView === 'admin') {
+    const isSuperAdmin = user && (user.role === 'superadmin' || user.role === 'admin' || user.email?.toLowerCase() === 'emmanuelisaac888@gmail.com');
+    if (!isSuperAdmin) {
+      return (
+        <AdminLoginGateway
+          onBackToApp={() => navigateView('dashboard')}
+          onAdminAuthenticated={() => navigateView('admin-portal')}
+        />
+      );
+    }
+    return (
+      <AdminDashboard
+        onBackToWorkspace={() => navigateView('dashboard')}
+      />
+    );
+  }
+
   // If user navigated to public marketing landing page
   if (currentView === 'landing') {
     return (
@@ -1100,6 +1166,8 @@ function MainApp() {
         return (
           <ProjectWorkspaceView
             project={activeProject}
+            projects={projects}
+            onNewProject={handleNewProject}
             onUpdateProject={(upd) => {
               setActiveProject((prev) => ({ ...prev, ...upd }));
               setHasUnsavedChanges(true);
@@ -1108,6 +1176,7 @@ function MainApp() {
             onDeleteProject={handleDeleteProject}
             onUpdateBoqItem={handleUpdateItem}
             onAddBoqItem={handleAddItem}
+            onApplyBulkToBoq={handleApplyBulkToBoq}
             onDeleteBoqItem={handleDeleteItem}
             onApplyMarketRates={handleApplyMarketRates}
             onOpenAiTakeoff={() => navigateView('estimating', 'takeoff')}
@@ -1273,18 +1342,22 @@ function MainApp() {
   };
 
   return (
-    <div className="flex h-screen bg-slate-100 text-slate-900 overflow-hidden font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
+    <div className="flex h-screen bg-[#f8fafc] text-slate-900 overflow-hidden font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900">
       
       {/* 1. Global Left Sidebar */}
       <Sidebar
         currentView={currentView}
+        currentSubView={activeSubView}
         onNavigate={navigateView}
         activeProject={activeProject}
         projectsCount={projects.length}
         isOpenMobile={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
-        pendingActionsCount={2}
-        unreadNotificationsCount={1}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        onNewProject={handleNewProject}
+        onOpenRates={() => setIsRatesModalOpen(true)}
+        onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
       />
 
       {/* 2. Main Content Layout Container */}
@@ -1295,36 +1368,11 @@ function MainApp() {
           currentView={currentView}
           onNavigate={navigateView}
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
+          onToggleDesktopSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
           projects={projects}
           activeProject={activeProject}
           onSelectProject={handleOpenProject}
           onNewProject={handleNewProject}
-          onNewBoq={() => {
-            handleNewProject();
-            navigateView('estimating', 'boq');
-          }}
-          onNewEstimate={() => {
-            handleNewProject();
-            navigateView('estimating', 'estimate');
-          }}
-          onAiTakeoff={() => {
-            navigateView('estimating', 'takeoff');
-          }}
-          onNewValuation={() => {
-            navigateView('controls', 'valuations');
-          }}
-          onNewCertificate={() => {
-            navigateView('controls', 'certificates');
-          }}
-          onNewVariation={() => {
-            navigateView('controls', 'variations');
-          }}
-          onNewCalculation={() => {
-            navigateView('calculators');
-          }}
-          onUploadDocument={() => {
-            setIsDocumentsModalOpen(true);
-          }}
           onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
           onImportBoq={() => setIsBoqImportModalOpen(true)}
         />

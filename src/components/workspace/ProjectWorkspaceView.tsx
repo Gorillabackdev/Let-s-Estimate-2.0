@@ -43,6 +43,8 @@ import { formatNaira, formatNumber, calculateBoqTotals } from '../../utils/forma
 import { generateDeterministicBoq, normalizeQuestionnaire } from '../../utils/constructionKnowledgeBase';
 import { DEFAULT_QUESTIONNAIRE } from '../ProjectQuestionnaireModal';
 import { BoqTable } from '../BoqTable';
+import { MeasuredWorksTakeOff } from '../calculators/MeasuredWorksTakeOff';
+import { BtlEstimator } from '../estimating/BtlEstimator';
 import { ProjectControlsView } from '../controls/ProjectControlsView';
 import { CalculatorsHubView } from '../calculators/CalculatorsHubView';
 import { DrawingUploader } from '../DrawingUploader';
@@ -53,12 +55,32 @@ import { DeleteProjectModal } from '../projects/DeleteProjectModal';
 
 interface ProjectWorkspaceViewProps {
   project: Project;
+  projects?: Project[];
   initialTab?: ProjectWorkspaceTab;
+  onNewProject?: () => void;
   onUpdateProject: (updated: Partial<Project>) => void;
   onEditProject?: (updated: Partial<Project>) => Promise<void> | void;
   onDeleteProject?: (projectId: string, title: string) => Promise<void> | void;
   onUpdateBoqItem: (index: number, field: keyof BoqItem, value: any) => void;
   onAddBoqItem: (item?: Partial<BoqItem>) => void;
+  onApplyBulkToBoq?: (
+    items: Array<{
+      item: string;
+      description: string;
+      qty: number;
+      unit: string;
+      rate: number;
+      amount: number;
+      section: string;
+    }>,
+    options?: {
+      targetProjectId?: string;
+      createAsNewProject?: boolean;
+      newProjectTitle?: string;
+      newProjectLocation?: string;
+      newProjectType?: string;
+    }
+  ) => Promise<void> | void;
   onDeleteBoqItem: (index: number) => void;
   onApplyMarketRates: () => void;
   onOpenAiTakeoff: () => void;
@@ -94,12 +116,15 @@ const DOCUMENT_CATEGORIES = [
 
 export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
   project,
+  projects,
   initialTab,
+  onNewProject,
   onUpdateProject,
   onEditProject,
   onDeleteProject,
   onUpdateBoqItem,
   onAddBoqItem,
+  onApplyBulkToBoq,
   onDeleteBoqItem,
   onApplyMarketRates,
   onOpenAiTakeoff,
@@ -115,7 +140,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
   onImportBoq,
 }) => {
   const [activeTab, setActiveTab] = useState<ProjectWorkspaceTab>(initialTab || 'overview');
-  const [takeoffEngine, setTakeoffEngine] = useState<'manual' | 'ai'>('manual');
+  const [takeoffEngine, setTakeoffEngine] = useState<'btl' | 'calculator' | 'manual' | 'ai'>('btl');
   const [isAdvancedMode, setIsAdvancedMode] = useState<boolean>(true);
   const [selectedDocCategory, setSelectedDocCategory] = useState<string | null>(null);
   const [docSearchQuery, setDocSearchQuery] = useState<string>('');
@@ -196,22 +221,33 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
     }));
   }, [project.id, project.questionnaire, project.number_of_floors, project.gfa, project.location, project.swamp_premium_percent]);
 
-  const [uploadedDocs, setUploadedDocs] = useState<Array<{ id: string; category: string; title: string; filename: string; size: string; date: string }>>([
-    { id: '1', category: 'Architectural', title: 'Ground & First Floor Architectural Drawings (Rev C)', filename: 'Arch_Drawings_RevC.pdf', size: '12.4 MB', date: 'Yesterday' },
-    { id: '2', category: 'Architectural', title: 'Door and Window Elevations & Section Details', filename: 'Window_Door_Schedules.pdf', size: '3.1 MB', date: '3 days ago' },
-    { id: '3', category: 'Architectural', title: 'Roof Framing Layout & Drainage Falls', filename: 'Roof_Plan.pdf', size: '4.8 MB', date: '5 days ago' },
-    { id: '4', category: 'Structural', title: 'Foundation Footing & Ground Beam Details', filename: 'Ground_Beam_BBS.pdf', size: '8.2 MB', date: '2 days ago' },
-    { id: '5', category: 'Structural', title: 'First Floor Slab Reinforcement & Column Schedule', filename: 'Slab_Column_Schedule.dwg', size: '14.5 MB', date: '4 days ago' },
-    { id: '6', category: 'Electrical', title: 'Lighting, Power Points & Distribution Schematics', filename: 'Electrical_Services_RevB.pdf', size: '2.9 MB', date: '1 week ago' },
-    { id: '7', category: 'Mechanical', title: 'HVAC & Mechanical Ventilation Schematics', filename: 'HVAC_Layout.pdf', size: '5.2 MB', date: '1 week ago' },
-    { id: '8', category: 'Plumbing', title: 'Potable Water Reticulation & Soil Waste Pipework', filename: 'Plumbing_Sanitary_Plan.pdf', size: '3.7 MB', date: '1 week ago' },
-    { id: '9', category: 'Specifications', title: 'General Specifications of Materials and Workmanship', filename: 'BESMM4_Materials_Spec.pdf', size: '6.4 MB', date: '2 weeks ago' },
-    { id: '10', category: 'Contracts', title: 'JCT / Standard Form of Building Contract 2026', filename: 'Building_Contract_Signed.pdf', size: '4.1 MB', date: '3 weeks ago' },
-    { id: '11', category: 'BOQs', title: 'Approved Official Tender Bill of Quantities (Priced)', filename: 'Approved_Tender_BOQ.xlsx', size: '1.2 MB', date: 'Yesterday' },
-    { id: '12', category: 'Valuations', title: 'Interim Valuation No. 02 Joint Measurement Sheet', filename: 'Valuation_02_Joint_Sheet.pdf', size: '2.5 MB', date: '2 hours ago' },
-    { id: '13', category: 'Certificates', title: 'Interim Payment Certificate IPC-002 Certified', filename: 'IPC_002_Certified.pdf', size: '820 KB', date: '2 hours ago' },
-    { id: '14', category: 'Reports', title: 'Geotechnical Soil Investigation & Borehole Logs', filename: 'Soil_Report_Borehole.pdf', size: '9.8 MB', date: '1 month ago' },
-  ]);
+  const [uploadedDocs, setUploadedDocs] = useState<Array<{ id: string; category: string; title: string; filename: string; size: string; date: string }>>(() => {
+    if (project.id === 'sample-hostel-ph') {
+      return [
+        { id: '1', category: 'Architectural', title: 'Ground & First Floor Architectural Drawings (Rev C)', filename: 'Arch_Drawings_RevC.pdf', size: '12.4 MB', date: 'Yesterday' },
+        { id: '2', category: 'Architectural', title: 'Door and Window Elevations & Section Details', filename: 'Window_Door_Schedules.pdf', size: '3.1 MB', date: '3 days ago' },
+        { id: '3', category: 'Architectural', title: 'Roof Framing Layout & Drainage Falls', filename: 'Roof_Plan.pdf', size: '4.8 MB', date: '5 days ago' },
+        { id: '4', category: 'Structural', title: 'Foundation Footing & Ground Beam Details', filename: 'Ground_Beam_BBS.pdf', size: '8.2 MB', date: '2 days ago' },
+        { id: '5', category: 'Structural', title: 'First Floor Slab Reinforcement & Column Schedule', filename: 'Slab_Column_Schedule.dwg', size: '14.5 MB', date: '4 days ago' },
+        { id: '6', category: 'Electrical', title: 'Lighting, Power Points & Distribution Schematics', filename: 'Electrical_Services_RevB.pdf', size: '2.9 MB', date: '1 week ago' },
+        { id: '7', category: 'Mechanical', title: 'HVAC & Mechanical Ventilation Schematics', filename: 'HVAC_Layout.pdf', size: '5.2 MB', date: '1 week ago' },
+        { id: '8', category: 'Plumbing', title: 'Potable Water Reticulation & Soil Waste Pipework', filename: 'Plumbing_Sanitary_Plan.pdf', size: '3.7 MB', date: '1 week ago' },
+        { id: '9', category: 'Specifications', title: 'General Specifications of Materials and Workmanship', filename: 'BESMM4_Materials_Spec.pdf', size: '6.4 MB', date: '2 weeks ago' },
+        { id: '10', category: 'Contracts', title: 'JCT / Standard Form of Building Contract 2026', filename: 'Building_Contract_Signed.pdf', size: '4.1 MB', date: '3 weeks ago' },
+        { id: '11', category: 'BOQs', title: 'Approved Official Tender Bill of Quantities (Priced)', filename: 'Approved_Tender_BOQ.xlsx', size: '1.2 MB', date: 'Yesterday' },
+        { id: '12', category: 'Valuations', title: 'Interim Valuation No. 02 Joint Measurement Sheet', filename: 'Valuation_02_Joint_Sheet.pdf', size: '2.5 MB', date: '2 hours ago' },
+        { id: '13', category: 'Certificates', title: 'Interim Payment Certificate IPC-002 Certified', filename: 'IPC_002_Certified.pdf', size: '820 KB', date: '2 hours ago' },
+        { id: '14', category: 'Reports', title: 'Geotechnical Soil Investigation & Borehole Logs', filename: 'Soil_Report_Borehole.pdf', size: '9.8 MB', date: '1 month ago' },
+      ];
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    if (project.id !== 'sample-hostel-ph') {
+      setUploadedDocs([]);
+    }
+  }, [project.id]);
 
   const progress = project.status === 'Approved' ? 100 : project.status === 'Submitted' ? 75 : project.status === 'In Progress' ? 50 : 25;
 
@@ -268,6 +304,42 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
     setLocalQuestionnaire(sanitized);
     setActiveTab('boq');
   };
+
+  if (!project.id) {
+    return (
+      <div id="project-workspace-container" className="space-y-6 max-w-4xl mx-auto py-12 px-4">
+        <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center shadow-xs">
+          <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mx-auto mb-4">
+            <Building2 className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-extrabold text-slate-900">No Project Open in Workspace</h2>
+          <p className="text-sm text-slate-500 mt-2 max-w-md mx-auto leading-relaxed">
+            Create your first project to start measuring quantities, generating AI drawing takeoffs, analyzing rates, and producing certified Bills of Quantities.
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+            <button
+              type="button"
+              onClick={onNewProject || onBackToProjects}
+              className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-800 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create New Project</span>
+            </button>
+            {onImportBoq && (
+              <button
+                type="button"
+                onClick={onImportBoq}
+                className="inline-flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-300 shadow-2xs transition active:scale-95 cursor-pointer"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-700" />
+                <span>Import BOQ (Excel / CSV)</span>
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div id="project-workspace-container" className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -947,6 +1019,30 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               <div className="inline-flex p-1 bg-slate-100 rounded-xl border border-slate-200">
                 <button
                   type="button"
+                  onClick={() => setTakeoffEngine('btl')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
+                    takeoffEngine === 'btl'
+                      ? 'bg-white text-emerald-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>BTL Estimator 2.0</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTakeoffEngine('calculator')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
+                    takeoffEngine === 'calculator'
+                      ? 'bg-white text-emerald-900 shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Calculator className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Take-Off Calculator System (BESMM4)</span>
+                </button>
+                <button
+                  type="button"
                   onClick={() => setTakeoffEngine('manual')}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
                     takeoffEngine === 'manual'
@@ -955,7 +1051,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
                   }`}
                 >
                   <Ruler className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Manual Takeoff (Ruler / Scale)</span>
+                  <span>Manual Takeoff</span>
                 </button>
                 <button
                   type="button"
@@ -967,17 +1063,41 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
                   }`}
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  <span>AI Drawing Vision Takeoff</span>
+                  <span>AI Vision Takeoff</span>
                 </button>
               </div>
             </div>
 
             <span className="text-[11px] text-slate-500 font-medium">
-              {takeoffEngine === 'manual' 
+              {takeoffEngine === 'btl'
+                ? "Let's Estimate 2.0 - Build Mode with 6 trade roll accordions & live rates"
+                : takeoffEngine === 'manual' 
                 ? 'Precise linear, area, volume & deduction measurements' 
-                : 'Automated blueprint dimensional extraction via Gemini'}
+                : takeoffEngine === 'ai'
+                ? 'Automated blueprint dimensional extraction via Gemini'
+                : 'Deterministic BESMM4 trade takeoffs with live material breakdowns'}
             </span>
           </div>
+
+          {/* Engine: BTL Estimator 2.0 */}
+          {takeoffEngine === 'btl' && (
+            <BtlEstimator
+              activeProject={project}
+              projects={projects}
+              onApplyToBoq={onAddBoqItem}
+              onApplyBulkToBoq={onApplyBulkToBoq}
+            />
+          )}
+
+          {/* Engine 0: Measured Works Take-Off Calculator System */}
+          {takeoffEngine === 'calculator' && (
+            <MeasuredWorksTakeOff
+              activeProject={project}
+              projects={projects}
+              onApplyToBoq={onAddBoqItem}
+              onApplyBulkToBoq={onApplyBulkToBoq}
+            />
+          )}
 
           {/* Engine 1: Manual Takeoff */}
           {takeoffEngine === 'manual' && (

@@ -11,7 +11,9 @@ import {
   FileText,
   Eye,
   FileSpreadsheet,
-  X
+  X,
+  Pencil,
+  Check
 } from 'lucide-react';
 
 interface BoqTableProps {
@@ -213,6 +215,27 @@ const BESMM4_PRESETS: Array<{
     description: '13A Twin socket outlet point wired with 3x2.5mm² PVC cables in concealed conduits',
     unit: 'No',
     rate: 19500
+  },
+  {
+    section: 'Others',
+    item: 'Provisional Sum / Contingencies',
+    description: 'Allow provisional sum for unforeseen site conditions, specialist subcontractor works, and contingencies',
+    unit: 'Item',
+    rate: 500000
+  },
+  {
+    section: 'Others',
+    item: 'Site Preliminaries & Security',
+    description: 'Site hoarding, project signboard, temporary site office, welfare facilities and 24-hour security watchman',
+    unit: 'Item',
+    rate: 350000
+  },
+  {
+    section: 'Others',
+    item: 'External Landscaping & Horticulture',
+    description: 'Supply and lay Bermuda grass carpet sodding, planting of ornamental hedges, and paved garden walkway kerbs',
+    unit: 'm2',
+    rate: 12500
   }
 ];
 
@@ -226,6 +249,7 @@ const SECTION_OPTIONS_MAP: Record<string, Array<{ item: string; description: str
   'Finishes (Plastering, Tiling & Screed)': BESMM4_PRESETS.filter(p => p.section === 'Finishes (Plastering, Tiling & Screed)'),
   'Plumbing & Drainage Installations': BESMM4_PRESETS.filter(p => p.section === 'Plumbing & Drainage Installations'),
   'Electrical & Power Distribution': BESMM4_PRESETS.filter(p => p.section === 'Electrical & Power Distribution'),
+  'Others': BESMM4_PRESETS.filter(p => p.section === 'Others'),
 };
 
 export const BoqTable: React.FC<BoqTableProps> = ({
@@ -240,8 +264,18 @@ export const BoqTable: React.FC<BoqTableProps> = ({
   const [selectedSection, setSelectedSection] = useState<string>('All');
   const [showPresetDropdown, setShowPresetDropdown] = useState(false);
   const [evidenceModalItem, setEvidenceModalItem] = useState<BoqItem | null>(null);
+  const [editingSectionIndices, setEditingSectionIndices] = useState<Record<number, boolean>>({});
 
   const safeItems = Array.isArray(items) ? items : [];
+
+  // Identify any non-standard or custom section names present across items
+  const customSectionsInItems = Array.from(
+    new Set(
+      safeItems
+        .map(i => i.section?.trim())
+        .filter((s): s is string => Boolean(s) && !BESMM4_SECTIONS.includes(s as any))
+    )
+  );
 
   // Filter items by section
   const filteredIndices = safeItems
@@ -400,7 +434,23 @@ export const BoqTable: React.FC<BoqTableProps> = ({
           </button>
 
           {BESMM4_SECTIONS.map((sec) => {
-            const count = items.filter(i => i.section === sec).length;
+            const count = safeItems.filter(i => i.section === sec).length;
+            const shortLabel = sec === 'Reinforced Concrete Frame' 
+              ? 'RC Frame' 
+              : sec === 'Blockwork & Partitioning'
+              ? 'Blockwork'
+              : sec === 'Roofing & Rainwater Goods'
+              ? 'Roofing'
+              : sec === 'Carpentry, Doors & Windows'
+              ? 'Doors & Windows'
+              : sec === 'Finishes (Plastering, Tiling & Screed)'
+              ? 'Finishes'
+              : sec === 'Mechanical & Electrical Services'
+              ? 'Services (M&E)'
+              : sec === 'External Works & Preliminaries'
+              ? 'External Works'
+              : sec;
+
             return (
               <button
                 key={sec}
@@ -412,7 +462,26 @@ export const BoqTable: React.FC<BoqTableProps> = ({
                     : 'bg-white text-slate-700 hover:bg-slate-200/80 border border-slate-200'
                 }`}
               >
-                {sec.split(' ')[0]} {count > 0 ? `(${count})` : ''}
+                {shortLabel} {count > 0 ? `(${count})` : ''}
+              </button>
+            );
+          })}
+
+          {/* Any custom or edited sections present in the project */}
+          {customSectionsInItems.map((sec) => {
+            const count = safeItems.filter(i => i.section === sec).length;
+            return (
+              <button
+                key={sec}
+                type="button"
+                onClick={() => setSelectedSection(sec)}
+                className={`px-2.5 py-1 rounded-md text-xs font-semibold transition whitespace-nowrap cursor-pointer ${
+                  selectedSection === sec
+                    ? 'bg-emerald-800 text-white shadow-2xs'
+                    : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-300'
+                }`}
+              >
+                {sec} {count > 0 ? `(${count})` : ''}
               </button>
             );
           })}
@@ -437,7 +506,7 @@ export const BoqTable: React.FC<BoqTableProps> = ({
           <thead>
             <tr className="bg-emerald-800 text-white text-xs font-bold uppercase tracking-wider">
               <th className="py-3 px-3 w-12 text-center border-r border-emerald-700">No</th>
-              <th className="py-3 px-3 w-36 border-r border-emerald-700">Section / Trade</th>
+              <th className="py-3 px-3 w-44 border-r border-emerald-700">Section / Trade</th>
               <th className="py-3 px-3 w-44 border-r border-emerald-700">Bill Item</th>
               <th className="py-3 px-4 border-r border-emerald-700 min-w-[240px]">Description of Works</th>
               <th className="py-3 px-2 w-16 text-center border-r border-emerald-700">Unit</th>
@@ -511,17 +580,66 @@ export const BoqTable: React.FC<BoqTableProps> = ({
                       {idx + 1}
                     </td>
 
-                    {/* Section Selector */}
+                    {/* Section Selector & Editor */}
                     <td className="py-2 px-2 border-r border-slate-100">
-                      <select
-                        value={item.section || 'Superstructure'}
-                        onChange={(e) => onUpdateItem(idx, 'section', e.target.value)}
-                        className="w-full px-1.5 py-1 text-[11px] font-medium text-slate-700 rounded border border-transparent hover:border-slate-300 focus:border-emerald-500 focus:bg-white focus:outline-none bg-transparent transition truncate"
-                      >
-                        {BESMM4_SECTIONS.map((sec) => (
-                          <option key={sec} value={sec}>{sec}</option>
-                        ))}
-                      </select>
+                      {editingSectionIndices[idx] ? (
+                        <div className="flex items-center space-x-1">
+                          <input
+                            type="text"
+                            list="boq-custom-sections-datalist"
+                            value={item.section || ''}
+                            onChange={(e) => onUpdateItem(idx, 'section', e.target.value)}
+                            placeholder="Enter trade/section..."
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                setEditingSectionIndices(prev => ({ ...prev, [idx]: false }));
+                              }
+                            }}
+                            className="w-full px-1.5 py-1 text-[11px] font-semibold text-slate-900 bg-white rounded border border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditingSectionIndices(prev => ({ ...prev, [idx]: false }))}
+                            title="Done editing section / return to list"
+                            className="p-1 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition shrink-0 cursor-pointer"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1 group/sec">
+                          <select
+                            value={BESMM4_SECTIONS.includes((item.section || '') as any) ? (item.section || 'Superstructure') : (item.section || 'Others')}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === '__CUSTOM_EDIT__') {
+                                setEditingSectionIndices(prev => ({ ...prev, [idx]: true }));
+                              } else {
+                                onUpdateItem(idx, 'section', val);
+                              }
+                            }}
+                            title={item.section || 'Select section or trade'}
+                            className="w-full px-1.5 py-1 text-[11px] font-medium text-slate-700 rounded border border-transparent hover:border-slate-300 focus:border-emerald-500 focus:bg-white focus:outline-none bg-transparent transition truncate cursor-pointer"
+                          >
+                            {BESMM4_SECTIONS.map((sec) => (
+                              <option key={sec} value={sec}>{sec}</option>
+                            ))}
+                            {!BESMM4_SECTIONS.includes((item.section || '') as any) && item.section && (
+                              <option value={item.section}>{item.section} (Custom)</option>
+                            )}
+                            <option value="__CUSTOM_EDIT__">✏️ Custom / Edit Trade...</option>
+                          </select>
+                          <button
+                            type="button"
+                            onClick={() => setEditingSectionIndices(prev => ({ ...prev, [idx]: true }))}
+                            title="Edit or type custom section/trade name"
+                            className="p-1 rounded text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition shrink-0 cursor-pointer opacity-60 group-hover/sec:opacity-100"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
                     </td>
 
                     {/* Item Name (Blank by default, with datalist options to choose from) */}
@@ -776,6 +894,25 @@ export const BoqTable: React.FC<BoqTableProps> = ({
           </div>
         </div>
       )}
+
+      {/* Datalist for Trade Section Autocomplete Suggestions */}
+      <datalist id="boq-custom-sections-datalist">
+        {BESMM4_SECTIONS.map((sec) => (
+          <option key={sec} value={sec} />
+        ))}
+        <option value="Landscaping, External Works & Horticulture" />
+        <option value="Solar PV & Inverter Power System" />
+        <option value="Demolitions & Structural Alterations" />
+        <option value="Security, CCTV & Access Control" />
+        <option value="Fire Alarm & Fire Fighting Equipment" />
+        <option value="Signage, Branding & Graphics" />
+        <option value="Provisional Sums & Contingencies" />
+        <option value="Interior Fit-Out, Joinery & Furniture" />
+        <option value="Swimming Pool & Water Treatment" />
+        <option value="Acoustic & Soundproofing Works" />
+        <option value="Roads, Heavy Kerbs & Drainage Culverts" />
+        <option value="Specialist Subcontractor Works" />
+      </datalist>
 
     </div>
   );

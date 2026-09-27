@@ -68,7 +68,8 @@ const BESMM4_SECTIONS = [
   'Plumbing & Drainage Installations',
   'Electrical & Mechanical Services',
   'External Works (Paving, Fencing, Drainage)',
-  'Preliminaries & General Items'
+  'Preliminaries & General Items',
+  'Others (Custom Trade / Specialist Works)'
 ];
 
 export const ProjectControlsView: React.FC<ProjectControlsViewProps> = ({

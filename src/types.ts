@@ -30,6 +30,17 @@ export interface User {
   subscription_expires_at?: string;
   boq_credits?: number;
   license_key?: string;
+  access_status?: 'active' | 'pending' | 'suspended';
+  admin_notes?: string;
+  project_count?: number;
+  last_login?: string;
+  can_ai_takeoff?: number;
+  can_valuations?: number;
+  can_variations?: number;
+  can_export_pdf_excel?: number;
+  can_rates_library?: number;
+  can_team_collab?: number;
+  max_projects?: number;
 }
 
 export interface UserStats {
@@ -439,6 +450,7 @@ export const BESMM4_SECTIONS = [
   'Finishes (Plastering, Tiling & Screed)',
   'Mechanical & Electrical Services',
   'External Works & Preliminaries',
+  'Others',
 ] as const;
 
 export type Besmm4Section = typeof BESMM4_SECTIONS[number];
@@ -843,7 +855,9 @@ export type AppGlobalView =
   | 'editor'
   | 'landing'
   | 'suppliers'
-  | 'materials';
+  | 'materials'
+  | 'admin'
+  | 'admin-portal';
 
 export type EstimatingSubView = 
   | 'boq' 

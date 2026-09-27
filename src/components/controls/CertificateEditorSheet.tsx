@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { CertificateType, ProjectValuation } from '../../types';
 import { formatNaira } from '../../utils/format';
+import { FormattedNumberInput } from '../common/FormattedNumberInput';
 
 export interface CertificateFormData {
   certNumber: string;
@@ -262,10 +263,11 @@ export const CertificateEditorSheet: React.FC<CertificateEditorSheetProps> = ({
 
             <span className="block font-bold text-slate-400 uppercase text-[10px] mt-3">Original Contract Sum:</span>
             {isEditMode ? (
-              <input
-                type="number"
+              <FormattedNumberInput
                 value={certData.contractSum}
-                onChange={(e) => onChange({ ...certData, contractSum: Number(e.target.value) })}
+                onChange={(val) => onChange({ ...certData, contractSum: val })}
+                placeholder="0"
+                maxDecimals={0}
                 className="w-full px-2.5 py-1.5 mt-0.5 bg-white border border-slate-300 rounded font-mono font-bold text-slate-900"
               />
             ) : (
@@ -285,15 +287,15 @@ export const CertificateEditorSheet: React.FC<CertificateEditorSheetProps> = ({
                 </td>
                 <td className="p-3.5 text-right font-mono font-extrabold text-slate-900 w-48">
                   {isEditMode ? (
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={certData.grossValuation}
-                      onChange={(e) => {
-                        const g = Number(e.target.value);
+                      onChange={(g) => {
                         const ret = g * (certData.retentionPct / 100);
                         const net = Math.max(0, g - ret - certData.advanceDeduction - certData.previousPayments);
                         onChange({ ...certData, grossValuation: g, retentionAmount: ret, netAmountCertified: net });
                       }}
+                      placeholder="0"
+                      maxDecimals={0}
                       className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold"
                     />
                   ) : (
@@ -309,14 +311,14 @@ export const CertificateEditorSheet: React.FC<CertificateEditorSheetProps> = ({
                 </td>
                 <td className="p-3.5 text-right font-mono font-bold text-rose-600">
                   {isEditMode ? (
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={certData.retentionAmount}
-                      onChange={(e) => {
-                        const ret = Number(e.target.value);
+                      onChange={(ret) => {
                         const net = Math.max(0, certData.grossValuation - ret - certData.advanceDeduction - certData.previousPayments);
                         onChange({ ...certData, retentionAmount: ret, netAmountCertified: net });
                       }}
+                      placeholder="0"
+                      maxDecimals={0}
                       className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold text-rose-600"
                     />
                   ) : (
@@ -332,14 +334,14 @@ export const CertificateEditorSheet: React.FC<CertificateEditorSheetProps> = ({
                 </td>
                 <td className="p-3.5 text-right font-mono font-bold text-amber-700">
                   {isEditMode ? (
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={certData.advanceDeduction}
-                      onChange={(e) => {
-                        const adv = Number(e.target.value);
+                      onChange={(adv) => {
                         const net = Math.max(0, certData.grossValuation - certData.retentionAmount - adv - certData.previousPayments);
                         onChange({ ...certData, advanceDeduction: adv, netAmountCertified: net });
                       }}
+                      placeholder="0"
+                      maxDecimals={0}
                       className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold text-amber-700"
                     />
                   ) : (
@@ -355,14 +357,14 @@ export const CertificateEditorSheet: React.FC<CertificateEditorSheetProps> = ({
                 </td>
                 <td className="p-3.5 text-right font-mono font-bold text-slate-700">
                   {isEditMode ? (
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={certData.previousPayments}
-                      onChange={(e) => {
-                        const prev = Number(e.target.value);
+                      onChange={(prev) => {
                         const net = Math.max(0, certData.grossValuation - certData.retentionAmount - certData.advanceDeduction - prev);
                         onChange({ ...certData, previousPayments: prev, netAmountCertified: net });
                       }}
+                      placeholder="0"
+                      maxDecimals={0}
                       className="w-full px-2 py-1 bg-white border border-slate-300 rounded text-right font-mono font-bold"
                     />
                   ) : (
@@ -378,10 +380,11 @@ export const CertificateEditorSheet: React.FC<CertificateEditorSheetProps> = ({
                 </td>
                 <td className="p-4 text-right font-mono text-base sm:text-lg font-black text-emerald-950">
                   {isEditMode ? (
-                    <input
-                      type="number"
+                    <FormattedNumberInput
                       value={certData.netAmountCertified}
-                      onChange={(e) => onChange({ ...certData, netAmountCertified: Number(e.target.value) })}
+                      onChange={(val) => onChange({ ...certData, netAmountCertified: val })}
+                      placeholder="0"
+                      maxDecimals={0}
                       className="w-full px-2 py-1 bg-white border-2 border-emerald-600 rounded text-right font-mono font-extrabold text-emerald-950"
                     />
                   ) : (

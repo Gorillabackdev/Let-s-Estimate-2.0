@@ -150,8 +150,17 @@ export async function getDb(): Promise<Database> {
     "ALTER TABLE users ADD COLUMN subscription_tier TEXT DEFAULT 'free_trial'",
     "ALTER TABLE users ADD COLUMN subscription_status TEXT DEFAULT 'active'",
     "ALTER TABLE users ADD COLUMN subscription_expires_at TEXT DEFAULT ''",
-    "ALTER TABLE users ADD COLUMN boq_credits INTEGER DEFAULT 0",
+    "ALTER TABLE users ADD COLUMN boq_credits INTEGER DEFAULT 3",
     "ALTER TABLE users ADD COLUMN license_key TEXT DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN access_status TEXT DEFAULT 'active'",
+    "ALTER TABLE users ADD COLUMN admin_notes TEXT DEFAULT ''",
+    "ALTER TABLE users ADD COLUMN can_ai_takeoff INTEGER DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN can_valuations INTEGER DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN can_variations INTEGER DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN can_export_pdf_excel INTEGER DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN can_rates_library INTEGER DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN can_team_collab INTEGER DEFAULT 1",
+    "ALTER TABLE users ADD COLUMN max_projects INTEGER DEFAULT 10",
     "ALTER TABLE projects ADD COLUMN questionnaire_json TEXT DEFAULT '{}'",
     "ALTER TABLE projects ADD COLUMN location_details_json TEXT DEFAULT '{}'",
     "ALTER TABLE projects ADD COLUMN drawings_json TEXT DEFAULT '[]'",
@@ -692,12 +701,13 @@ function seedSampleProject(database: Database): void {
   // Insert project
   database.run(
     `INSERT INTO projects (
-      id, title, location, client_name, drawing_filename, drawing_url,
+      id, user_id, title, location, client_name, drawing_filename, drawing_url,
       po_percent, vat_percent, swamp_premium_percent,
       subtotal, po_amount, vat_amount, grand_total, notes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       sampleProjectId,
+      'usr-superadmin-emmanuel-01',
       '2-Storey 100-Room Hostel Port Harcourt',
       'Port Harcourt, Rivers State, Nigeria (Near FUTO/UNIPORT Road)',
       'Niger Delta Educational Consortium Ltd',
@@ -759,10 +769,13 @@ function parseProjectExtras(proj: any): ProjectRecord {
  */
 export async function getAllProjects(userId?: string): Promise<ProjectRecord[]> {
   const database = await getDb();
+  if (!userId) {
+    return [];
+  }
   let sql = 'SELECT * FROM projects';
-  if (userId) {
+  if (userId !== 'ADMIN_ALL') {
     const safeUser = userId.replace(/'/g, "''");
-    sql += ` WHERE user_id = '${safeUser}' OR user_id = '' OR user_id IS NULL`;
+    sql += ` WHERE user_id = '${safeUser}'`;
   }
   sql += ' ORDER BY updated_at DESC';
 

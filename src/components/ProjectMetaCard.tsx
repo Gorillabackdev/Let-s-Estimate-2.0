@@ -237,13 +237,11 @@ export const ProjectMetaCard: React.FC<ProjectMetaCardProps> = ({ project, onCha
                   Material Waste %
                 </label>
                 <div className="flex items-center space-x-1">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="20"
+                  <FormattedNumberInput
                     value={project.waste_percent !== undefined ? project.waste_percent : 5.0}
-                    onChange={(e) => onChange('waste_percent', Number(e.target.value))}
+                    onChange={(val) => onChange('waste_percent', val)}
+                    placeholder="0"
+                    maxDecimals={1}
                     className="w-full px-2 py-1 text-xs font-bold rounded border border-slate-300 bg-white"
                   />
                   <span className="text-xs text-slate-500 font-bold">%</span>
@@ -256,13 +254,11 @@ export const ProjectMetaCard: React.FC<ProjectMetaCardProps> = ({ project, onCha
                   Contingencies %
                 </label>
                 <div className="flex items-center space-x-1">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="20"
+                  <FormattedNumberInput
                     value={project.contingency_percent !== undefined ? project.contingency_percent : 5.0}
-                    onChange={(e) => onChange('contingency_percent', Number(e.target.value))}
+                    onChange={(val) => onChange('contingency_percent', val)}
+                    placeholder="0"
+                    maxDecimals={1}
                     className="w-full px-2 py-1 text-xs font-bold rounded border border-slate-300 bg-white"
                   />
                   <span className="text-xs text-slate-500 font-bold">%</span>
@@ -275,13 +271,11 @@ export const ProjectMetaCard: React.FC<ProjectMetaCardProps> = ({ project, onCha
                   Price Inflation / Fluctuation %
                 </label>
                 <div className="flex items-center space-x-1">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="50"
+                  <FormattedNumberInput
                     value={project.inflation_percent || 0}
-                    onChange={(e) => onChange('inflation_percent', Number(e.target.value))}
+                    onChange={(val) => onChange('inflation_percent', val)}
+                    placeholder="0"
+                    maxDecimals={1}
                     className="w-full px-2 py-1 text-xs font-bold rounded border border-slate-300 bg-white"
                   />
                   <span className="text-xs text-slate-500 font-bold">%</span>
@@ -294,13 +288,11 @@ export const ProjectMetaCard: React.FC<ProjectMetaCardProps> = ({ project, onCha
                   Swamp Terrain Premium %
                 </label>
                 <div className="flex items-center space-x-1">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="50"
+                  <FormattedNumberInput
                     value={project.swamp_premium_percent || 0}
-                    onChange={(e) => onChange('swamp_premium_percent', Number(e.target.value))}
+                    onChange={(val) => onChange('swamp_premium_percent', val)}
+                    placeholder="0"
+                    maxDecimals={1}
                     className="w-full px-2 py-1 text-xs font-bold rounded border border-slate-300 bg-white"
                   />
                   <span className="text-xs text-slate-500 font-bold">%</span>

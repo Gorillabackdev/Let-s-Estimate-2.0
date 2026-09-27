@@ -317,6 +317,7 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                 step="1"
                 value={formData.gfa === 0 ? '' : (formData.gfa ?? '')}
                 placeholder="0"
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setFormData({ ...formData, gfa: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
                 className="w-full px-3 py-2 text-xs font-semibold text-slate-900 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white"
               />
@@ -333,6 +334,7 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                 step="1"
                 value={formData.number_of_floors === 0 ? '' : (formData.number_of_floors ?? '')}
                 placeholder="1"
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setFormData({ ...formData, number_of_floors: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
                 className="w-full px-3 py-2 text-xs font-semibold text-slate-900 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white"
               />
@@ -351,6 +353,7 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                   step="0.5"
                   value={formData.po_percent === 0 ? '' : (formData.po_percent ?? '')}
                   placeholder="0"
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => setFormData({ ...formData, po_percent: e.target.value === '' ? ('' as any) : Number(e.target.value) })}
                   className="w-full pl-3 pr-8 py-2 text-xs font-semibold text-slate-900 bg-slate-50 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white"
                 />

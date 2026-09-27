@@ -11,11 +11,14 @@ import {
   Save, 
   RefreshCw,
   FileSpreadsheet,
-  ArrowRight
+  ArrowRight,
+  Sparkles
 } from 'lucide-react';
 import { CalculatorCategory, Project } from '../../types';
 import { formatNaira, formatNumber } from '../../utils/format';
 import { FormattedNumberInput } from '../common/FormattedNumberInput';
+import { MeasuredWorksTakeOff } from './MeasuredWorksTakeOff';
+import { BtlEstimator } from '../estimating/BtlEstimator';
 
 export interface TemplateBoqItem {
   item: string;
@@ -49,6 +52,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
   activeProject,
   projects = []
 }) => {
+  const [viewMode, setViewMode] = useState<'btl_estimator' | 'measured_takeoff' | 'general_aids'>('btl_estimator');
   const [selectedCategory, setSelectedCategory] = useState<CalculatorCategory>('construction');
   const [activeCalcId, setActiveCalcId] = useState<string>('concrete_volume');
   const [copied, setCopied] = useState(false);
@@ -504,17 +508,74 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
   return (
     <div id="calculators-tools-hub" className="space-y-6 max-w-7xl mx-auto pb-12">
       
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-          Calculators &amp; Engineering Aids
-        </h1>
-        <p className="text-xs text-slate-500 mt-1 max-w-2xl">
-          Verified construction material schedules, civil earthworks volumetrics, reinforcement bar weights, and community outreach budget calculators.
-        </p>
+      {/* Top System Mode Navigation */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+            Take-Off Calculator System
+          </h1>
+          <p className="text-xs text-slate-500 mt-0.5">
+            BESMM4 Measured Works Take-Off System &amp; Engineering Conversion Aids
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl border border-slate-200 self-start sm:self-auto gap-1">
+          <button
+            type="button"
+            onClick={() => setViewMode('btl_estimator')}
+            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              viewMode === 'btl_estimator'
+                ? 'bg-emerald-800 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>BTL Estimator 2.0 (Build Mode)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('measured_takeoff')}
+            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              viewMode === 'measured_takeoff'
+                ? 'bg-emerald-800 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Measured Works Take-Off (BESMM4)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('general_aids')}
+            className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              viewMode === 'general_aids'
+                ? 'bg-emerald-800 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Calculator className="w-3.5 h-3.5" />
+            <span>Conversion &amp; Outreach Aids</span>
+          </button>
+        </div>
       </div>
 
-      {/* Structural Disclaimer Notice */}
+      {viewMode === 'btl_estimator' ? (
+        <BtlEstimator
+          activeProject={activeProject}
+          projects={projects}
+          onApplyToBoq={onApplyToBoq}
+          onApplyBulkToBoq={onApplyBulkToBoq}
+        />
+      ) : viewMode === 'measured_takeoff' ? (
+        <MeasuredWorksTakeOff
+          activeProject={activeProject}
+          projects={projects}
+          onApplyToBoq={onApplyToBoq}
+          onApplyBulkToBoq={onApplyBulkToBoq}
+        />
+      ) : (
+        <>
+          {/* Structural Disclaimer Notice */}
       {selectedCategory === 'structural' && (
         <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 flex items-start space-x-3 text-xs text-amber-900">
           <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -579,6 +640,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                     step="0.05"
                     value={length === 0 ? '' : length}
                     placeholder="0"
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setLength(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
@@ -590,6 +652,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                     step="0.05"
                     value={width === 0 ? '' : width}
                     placeholder="0"
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setWidth(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
@@ -601,6 +664,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                     step="0.01"
                     value={thickness === 0 ? '' : thickness}
                     placeholder="0"
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setThickness(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
@@ -617,6 +681,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                       type="number"
                       value={wallLength === 0 ? '' : wallLength}
                       placeholder="0"
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setWallLength(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                     />
@@ -628,6 +693,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                       step="0.1"
                       value={wallHeight === 0 ? '' : wallHeight}
                       placeholder="0"
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setWallHeight(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                     />
@@ -667,6 +733,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                     type="number"
                     value={trenchLength === 0 ? '' : trenchLength}
                     placeholder="0"
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setTrenchLength(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
@@ -678,6 +745,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                     step="0.025"
                     value={trenchWidth === 0 ? '' : trenchWidth}
                     placeholder="0"
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setTrenchWidth(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
@@ -689,6 +757,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                     step="0.1"
                     value={trenchDepth === 0 ? '' : trenchDepth}
                     placeholder="0"
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setTrenchDepth(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
@@ -775,6 +844,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                     type="number"
                     value={overheadsPercent === 0 ? '' : overheadsPercent}
                     placeholder="0"
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setOverheadsPercent(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
@@ -785,6 +855,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                     type="number"
                     value={profitPercent === 0 ? '' : profitPercent}
                     placeholder="0"
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setProfitPercent(e.target.value === '' ? 0 : Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
@@ -839,6 +910,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                       type="number"
                       value={outreachDays === 0 ? '' : outreachDays}
                       placeholder="0"
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setOutreachDays(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
@@ -858,6 +930,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                       type="number"
                       value={medicalPersonnelCount === 0 ? '' : medicalPersonnelCount}
                       placeholder="0"
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setMedicalPersonnelCount(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
@@ -878,6 +951,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                       type="number"
                       value={volunteersCount === 0 ? '' : volunteersCount}
                       placeholder="0"
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setVolunteersCount(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
@@ -1044,6 +1118,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
                       type="number"
                       value={contingencyPercent === 0 ? '' : contingencyPercent}
                       placeholder="0"
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setContingencyPercent(e.target.value === '' ? 0 : Number(e.target.value))}
                       className="w-full px-3 py-2 bg-white rounded-lg border border-slate-200 font-semibold text-xs"
                     />
@@ -1459,6 +1534,8 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
 
     </div>

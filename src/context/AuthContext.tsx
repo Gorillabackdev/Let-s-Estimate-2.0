@@ -1,6 +1,7 @@
 /**
  * Let's Estimate - Authentication & User Context
- * Manages user session state, local persistence, profile updates, and auth modal triggers.
+ * Manages user session state, Master Super Admin Key login, email verification,
+ * and user profile access.
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
@@ -12,18 +13,22 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
+  isAdmin: boolean;
+  isEmailVerified: boolean;
   stats: UserStats | null;
   isAuthModalOpen: boolean;
-  authModalView: 'login' | 'register' | 'forgot';
+  authModalView: 'login' | 'register' | 'forgot' | 'verify' | 'admin-key';
   isProfileModalOpen: boolean;
-  openAuthModal: (view?: 'login' | 'register' | 'forgot') => void;
+  openAuthModal: (view?: 'login' | 'register' | 'forgot' | 'verify' | 'admin-key') => void;
   closeAuthModal: () => void;
   openProfileModal: () => void;
   closeProfileModal: () => void;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; user?: User; error?: string }>;
+  loginWithAdminKey: (adminKey: string) => Promise<{ success: boolean; user?: User; error?: string }>;
   register: (data: any) => Promise<{ success: boolean; verificationCode?: string; error?: string }>;
+  verifyEmail: (code: string, email?: string) => Promise<{ success: boolean; error?: string }>;
+  resendVerification: (email?: string) => Promise<{ success: boolean; verificationCode?: string; error?: string }>;
   loginWithGoogle: (email: string, name: string, avatarUrl?: string) => Promise<{ success: boolean; error?: string }>;
-  quickDemoLogin: () => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<{ success: boolean; error?: string }>;
   refreshUser: () => Promise<void>;
@@ -40,7 +45,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [authModalView, setAuthModalView] = useState<'login' | 'register' | 'forgot'>('login');
+  const [authModalView, setAuthModalView] = useState<'login' | 'register' | 'forgot' | 'verify' | 'admin-key'>('login');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
   const fetchCurrentUser = useCallback(async (authToken: string) => {
@@ -71,7 +76,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (token) {
       fetchCurrentUser(token);
     } else {
-      // If no token, check if we should auto-connect to the seeded demo lead QS
       setIsLoading(false);
     }
   }, [token, fetchCurrentUser]);
@@ -94,7 +98,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: false, error: data?.error || error || 'Invalid credentials' };
     }
     saveAuthSession(data.token, data.user);
-    return { success: true };
+    return { success: true, user: data.user };
+  };
+
+  const loginWithAdminKey = async (adminKey: string) => {
+    const { ok, data, error } = await safeFetchJson<{ success: boolean; token: string; user: User; error?: string }>('/api/auth/admin-key-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminKey }),
+    });
+
+    if (!ok || !data?.success) {
+      return { success: false, error: data?.error || error || 'Master Admin Key authentication failed' };
+    }
+    saveAuthSession(data.token, data.user);
+    return { success: true, user: data.user };
   };
 
   const register = async (userData: any) => {
@@ -111,6 +129,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return { success: true, verificationCode: data.verificationCode };
   };
 
+  const verifyEmail = async (code: string, targetEmail?: string) => {
+    const emailToVerify = targetEmail || user?.email;
+    if (!emailToVerify) return { success: false, error: 'Email address missing' };
+
+    const { ok, data, error } = await safeFetchJson<{ success: boolean; error?: string }>('/api/auth/verify-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: emailToVerify, code }),
+    });
+
+    if (!ok || !data?.success) {
+      return { success: false, error: data?.error || error || 'Invalid verification PIN' };
+    }
+
+    if (token) {
+      await fetchCurrentUser(token);
+    }
+    return { success: true };
+  };
+
+  const resendVerification = async (targetEmail?: string) => {
+    const emailToVerify = targetEmail || user?.email;
+    if (!emailToVerify) return { success: false, error: 'Email address missing' };
+
+    const { ok, data, error } = await safeFetchJson<{ success: boolean; verificationCode?: string; error?: string }>('/api/auth/resend-verification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: emailToVerify }),
+    });
+
+    if (!ok || !data?.success) {
+      return { success: false, error: data?.error || error || 'Failed to resend code' };
+    }
+    return { success: true, verificationCode: data.verificationCode };
+  };
+
   const loginWithGoogle = async (email: string, name: string, avatarUrl = '') => {
     const { ok, data, error } = await safeFetchJson<{ success: boolean; token: string; user: User; error?: string }>('/api/auth/google', {
       method: 'POST',
@@ -123,10 +177,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     saveAuthSession(data.token, data.user);
     return { success: true };
-  };
-
-  const quickDemoLogin = async () => {
-    return login('emmanuelisaac888@gmail.com', 'Estimate@2026');
   };
 
   const logout = async () => {
@@ -167,7 +217,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const openAuthModal = (view: 'login' | 'register' | 'forgot' = 'login') => {
+  const openAuthModal = (view: 'login' | 'register' | 'forgot' | 'verify' | 'admin-key' = 'login') => {
     setAuthModalView(view);
     setIsAuthModalOpen(true);
   };
@@ -176,12 +226,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const openProfileModal = () => setIsProfileModalOpen(true);
   const closeProfileModal = () => setIsProfileModalOpen(false);
 
+  const isAdmin = Boolean(
+    user && (
+      user.role === 'superadmin' ||
+      user.role === 'admin' ||
+      user.email?.toLowerCase() === 'emmanuelisaac888@gmail.com'
+    )
+  );
+
+  const isEmailVerified = Boolean(user && (user.email_verified === 1 || user.email_verified === true));
+
   return (
     <AuthContext.Provider
       value={{
         user,
         token,
         isLoading,
+        isAdmin,
+        isEmailVerified,
         stats,
         isAuthModalOpen,
         authModalView,
@@ -191,9 +253,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         openProfileModal,
         closeProfileModal,
         login,
+        loginWithAdminKey,
         register,
+        verifyEmail,
+        resendVerification,
         loginWithGoogle,
-        quickDemoLogin,
         logout,
         updateProfile,
         refreshUser,

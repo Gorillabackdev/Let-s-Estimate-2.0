@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatNaira } from '../utils/format';
 import { ShieldCheck, Percent, Waves, Calculator } from 'lucide-react';
+import { FormattedNumberInput } from './common/FormattedNumberInput';
 
 interface FinancialSummaryProps {
   subtotal: number;
@@ -55,14 +56,12 @@ export const FinancialSummary: React.FC<FinancialSummaryProps> = ({
               <span>Profit & Overheads (P&O):</span>
             </label>
             <div className="flex items-center space-x-1">
-              <input
+              <FormattedNumberInput
                 id="po-percent-input"
-                type="number"
-                min="0"
-                max="50"
-                step="0.5"
                 value={poPercent}
-                onChange={(e) => setPoPercent(parseFloat(e.target.value) || 0)}
+                onChange={setPoPercent}
+                placeholder="0"
+                maxDecimals={1}
                 className="w-16 px-2 py-1 text-right font-bold text-slate-800 bg-white border border-slate-200 rounded focus:ring-1 focus:ring-emerald-500 focus:outline-none"
               />
               <span className="font-bold text-slate-500">%</span>
@@ -76,14 +75,12 @@ export const FinancialSummary: React.FC<FinancialSummaryProps> = ({
               <span>Nigerian VAT (Statutory):</span>
             </label>
             <div className="flex items-center space-x-1">
-              <input
+              <FormattedNumberInput
                 id="vat-percent-input"
-                type="number"
-                min="0"
-                max="25"
-                step="0.5"
                 value={vatPercent}
-                onChange={(e) => setVatPercent(parseFloat(e.target.value) || 0)}
+                onChange={setVatPercent}
+                placeholder="0"
+                maxDecimals={1}
                 className="w-16 px-2 py-1 text-right font-bold text-slate-800 bg-white border border-slate-200 rounded focus:ring-1 focus:ring-emerald-500 focus:outline-none"
               />
               <span className="font-bold text-slate-500">%</span>
@@ -102,14 +99,12 @@ export const FinancialSummary: React.FC<FinancialSummaryProps> = ({
               </span>
             </div>
             <div className="flex items-center space-x-1">
-              <input
+              <FormattedNumberInput
                 id="swamp-premium-input"
-                type="number"
-                min="0"
-                max="30"
-                step="0.5"
                 value={swampPremiumPercent}
-                onChange={(e) => setSwampPremiumPercent(parseFloat(e.target.value) || 0)}
+                onChange={setSwampPremiumPercent}
+                placeholder="0"
+                maxDecimals={1}
                 className="w-16 px-2 py-1 text-right font-bold text-slate-800 bg-white border border-slate-200 rounded focus:ring-1 focus:ring-cyan-500 focus:outline-none"
               />
               <span className="font-bold text-slate-500">%</span>

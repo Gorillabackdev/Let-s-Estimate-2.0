@@ -265,6 +265,13 @@ export function normalizeBesmm4Section(input: string): (typeof BESMM4_SECTIONS)[
     return 'Mechanical & Electrical Services';
   }
 
+  // 9. Others / Miscellaneous / Specialist / Contingencies
+  if (text.includes('other') || text.includes('misc') || text.includes('sundr') ||
+      text.includes('specialist') || text.includes('provisional') || text.includes('prime cost') ||
+      text.includes('contingenc') || text.includes('landscape') || text.includes('demolition')) {
+    return 'Others';
+  }
+
   return '';
 }
 
@@ -273,6 +280,7 @@ export function normalizeBesmm4Section(input: string): (typeof BESMM4_SECTIONS)[
  */
 export function getFriendlySectionName(sec: string): string {
   if (!sec) return 'General';
+  if (/others?|misc|sundry/i.test(sec)) return 'Others';
   if (/substructure|sub-structure|foundation|earthwork/i.test(sec)) return 'Substructure';
   if (/reinforced|superstructure|frame|concrete\s*work/i.test(sec)) return 'Superstructure';
   if (/blockwork|walling|masonry|partition/i.test(sec)) return 'Blockwork';
