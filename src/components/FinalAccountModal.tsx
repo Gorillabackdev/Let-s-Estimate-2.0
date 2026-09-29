@@ -434,8 +434,8 @@ export const FinalAccountModal: React.FC<FinalAccountModalProps> = ({
               {/* Consultant QS */}
               <div className="border border-slate-200 p-4 rounded-lg bg-slate-50">
                 <span className="text-[10px] font-bold text-slate-500 uppercase block">Consultant Quantity Surveyor</span>
-                <p className="text-sm font-bold text-slate-900 mt-1">{data?.qs_signoff_name || 'Isaac Emmanuel, MNIQS'}</p>
-                <p className="text-xs text-emerald-800 font-mono font-semibold">Reg: {data?.qs_registration_number || 'RQS/NIQS/8421'}</p>
+                <p className="text-sm font-bold text-slate-900 mt-1">{data?.qs_signoff_name?.replace(/MNIQS/g, 'MYQSF') || 'Isaac Emmanuel, MYQSF'}</p>
+                <p className="text-xs text-emerald-800 font-mono font-semibold">Reg: {data?.qs_registration_number?.replace(/NIQS/g, 'MYQSF') || 'MYQSF/QS/8421'}</p>
                 <div className="mt-4 pt-3 border-t border-dashed border-slate-300 flex justify-between items-center text-[10px] text-slate-500">
                   <span>Authorized Signature & Stamp</span>
                   <span>Date: {data?.signoff_date || new Date().toISOString().split('T')[0]}</span>

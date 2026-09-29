@@ -19,7 +19,7 @@ interface AuthContextType {
   isAuthModalOpen: boolean;
   authModalView: 'login' | 'register' | 'forgot' | 'verify' | 'admin-key';
   isProfileModalOpen: boolean;
-  openAuthModal: (view?: 'login' | 'register' | 'forgot' | 'verify' | 'admin-key') => void;
+  openAuthModal: (view?: 'login' | 'register' | 'forgot' | 'verify' | 'admin-key', onSuccess?: () => void) => void;
   closeAuthModal: () => void;
   openProfileModal: () => void;
   closeProfileModal: () => void;
@@ -47,6 +47,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
   const [authModalView, setAuthModalView] = useState<'login' | 'register' | 'forgot' | 'verify' | 'admin-key'>('login');
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [onSuccessCallback, setOnSuccessCallback] = useState<(() => void) | null>(null);
 
   const fetchCurrentUser = useCallback(async (authToken: string) => {
     try {
@@ -85,6 +86,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setToken(newToken);
     setUser(newUser);
     setIsAuthModalOpen(false);
+    if (onSuccessCallback) {
+      try {
+        onSuccessCallback();
+      } catch (err) {
+        console.error('Error in onAuthSuccess callback:', err);
+      }
+      setOnSuccessCallback(null);
+    }
   };
 
   const login = async (email: string, password: string) => {
@@ -217,8 +226,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const openAuthModal = (view: 'login' | 'register' | 'forgot' | 'verify' | 'admin-key' = 'login') => {
+  const openAuthModal = (view: 'login' | 'register' | 'forgot' | 'verify' | 'admin-key' = 'login', onSuccess?: () => void) => {
     setAuthModalView(view);
+    if (onSuccess) {
+      setOnSuccessCallback(() => onSuccess);
+    } else {
+      setOnSuccessCallback(null);
+    }
     setIsAuthModalOpen(true);
   };
 

@@ -36,12 +36,15 @@ import {
   Scale,
   RotateCcw,
   Pencil,
-  Edit3
+  Edit3,
+  Camera,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Project, ProjectWorkspaceTab, BoqItem, ProjectQuestionnaire } from '../../types';
 import { formatNaira, formatNumber, calculateBoqTotals } from '../../utils/format';
 import { generateDeterministicBoq, normalizeQuestionnaire } from '../../utils/constructionKnowledgeBase';
 import { DEFAULT_QUESTIONNAIRE } from '../ProjectQuestionnaireModal';
+import { getProjectCoverImage, fileToDataUrl } from '../../utils/projectImages';
 import { BoqTable } from '../BoqTable';
 import { MeasuredWorksTakeOff } from '../calculators/MeasuredWorksTakeOff';
 import { BtlEstimator } from '../estimating/BtlEstimator';
@@ -173,6 +176,22 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
       });
     } catch (e) {
       console.error('Failed to rename project:', e);
+    }
+  };
+
+  const headerPhotoInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  const handleHeaderPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const dataUrl = await fileToDataUrl(file, 1200, 0.85);
+      onUpdateProject({ image_url: dataUrl, cover_image_url: dataUrl });
+      if (onEditProject) {
+        await onEditProject({ id: project.id, image_url: dataUrl, cover_image_url: dataUrl });
+      }
+    } catch (err) {
+      console.error('Failed to update project header image:', err);
     }
   };
 
@@ -362,93 +381,128 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
         </span>
       </nav>
 
-      {/* PART 43: Top Project Banner (Project Name, Client, Location, Status) */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs relative overflow-hidden">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-200">
-                {project.reference || 'REF-2026-01'}
-              </span>
-              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
-                project.status === 'Approved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
-                project.status === 'Submitted' ? 'bg-blue-100 text-blue-800 border-blue-300' :
-                'bg-amber-100 text-amber-900 border-amber-300'
-              }`}>
-                {project.status || 'In Progress'}
-              </span>
-              <span className="text-xs text-slate-500 flex items-center gap-1 font-medium">
-                <MapPin className="w-3 h-3 text-slate-400" />
-                {project.location || 'Lagos, Nigeria'}
-              </span>
-              <span className="text-xs text-slate-500 flex items-center gap-1 font-medium">
-                <User className="w-3 h-3 text-slate-400" />
-                {project.client_name || 'Private Client'}
-              </span>
+      {/* PART 43: Top Project Banner (Project Visual Head, Project Name, Client, Location, Status) */}
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs relative overflow-hidden">
+        {/* Hidden File Input for direct image changes on the header */}
+        <input
+          type="file"
+          ref={headerPhotoInputRef}
+          onChange={handleHeaderPhotoChange}
+          accept="image/png,image/jpeg,image/webp,image/jpg"
+          className="hidden"
+        />
+
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-5 min-w-0">
+            {/* Featured Project Image on the Head */}
+            <div className="relative group shrink-0">
+              <div 
+                onClick={() => headerPhotoInputRef.current?.click()}
+                className="w-28 h-20 sm:w-36 sm:h-24 md:w-44 md:h-28 rounded-xl overflow-hidden bg-slate-100 border border-slate-200/90 shadow-2xs group-hover:border-emerald-600 group-hover:shadow-md transition-all cursor-pointer relative"
+                title="Click to upload or replace project photo"
+              >
+                <img
+                  src={project.image_url || project.cover_image_url || getProjectCoverImage(project)}
+                  alt={project.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[11px] font-bold space-y-0.5 backdrop-blur-2xs">
+                  <Camera className="w-4 h-4" />
+                  <span>Change Photo</span>
+                </div>
+                <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded bg-slate-900/75 backdrop-blur-xs text-[9px] font-bold text-white tracking-wider uppercase">
+                  {project.project_type || 'Building'}
+                </div>
+              </div>
             </div>
 
-            {isEditingTitle ? (
-              <div className="flex items-center space-x-2 mt-1">
-                <input
-                  type="text"
-                  value={tempTitle}
-                  onChange={(e) => setTempTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSaveTitle();
-                    if (e.key === 'Escape') {
-                      setTempTitle(project.title);
-                      setIsEditingTitle(false);
-                    }
-                  }}
-                  autoFocus
-                  className="text-xl sm:text-2xl font-black text-slate-900 bg-white border-2 border-emerald-600 rounded-lg px-3 py-1 focus:outline-none shadow-xs w-full max-w-lg"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveTitle}
-                  className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-xs"
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTempTitle(project.title);
-                    setIsEditingTitle(false);
-                  }}
-                  className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2 group">
-                <h1 
-                  onClick={() => setIsEditingTitle(true)}
-                  className="text-2xl font-black text-slate-900 tracking-tight cursor-pointer hover:text-emerald-800 transition flex items-center gap-2"
-                  title="Click to edit project name"
-                >
-                  <span>{project.title}</span>
-                  <Pencil className="w-4 h-4 text-slate-400 group-hover:text-emerald-700 transition" />
-                </h1>
-                <span className="text-[11px] text-slate-400 hidden group-hover:inline">
-                  (click to edit)
+            {/* Title, Badges & Metadata */}
+            <div className="space-y-1.5 min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-bold font-mono px-2 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-200">
+                  {project.reference || 'REF-2026-01'}
+                </span>
+                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border ${
+                  project.status === 'Approved' ? 'bg-emerald-100 text-emerald-800 border-emerald-300' :
+                  project.status === 'Submitted' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                  'bg-amber-100 text-amber-900 border-amber-300'
+                }`}>
+                  {project.status || 'In Progress'}
+                </span>
+                <span className="text-xs text-slate-500 flex items-center gap-1 font-medium">
+                  <MapPin className="w-3 h-3 text-slate-400" />
+                  {project.location || 'Lagos, Nigeria'}
+                </span>
+                <span className="text-xs text-slate-500 flex items-center gap-1 font-medium">
+                  <User className="w-3 h-3 text-slate-400" />
+                  {project.client_name || 'Private Client'}
                 </span>
               </div>
-            )}
-            
-            <p className="text-xs text-slate-500 flex items-center space-x-3">
-              <span>BESMM4 Standard</span>
-              <span>&bull;</span>
-              <span>GFA: {formatNumber(project.gfa || 350)} m²</span>
-              <span>&bull;</span>
-              <span>{project.number_of_floors || 2} Floors</span>
-              <span>&bull;</span>
-              <span>Last updated {new Date(project.updated_at || Date.now()).toLocaleDateString('en-GB')}</span>
-            </p>
+
+              {isEditingTitle ? (
+                <div className="flex items-center space-x-2 mt-1">
+                  <input
+                    type="text"
+                    value={tempTitle}
+                    onChange={(e) => setTempTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveTitle();
+                      if (e.key === 'Escape') {
+                        setTempTitle(project.title);
+                        setIsEditingTitle(false);
+                      }
+                    }}
+                    autoFocus
+                    className="text-xl sm:text-2xl font-black text-slate-900 bg-white border-2 border-emerald-600 rounded-lg px-3 py-1 focus:outline-none shadow-xs w-full max-w-lg"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveTitle}
+                    className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition cursor-pointer shadow-xs"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTempTitle(project.title);
+                      setIsEditingTitle(false);
+                    }}
+                    className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2 group">
+                  <h1 
+                    onClick={() => setIsEditingTitle(true)}
+                    className="text-2xl font-black text-slate-900 tracking-tight cursor-pointer hover:text-emerald-800 transition flex items-center gap-2"
+                    title="Click to edit project name"
+                  >
+                    <span>{project.title}</span>
+                    <Pencil className="w-4 h-4 text-slate-400 group-hover:text-emerald-700 transition" />
+                  </h1>
+                  <span className="text-[11px] text-slate-400 hidden group-hover:inline">
+                    (click to edit)
+                  </span>
+                </div>
+              )}
+              
+              <p className="text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>BESMM4 Standard</span>
+                <span>&bull;</span>
+                <span>GFA: {formatNumber(project.gfa || 350)} m²</span>
+                <span>&bull;</span>
+                <span>{project.number_of_floors || 2} Floors</span>
+                <span>&bull;</span>
+                <span>Last updated {new Date(project.updated_at || Date.now()).toLocaleDateString('en-GB')}</span>
+              </p>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             {onImportBoq && (
               <button
                 type="button"

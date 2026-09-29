@@ -1,5 +1,6 @@
 import React from 'react';
 import { 
+  Home,
   LayoutGrid, 
   Folder, 
   PlusCircle, 
@@ -62,6 +63,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Nav Items configured exactly to reference image
   const navItems = [
+    {
+      id: 'home',
+      label: 'Home',
+      icon: Home,
+      isActive: currentView === 'landing',
+      onClick: () => handleNav('landing'),
+    },
     {
       id: 'dashboard',
       label: 'Dashboard',

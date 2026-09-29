@@ -88,13 +88,13 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="sm:hidden">Rates</span>
             </button>
 
-            {/* Phase 10: Subscription, 7-Day Trial & Bank Transfer */}
+            {/* Phase 10: Subscription, 30-Day Trial & Bank Transfer */}
             <button
               id="subscription-billing-btn"
               type="button"
               onClick={onOpenSubscriptionModal}
               className="inline-flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-amber-500/90 hover:bg-amber-400 text-slate-950 shadow-xs transition"
-              title="7-Day Trial & Bank Transfer Subscription to Isaac Emmanuel (081515121)"
+              title="30-Day Trial & Bank Transfer Subscription to Isaac Emmanuel (081515121)"
             >
               <CreditCard className="w-3.5 h-3.5 text-slate-950" />
               <span className="hidden md:inline">Billing & Plans</span>

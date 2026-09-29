@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Building2, 
   X, 
@@ -14,9 +14,16 @@ import {
   ShieldAlert, 
   CheckCircle2, 
   Droplets,
-  HelpCircle
+  HelpCircle,
+  Camera,
+  Image as ImageIcon,
+  Upload,
+  Check,
+  Trash2,
+  Link2
 } from 'lucide-react';
 import { Project } from '../../types';
+import { PROJECT_IMAGE_PRESETS, fileToDataUrl, getProjectCoverImage } from '../../utils/projectImages';
 
 interface ProjectEditModalProps {
   project: Project | null;
@@ -39,6 +46,7 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
     location: '',
     state: 'Lagos',
     project_type: 'Residential',
+    image_url: '',
     contractor: '',
     status: 'In Progress',
     gfa: 350,
@@ -53,6 +61,10 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const [customUrlInput, setCustomUrlInput] = useState('');
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (project) {
@@ -64,6 +76,7 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
         location: project.location || '',
         state: project.state || 'Lagos',
         project_type: project.project_type || 'Residential',
+        image_url: project.image_url || project.cover_image_url || '',
         contractor: project.contractor || '',
         status: project.status || 'In Progress',
         gfa: project.gfa || 350,
@@ -78,6 +91,31 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
       setErrorMessage(null);
     }
   }, [project, isOpen]);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsProcessingImage(true);
+      const dataUrl = await fileToDataUrl(file, 1200, 0.85);
+      setFormData((prev) => ({ ...prev, image_url: dataUrl }));
+      setErrorMessage(null);
+    } catch (err: any) {
+      setErrorMessage('Could not process image: ' + (err?.message || 'Unknown error'));
+    } finally {
+      setIsProcessingImage(false);
+    }
+  };
+
+  const handleApplyPreset = (presetUrl: string) => {
+    setFormData((prev) => ({ ...prev, image_url: presetUrl }));
+  };
+
+  const handleClearImage = () => {
+    setFormData((prev) => ({ ...prev, image_url: '' }));
+    setCustomUrlInput('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   if (!isOpen || !project) return null;
 
@@ -104,6 +142,8 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
         state: formData.state.trim(),
         project_type: formData.project_type,
         contractor: formData.contractor.trim(),
+        image_url: formData.image_url.trim() || undefined,
+        cover_image_url: formData.image_url.trim() || undefined,
         status: formData.status as any,
         gfa: Number(formData.gfa) || 0,
         number_of_floors: Number(formData.number_of_floors) || 1,
@@ -234,6 +274,141 @@ export const ProjectEditModal: React.FC<ProjectEditModalProps> = ({
                   <option value="Approved">Approved</option>
                   <option value="Archived">Archived</option>
                 </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Project Cover Image Section */}
+          <div className="p-3.5 bg-slate-50/80 rounded-xl border border-slate-200 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Camera className="w-3.5 h-3.5 text-emerald-700" />
+                <span>Project Image / 3D Render (Head of Project &amp; Dashboard)</span>
+              </label>
+              {formData.image_url && (
+                <button
+                  type="button"
+                  onClick={handleClearImage}
+                  className="text-[11px] text-rose-600 hover:text-rose-800 font-bold inline-flex items-center space-x-1 cursor-pointer"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Remove Image</span>
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-start gap-3.5">
+              {/* Image Preview */}
+              <div className="w-full sm:w-40 h-28 rounded-xl overflow-hidden bg-slate-200 border border-slate-300 shrink-0 relative flex items-center justify-center shadow-2xs">
+                {formData.image_url ? (
+                  <>
+                    <img
+                      src={formData.image_url}
+                      alt="Project preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute top-1.5 right-1.5 bg-emerald-600 text-white rounded-full p-1 shadow-xs">
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center p-3">
+                    <ImageIcon className="w-6 h-6 text-slate-400 mx-auto mb-1" />
+                    <span className="text-[10px] font-semibold text-slate-500 block leading-tight">
+                      No custom photo
+                    </span>
+                  </div>
+                )}
+                {isProcessingImage && (
+                  <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-2xs flex items-center justify-center text-white text-xs font-bold">
+                    Processing...
+                  </div>
+                )}
+              </div>
+
+              {/* Upload & Preset Buttons */}
+              <div className="flex-1 space-y-2.5 w-full">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="image/png,image/jpeg,image/webp,image/jpg"
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center space-x-1.5 shadow-2xs transition active:scale-95 cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Upload New Photo</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowUrlInput(!showUrlInput)}
+                    className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200 transition cursor-pointer"
+                  >
+                    <Link2 className="w-3 h-3 mr-1 inline" />
+                    <span>Image Link</span>
+                  </button>
+                </div>
+
+                {showUrlInput && (
+                  <div className="flex items-center space-x-1.5 animate-in fade-in duration-150">
+                    <input
+                      type="url"
+                      placeholder="Paste image URL (https://...)"
+                      value={customUrlInput}
+                      onChange={(e) => setCustomUrlInput(e.target.value)}
+                      className="px-2.5 py-1 text-xs border border-slate-300 rounded-lg flex-1 bg-white focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (customUrlInput.trim()) {
+                          setFormData(prev => ({ ...prev, image_url: customUrlInput.trim() }));
+                        }
+                      }}
+                      className="px-2.5 py-1 text-xs bg-slate-800 text-white rounded-lg font-bold"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                )}
+
+                {/* Preset Chips */}
+                <div>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                    Or choose preset:
+                  </span>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                    {PROJECT_IMAGE_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => handleApplyPreset(preset.url)}
+                        className={`group relative rounded-lg overflow-hidden border p-1 text-left transition cursor-pointer ${
+                          formData.image_url === preset.url
+                            ? 'border-emerald-600 bg-emerald-50 ring-1 ring-emerald-600'
+                            : 'border-slate-200 bg-white hover:border-slate-300'
+                        }`}
+                        title={preset.name}
+                      >
+                        <div className="h-8 w-full rounded overflow-hidden bg-slate-100">
+                          <img
+                            src={preset.url}
+                            alt={preset.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          />
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-700 truncate block mt-0.5 leading-tight">
+                          {preset.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

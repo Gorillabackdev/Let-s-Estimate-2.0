@@ -100,7 +100,7 @@ import { sendVerificationEmail, sendPasswordResetEmail } from './server/email.js
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Set up Multer for handling architectural drawing uploads (.jpg, .png, .pdf)
 const upload = multer({
@@ -234,7 +234,7 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     const { hash, salt } = hashPassword(password);
     const userId = 'usr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
     const verificationToken = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit verification code
-    const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(); // 14-day free trial
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30-day free trial
     const licenseKey = 'QS-TRIAL-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
     const database = await getDb();
@@ -753,6 +753,7 @@ app.get('/api/admin/overview', requireAdmin, async (_req: AuthRequest, res: Resp
         SUM(CASE WHEN access_status = 'pending' THEN 1 ELSE 0 END) as pendingUsers,
         SUM(CASE WHEN access_status = 'suspended' THEN 1 ELSE 0 END) as suspendedUsers,
         SUM(CASE WHEN subscription_tier = 'free_trial' OR subscription_tier IS NULL OR subscription_tier = '' THEN 1 ELSE 0 END) as trialUsers,
+        SUM(CASE WHEN subscription_tier = 'per_boq' THEN 1 ELSE 0 END) as perBoqUsers,
         SUM(CASE WHEN subscription_tier = 'monthly' THEN 1 ELSE 0 END) as monthlyUsers,
         SUM(CASE WHEN subscription_tier = 'yearly' THEN 1 ELSE 0 END) as yearlyUsers,
         SUM(CASE WHEN subscription_tier = 'lifetime_license' THEN 1 ELSE 0 END) as lifetimeUsers
@@ -779,6 +780,7 @@ app.get('/api/admin/overview', requireAdmin, async (_req: AuthRequest, res: Resp
       suspendedUsers: 0,
       plans: {
         trial: 0,
+        per_boq: 0,
         monthly: 0,
         yearly: 0,
         lifetime: 0
@@ -795,9 +797,10 @@ app.get('/api/admin/overview', requireAdmin, async (_req: AuthRequest, res: Resp
       metrics.pendingUsers = Number(row[3] || 0);
       metrics.suspendedUsers = Number(row[4] || 0);
       metrics.plans.trial = Number(row[5] || 0);
-      metrics.plans.monthly = Number(row[6] || 0);
-      metrics.plans.yearly = Number(row[7] || 0);
-      metrics.plans.lifetime = Number(row[8] || 0);
+      metrics.plans.per_boq = Number(row[6] || 0);
+      metrics.plans.monthly = Number(row[7] || 0);
+      metrics.plans.yearly = Number(row[8] || 0);
+      metrics.plans.lifetime = Number(row[9] || 0);
     }
 
     if (projectStats.length > 0 && projectStats[0].values.length > 0) {
@@ -824,7 +827,7 @@ app.get('/api/admin/overview', requireAdmin, async (_req: AuthRequest, res: Resp
         serverTime: new Date().toISOString(),
         database: 'SQLite 3 + Firebase Firestore Sync',
         version: '2.5.0-Enterprise',
-        leadQs: 'Emmanuel Isaac, MNIQS'
+        leadQs: 'Emmanuel Isaac, MYQSF'
       }
     });
   } catch (error: any) {
@@ -1289,9 +1292,9 @@ app.get('/api/guide/pdf', async (req: Request, res: Response) => {
     const queryEmail = typeof req.query.email === 'string' ? req.query.email.trim() : '';
     const queryPhone = typeof req.query.phone === 'string' ? req.query.phone.trim() : '';
 
-    let contactEmail = queryEmail || 'emmanuelisaac888@gmail.com';
+    let contactEmail = queryEmail || 'estimatewithisaac@gmail.com';
     let whatsappPhone = queryPhone || '';
-    let leadQsName = 'Emmanuel Isaac, MNIQS';
+    let leadQsName = 'Emmanuel Isaac, MYQSF';
 
     try {
       const user = await getUserByEmail(contactEmail);
@@ -2583,7 +2586,7 @@ app.post('/api/ai/value-engineering', async (req: Request, res: Response) => {
 });
 
 // ========================================================================
-// PHASE 10: BANK TRANSFER BILLING, 7-DAY TRIAL & SUBSCRIPTION ROUTES
+// PHASE 10: BANK TRANSFER BILLING, 30-DAY TRIAL & SUBSCRIPTION ROUTES
 // ========================================================================
 
 // 20a. Get Current Subscription & Trial Status
@@ -2833,8 +2836,12 @@ async function startServer() {
   const database = await getDb();
   await ensureDefaultUser(database);
 
-  // Development: Vite middleware
-  if (process.env.NODE_ENV !== 'production') {
+  // Check if running in production mode or if built dist assets exist
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasBuiltDist = fs.existsSync(path.join(distPath, 'index.html'));
+  const isProduction = process.env.NODE_ENV === 'production' || (hasBuiltDist && !process.env.VITE_DEV_SERVER);
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -2842,7 +2849,6 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     // Production: Serve static assets
-    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

@@ -517,7 +517,7 @@ export const AuthModal: React.FC = () => {
               </div>
 
               <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-[11px] text-emerald-300">
-                Includes 14-Day Free Evaluation Pass with Nigerian market prices & BOQ generator. Email verification PIN will be issued upon signup.
+                Includes 30-Day Free Evaluation Pass with Nigerian market prices & BOQ generator. Email verification PIN will be issued upon signup.
               </div>
 
               <button

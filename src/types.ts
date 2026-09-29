@@ -291,6 +291,8 @@ export interface Project {
   consultant?: string;
   contract_number?: string;
   project_type?: string;
+  image_url?: string;
+  cover_image_url?: string;
   location: string;
   state?: string;
   country?: string;

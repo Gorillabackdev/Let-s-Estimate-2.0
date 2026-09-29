@@ -162,7 +162,7 @@ export const SubscriptionBillingModal: React.FC<SubscriptionBillingModalProps> =
         {/* Modal Body */}
         <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-6">
           
-          {/* 7-Day Free Trial & Current Status Card */}
+          {/* 30-Day Free Trial & Current Status Card */}
           <div className="p-4 rounded-xl border bg-slate-50 border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-start space-x-3">
               <div className="w-9 h-9 rounded-lg bg-emerald-100 border border-emerald-200 flex items-center justify-center shrink-0 mt-0.5">
@@ -179,13 +179,13 @@ export const SubscriptionBillingModal: React.FC<SubscriptionBillingModalProps> =
                     {subscription?.tier === 'lifetime_license' ? 'Enterprise Lifetime License' :
                      subscription?.tier === 'monthly' ? 'Professional Monthly' :
                      subscription?.tier === 'yearly' ? 'Corporate Annual' :
-                     subscription?.isTrial ? (subscription.trialExpired ? 'Trial Expired' : '7-Day Free Trial') : 'Active Member'}
+                     subscription?.isTrial ? (subscription.trialExpired ? 'Trial Expired' : '30-Day Free Trial') : 'Active Member'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 mt-1">
                   {subscription?.isTrial ? (
                     subscription.trialExpired ? (
-                      <span className="text-red-700 font-semibold">Your 7-day free trial has expired. Subscribe to continue generating full AI BOQs.</span>
+                      <span className="text-red-700 font-semibold">Your 30-day free trial has expired. Subscribe to continue generating full AI BOQs.</span>
                     ) : (
                       <span>You have <strong className="text-emerald-700 font-bold">{subscription.trialDaysRemaining} days remaining</strong> on your complimentary trial period.</span>
                     )

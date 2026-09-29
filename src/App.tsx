@@ -91,14 +91,27 @@ const DEFAULT_NEW_PROJECT: Project = {
 function MainApp() {
   const { user, token, logout, refreshStats, openAuthModal } = useAuth();
   
-  // Navigation state
+  // Navigation state: Default to public Home page ('landing') for unauthenticated or first-time visitors
   const [currentView, setCurrentView] = useState<AppGlobalView>(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash.toLowerCase();
-      if (hash === '#landing' || hash === '#home' || hash === '#pricing' || hash === '#standards') {
+      const path = window.location.pathname.toLowerCase();
+      if (hash === '#landing' || hash === '#home' || hash === '#pricing' || hash === '#features' || hash === '#about' || hash === '#resources' || hash === '' || path === '/' || path === '/home') {
+        // If there's an existing valid login session, check if hash explicitly asks for dashboard
+        if (hash === '#dashboard' || hash === '#workspace') return 'dashboard';
+        if (hash === '#admin-portal' || hash === '#sys-admin' || hash === '#admin') return 'admin-portal';
+        if (hash === '#projects') return 'projects';
+        if (hash === '#calculators') return 'calculators';
+        if (hash === '#estimating') return 'estimating';
+        if (hash === '#controls') return 'controls';
+        if (hash === '#documents') return 'documents';
+        if (hash === '#team') return 'team';
+        if (hash === '#settings') return 'settings';
+        if (hash === '#help') return 'help';
         return 'landing';
       }
       if (hash === '#admin-portal' || hash === '#sys-admin' || hash === '#admin') return 'admin-portal';
+      if (hash === '#dashboard' || hash === '#workspace') return 'dashboard';
       if (hash === '#projects') return 'projects';
       if (hash === '#calculators') return 'calculators';
       if (hash === '#estimating') return 'estimating';
@@ -108,7 +121,7 @@ function MainApp() {
       if (hash === '#settings') return 'settings';
       if (hash === '#help') return 'help';
     }
-    return 'dashboard';
+    return 'landing';
   });
 
   const [activeSubView, setActiveSubView] = useState<string | undefined>();
@@ -172,14 +185,30 @@ function MainApp() {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.toLowerCase().replace('#', '');
-      if (hash === 'landing' || hash === 'home' || hash === 'pricing') {
+      if (hash === 'landing' || hash === 'home' || hash === 'pricing' || hash === 'features' || hash === 'resources' || hash === 'about') {
         setCurrentView('landing');
+      } else if (hash === 'login') {
+        setCurrentView('landing');
+        openAuthModal('login', () => navigateView('dashboard'));
+      } else if (hash === 'signup' || hash === 'register') {
+        setCurrentView('landing');
+        openAuthModal('register', () => navigateView('dashboard'));
       } else if (hash === 'admin-portal' || hash === 'sys-admin' || hash === 'admin') {
         setCurrentView('admin-portal');
       } else if (hash === 'dashboard' || hash === 'workspace') {
-        setCurrentView('dashboard');
+        if (!user && !token) {
+          setCurrentView('landing');
+          openAuthModal('login', () => navigateView('dashboard'));
+        } else {
+          setCurrentView('dashboard');
+        }
       } else if (hash === 'projects') {
-        setCurrentView('projects');
+        if (!user && !token) {
+          setCurrentView('landing');
+          openAuthModal('login', () => navigateView('projects'));
+        } else {
+          setCurrentView('projects');
+        }
       } else if (hash === 'calculators') {
         setCurrentView('calculators');
       } else if (hash === 'estimating') {
@@ -196,9 +225,21 @@ function MainApp() {
         setCurrentView('help');
       }
     };
+
+    // Check on initial mount for login/signup in hash or path
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      const path = window.location.pathname.toLowerCase();
+      if (hash === '#login' || path === '/login') {
+        openAuthModal('login', () => navigateView('dashboard'));
+      } else if (hash === '#signup' || hash === '#register' || path === '/signup' || path === '/register') {
+        openAuthModal('register', () => navigateView('dashboard'));
+      }
+    }
+
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [user, token, openAuthModal]);
 
   // Fetch all projects & subscription status on mount & whenever auth token changes
   useEffect(() => {
@@ -1080,7 +1121,7 @@ function MainApp() {
               Please contact Lead QS Emmanuel Isaac regarding your subscription plan approval:
             </p>
             <div className="font-mono text-emerald-400 font-bold text-xs pt-1">
-              emmanuelisaac888@gmail.com
+              estimatewithisaac@gmail.com
             </div>
           </div>
           <button
@@ -1112,17 +1153,52 @@ function MainApp() {
     );
   }
 
-  // If user navigated to public marketing landing page
+  // If user navigated to public marketing landing page (Home)
   if (currentView === 'landing') {
     return (
-      <LandingPage
-        onOpenApp={() => navigateView('dashboard')}
-        onOpenAuth={(mode) => openAuthModal(mode)}
-        onOpenQuestionnaireDemo={() => {
-          navigateView('project-workspace');
-          setIsQuestionnaireModalOpen(true);
-        }}
-      />
+      <div className="min-h-screen bg-white">
+        <LandingPage
+          onOpenApp={() => {
+            if (user) {
+              navigateView('dashboard');
+            } else {
+              openAuthModal('login', () => navigateView('dashboard'));
+            }
+          }}
+          onOpenAuth={(mode, targetView, targetSubView) => {
+            openAuthModal(mode, () => {
+              if (targetView) {
+                navigateView(targetView, targetSubView);
+              } else {
+                navigateView('dashboard');
+              }
+            });
+          }}
+          onNavigate={navigateView}
+          onOpenQuestionnaireDemo={() => {
+            navigateView('project-workspace');
+            setIsQuestionnaireModalOpen(true);
+          }}
+          onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+          onNewProject={handleNewProject}
+        />
+
+        {/* Essential Modals mounted on the Home Page so all buttons trigger immediately */}
+        <AuthModal />
+        <UserProfileModal />
+        <SubscriptionBillingModal
+          isOpen={isSubscriptionModalOpen}
+          onClose={() => {
+            setIsSubscriptionModalOpen(false);
+            loadSubscription();
+          }}
+        />
+        <CreateProjectModal
+          isOpen={isCreateProjectModalOpen}
+          onClose={() => setIsCreateProjectModalOpen(false)}
+          onCreateProject={handleCreateProjectFromModal}
+        />
+      </div>
     );
   }
 
@@ -1377,7 +1453,7 @@ function MainApp() {
           onImportBoq={() => setIsBoqImportModalOpen(true)}
         />
 
-        {/* 7-Day Trial & Subscription Notice Bar */}
+        {/* 30-Day Trial & Subscription Notice Bar */}
         {subscriptionInfo && (
           <div className={`border-b text-xs px-4 py-2 transition shrink-0 ${
             subscriptionInfo.trialExpired
@@ -1397,9 +1473,9 @@ function MainApp() {
                 )}
                 <span>
                   {subscriptionInfo.trialExpired ? (
-                    <span><strong>7-Day Trial Expired:</strong> Activate license via bank transfer to <strong>Isaac Emmanuel at Access Bank (081515121)</strong>.</span>
+                    <span><strong>30-Day Trial Expired:</strong> Activate license via bank transfer to <strong>Isaac Emmanuel at Access Bank (081515121)</strong>.</span>
                   ) : subscriptionInfo.isTrial ? (
-                    <span><strong>Complimentary 7-Day Trial:</strong> {subscriptionInfo.trialDaysRemaining} days left. Access full features, AI Takeoffs and NIQS reports.</span>
+                    <span><strong>Complimentary 30-Day Trial:</strong> {subscriptionInfo.trialDaysRemaining} days left. Access full features, AI Takeoffs and NIQS reports.</span>
                   ) : (
                     <span><strong>Active Subscription:</strong> {subscriptionInfo.tier === 'lifetime_license' ? 'Enterprise Lifetime License' : subscriptionInfo.tier === 'yearly' ? 'Corporate Annual Plan' : 'Professional Monthly'} &bull; Verified QS Account</span>
                   )}

@@ -409,7 +409,7 @@ export async function estimateFromDescription(
   if (geminiApiKey) {
     try {
       const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-      const prompt = `You are a Principal Nigerian Quantity Surveyor (MNIQS).
+      const prompt = `You are a Principal Nigerian Quantity Surveyor (MYQSF).
 A client wants a preliminary Bill of Quantities (BOQ) estimate based on this description:
 "${projectPrompt}"
 Target location: ${location}

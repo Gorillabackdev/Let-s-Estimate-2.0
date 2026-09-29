@@ -116,7 +116,7 @@ export async function verifyTakeoffEntitlement(
       return {
         allowed: false,
         error:
-          'Subscription or BOQ credit required. Your 7-day free trial has concluded. Please upgrade your plan or purchase a single BOQ pass to generate AI drawing takeoffs.',
+          'Subscription or BOQ credit required. Your 30-day free trial has concluded. Please upgrade your plan or purchase a single BOQ pass to generate AI drawing takeoffs.',
         status: 402,
       };
     }

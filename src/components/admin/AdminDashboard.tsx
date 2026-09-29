@@ -53,6 +53,7 @@ interface AdminMetrics {
   suspendedUsers: number;
   plans: {
     trial: number;
+    per_boq: number;
     monthly: number;
     yearly: number;
     lifetime: number;
@@ -123,11 +124,11 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
   // Filters & search
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'pending' | 'suspended' | 'unverified'>('all');
-  const [planFilter, setPlanFilter] = useState<'all' | 'free_trial' | 'monthly' | 'yearly' | 'lifetime_license'>('all');
+  const [planFilter, setPlanFilter] = useState<'all' | 'free_trial' | 'per_boq' | 'monthly' | 'yearly' | 'lifetime_license'>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
-  const [invitePresetPlan, setInvitePresetPlan] = useState<'free_trial' | 'monthly' | 'lifetime_license'>('free_trial');
+  const [invitePresetPlan, setInvitePresetPlan] = useState<'free_trial' | 'per_boq' | 'monthly' | 'yearly' | 'lifetime_license'>('free_trial');
 
   // Service Permissions Modal State
   const [serviceModalUser, setServiceModalUser] = useState<User | null>(null);
@@ -214,11 +215,11 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
   };
 
   // Update User Subscription Plan
-  const handleUpdateSubscription = async (userId: string, tier: 'free_trial' | 'monthly' | 'yearly' | 'lifetime_license') => {
+  const handleUpdateSubscription = async (userId: string, tier: 'free_trial' | 'per_boq' | 'monthly' | 'yearly' | 'lifetime_license') => {
     if (!token) return;
     try {
-      const duration = tier === 'monthly' ? 30 : tier === 'yearly' ? 365 : tier === 'lifetime_license' ? 3650 : 14;
-      const credits = tier === 'lifetime_license' ? 9999 : tier === 'yearly' ? 500 : tier === 'monthly' ? 100 : 5;
+      const duration = tier === 'monthly' ? 30 : tier === 'yearly' ? 365 : tier === 'lifetime_license' ? 3650 : 30;
+      const credits = tier === 'lifetime_license' ? 9999 : tier === 'yearly' ? 500 : tier === 'monthly' ? 100 : tier === 'per_boq' ? 1 : 10;
 
       const { ok, data: resData, error: err } = await safeFetchJson<{ success: boolean; error?: string }>(
         `/api/admin/users/${userId}/subscription`,
@@ -737,15 +738,25 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
 
                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
                   <span className="px-2 text-slate-500 text-[11px] font-semibold">Plan:</span>
-                  {(['all', 'free_trial', 'monthly', 'yearly', 'lifetime_license'] as const).map((pl) => (
+                  {(['all', 'free_trial', 'per_boq', 'monthly', 'yearly', 'lifetime_license'] as const).map((pl) => (
                     <button
                       key={pl}
                       onClick={() => setPlanFilter(pl)}
-                      className={`px-2.5 py-1 rounded-lg text-xs capitalize font-medium transition cursor-pointer ${
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium transition cursor-pointer ${
                         planFilter === pl ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      {pl === 'all' ? 'All' : pl === 'free_trial' ? 'Trial' : pl === 'lifetime_license' ? 'Lifetime' : pl}
+                      {pl === 'all' 
+                        ? 'All' 
+                        : pl === 'free_trial' 
+                        ? 'Trial (30d)' 
+                        : pl === 'per_boq'
+                        ? 'Per BOQ (₦3k)'
+                        : pl === 'monthly'
+                        ? 'Monthly (₦50k)'
+                        : pl === 'yearly'
+                        ? 'Annual (₦400k)'
+                        : 'Lifetime (₦2M)'}
                     </button>
                   ))}
                 </div>
@@ -869,10 +880,11 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
                                 onChange={(e) => handleUpdateSubscription(u.id, e.target.value as any)}
                                 className="px-2 py-1 rounded-lg text-xs font-semibold bg-slate-950 text-slate-200 border border-slate-700 focus:outline-none cursor-pointer"
                               >
-                                <option value="free_trial">14-Day Trial</option>
-                                <option value="monthly">Monthly QS (₦25k)</option>
-                                <option value="yearly">Annual QS (₦250k)</option>
-                                <option value="lifetime_license">Enterprise Lifetime</option>
+                                <option value="free_trial">30-Day Free Trial (₦0)</option>
+                                <option value="per_boq">Single BOQ Pass (₦3,000)</option>
+                                <option value="monthly">Professional Monthly (₦50,000)</option>
+                                <option value="yearly">Corporate Annual (₦400,000)</option>
+                                <option value="lifetime_license">Enterprise Lifetime (₦2,000,000)</option>
                               </select>
                             </td>
 
@@ -1208,41 +1220,70 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <div
                 onClick={() => setInvitePresetPlan('free_trial')}
-                className={`p-4 rounded-xl border cursor-pointer transition ${
+                className={`p-3.5 rounded-xl border cursor-pointer transition ${
                   invitePresetPlan === 'free_trial'
                     ? 'bg-emerald-950/60 border-emerald-500 text-white'
                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                 }`}
               >
-                <div className="font-bold text-sm">14-Day Free Evaluation</div>
-                <div className="text-xs text-slate-400 mt-1">Allows peer testing and reviewing BOQ generation speed.</div>
+                <div className="font-bold text-xs sm:text-sm text-emerald-400">30-Day Free Trial</div>
+                <div className="text-[11px] font-mono text-white mt-0.5">₦0 / 30 Days</div>
+                <div className="text-[10px] text-slate-400 mt-1 leading-snug">Allows full evaluation and reviewing BOQ generation speed.</div>
+              </div>
+
+              <div
+                onClick={() => setInvitePresetPlan('per_boq')}
+                className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                  invitePresetPlan === 'per_boq'
+                    ? 'bg-emerald-950/60 border-emerald-500 text-white'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="font-bold text-xs sm:text-sm text-blue-400">Single BOQ Pass</div>
+                <div className="text-[11px] font-mono text-white mt-0.5">₦3,000 / Project</div>
+                <div className="text-[10px] text-slate-400 mt-1 leading-snug">One-off full AI drawing takeoff &amp; BOQ export pass.</div>
               </div>
 
               <div
                 onClick={() => setInvitePresetPlan('monthly')}
-                className={`p-4 rounded-xl border cursor-pointer transition ${
+                className={`p-3.5 rounded-xl border cursor-pointer transition ${
                   invitePresetPlan === 'monthly'
                     ? 'bg-emerald-950/60 border-emerald-500 text-white'
                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                 }`}
               >
-                <div className="font-bold text-sm">Professional QS Pass (₦25k/mo)</div>
-                <div className="text-xs text-slate-400 mt-1">Gives colleagues access to unlimited BOQs, S-curve and rate builder.</div>
+                <div className="font-bold text-xs sm:text-sm text-emerald-300">Professional Monthly</div>
+                <div className="text-[11px] font-mono text-white mt-0.5">₦50,000 / Month</div>
+                <div className="text-[10px] text-slate-400 mt-1 leading-snug">Unlimited BOQs, IPCs, valuations, and rate database.</div>
+              </div>
+
+              <div
+                onClick={() => setInvitePresetPlan('yearly')}
+                className={`p-3.5 rounded-xl border cursor-pointer transition ${
+                  invitePresetPlan === 'yearly'
+                    ? 'bg-emerald-950/60 border-emerald-500 text-white'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                }`}
+              >
+                <div className="font-bold text-xs sm:text-sm text-amber-400">Corporate Annual</div>
+                <div className="text-[11px] font-mono text-white mt-0.5">₦400,000 / Year</div>
+                <div className="text-[10px] text-slate-400 mt-1 leading-snug">Full enterprise suite with NIQS stamp &amp; executive dossier.</div>
               </div>
 
               <div
                 onClick={() => setInvitePresetPlan('lifetime_license')}
-                className={`p-4 rounded-xl border cursor-pointer transition ${
+                className={`p-3.5 rounded-xl border cursor-pointer transition ${
                   invitePresetPlan === 'lifetime_license'
                     ? 'bg-emerald-950/60 border-emerald-500 text-white'
                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                 }`}
               >
-                <div className="font-bold text-sm">VIP Colleague Lifetime Pass</div>
-                <div className="text-xs text-slate-400 mt-1">Pre-approves partner quantity surveyors for full perpetual access.</div>
+                <div className="font-bold text-xs sm:text-sm text-purple-400">Enterprise Lifetime</div>
+                <div className="text-[11px] font-mono text-white mt-0.5">₦2,000,000 Once</div>
+                <div className="text-[10px] text-slate-400 mt-1 leading-snug">Permanent perpetual license with zero recurring renewals.</div>
               </div>
             </div>
 

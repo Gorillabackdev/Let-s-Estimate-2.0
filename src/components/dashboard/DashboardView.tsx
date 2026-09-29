@@ -32,13 +32,14 @@ import { Project, AppGlobalView } from '../../types';
 import { formatNaira } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { LetsEstimateLogo } from '../brand/LetsEstimateLogo';
+import { getProjectCoverImage } from '../../utils/projectImages';
 
-// Asset paths generated for high fidelity presentation
-const HERO_CONSTRUCTION_IMG = '/src/assets/images/construction_hero_crane_1790509965704.jpg';
-const HOSTEL_THUMB_IMG = '/src/assets/images/hostel_building_thumb_1790509978576.jpg';
-const BUNGALOW_THUMB_IMG = '/src/assets/images/bungalow_project_thumb_1790509991341.jpg';
-const CLINIC_THUMB_IMG = '/src/assets/images/community_clinic_thumb_1790510005065.jpg';
-const SUPPORT_HARDHAT_IMG = '/src/assets/images/support_card_hardhat_1790510016658.jpg';
+// High fidelity construction photography assets
+import HERO_CONSTRUCTION_IMG from '../../assets/images/construction_hero_crane_1790509965704.jpg';
+import HOSTEL_THUMB_IMG from '../../assets/images/hostel_building_thumb_1790509978576.jpg';
+import BUNGALOW_THUMB_IMG from '../../assets/images/bungalow_project_thumb_1790509991341.jpg';
+import CLINIC_THUMB_IMG from '../../assets/images/community_clinic_thumb_1790510005065.jpg';
+import SUPPORT_HARDHAT_IMG from '../../assets/images/support_card_hardhat_1790510016658.jpg';
 
 interface DashboardViewProps {
   projects: Project[];
@@ -148,7 +149,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         date: p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Sep 2026',
         status: p.status || 'Draft',
         grand_total: p.grand_total || 0,
-        image: idx === 0 ? HOSTEL_THUMB_IMG : idx === 1 ? BUNGALOW_THUMB_IMG : idx === 2 ? CLINIC_THUMB_IMG : null,
+        image: p.image_url || p.cover_image_url || getProjectCoverImage(p, idx),
         isReal: true
       }));
     }

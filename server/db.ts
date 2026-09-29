@@ -52,6 +52,8 @@ export interface ProjectRecord {
   notes: string;
   reference?: string;
   contractor?: string;
+  image_url?: string;
+  cover_image_url?: string;
   questionnaire_json?: string;
   location_details_json?: string;
   drawings_json?: string;
@@ -168,6 +170,8 @@ export async function getDb(): Promise<Database> {
     "ALTER TABLE projects ADD COLUMN library_json TEXT DEFAULT '[]'",
     "ALTER TABLE projects ADD COLUMN reference TEXT DEFAULT ''",
     "ALTER TABLE projects ADD COLUMN contractor TEXT DEFAULT ''",
+    "ALTER TABLE projects ADD COLUMN image_url TEXT DEFAULT ''",
+    "ALTER TABLE projects ADD COLUMN cover_image_url TEXT DEFAULT ''",
     "ALTER TABLE user_rates ADD COLUMN item TEXT DEFAULT ''",
     "ALTER TABLE user_rates ADD COLUMN rate REAL DEFAULT 0.0",
     "ALTER TABLE user_rates ADD COLUMN description TEXT DEFAULT ''",
@@ -376,8 +380,8 @@ export async function getDb(): Promise<Database> {
       defects_liability_end_date TEXT DEFAULT '',
       defects_certificate_issued INTEGER DEFAULT 0,
       status TEXT DEFAULT 'Draft',
-      qs_signoff_name TEXT DEFAULT 'Isaac Emmanuel, MNIQS',
-      qs_registration_number TEXT DEFAULT 'RQS/NIQS/8421',
+      qs_signoff_name TEXT DEFAULT 'Isaac Emmanuel, MYQSF',
+      qs_registration_number TEXT DEFAULT 'MYQSF/QS/8421',
       signoff_date TEXT DEFAULT '',
       notes TEXT DEFAULT '',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -387,7 +391,7 @@ export async function getDb(): Promise<Database> {
       id TEXT PRIMARY KEY,
       project_id TEXT NOT NULL,
       title TEXT NOT NULL,
-      prepared_by TEXT DEFAULT 'Isaac Emmanuel, MNIQS',
+      prepared_by TEXT DEFAULT 'Isaac Emmanuel, MYQSF',
       client_recipient TEXT DEFAULT '',
       dossier_type TEXT DEFAULT 'Full Comprehensive Audit',
       include_tender INTEGER DEFAULT 1,
@@ -888,6 +892,7 @@ export async function saveProject(data: Partial<ProjectRecord> & { id: string; i
         gfa = ?, number_of_floors = ?, status = ?, start_date = ?, target_completion_date = ?,
         active_version = ?, questionnaire_json = ?, location_details_json = ?, drawings_json = ?,
         takeoff_json = ?, library_json = ?, reference = ?, contractor = ?,
+        image_url = ?, cover_image_url = ?,
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?`,
       [
@@ -925,6 +930,8 @@ export async function saveProject(data: Partial<ProjectRecord> & { id: string; i
         libJson,
         data.reference ?? existing.reference ?? '',
         data.contractor ?? existing.contractor ?? '',
+        data.image_url ?? existing.image_url ?? '',
+        data.cover_image_url ?? existing.cover_image_url ?? '',
         data.id
       ]
     );
@@ -941,8 +948,8 @@ export async function saveProject(data: Partial<ProjectRecord> & { id: string; i
         subtotal, po_amount, vat_amount, grand_total, notes, project_type, state, country, description,
         gfa, number_of_floors, status, start_date, target_completion_date, active_version,
         questionnaire_json, location_details_json, drawings_json, takeoff_json, library_json,
-        reference, contractor
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        reference, contractor, image_url, cover_image_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.id,
         data.user_id || '',
@@ -979,7 +986,9 @@ export async function saveProject(data: Partial<ProjectRecord> & { id: string; i
         takeJson,
         libJson,
         data.reference || '',
-        data.contractor || ''
+        data.contractor || '',
+        data.image_url || '',
+        data.cover_image_url || ''
       ]
     );
   }
@@ -2399,7 +2408,7 @@ export async function saveProjectFluctuation(projectId: string, data: any): Prom
 }
 
 // ============================================================================
-// PHASE 10: BANK TRANSFER BILLING, 7-DAY TRIAL & SUBSCRIPTION ENGINE
+// PHASE 10: BANK TRANSFER BILLING, 30-DAY TRIAL & SUBSCRIPTION ENGINE
 // ============================================================================
 
 export interface PaymentTransferRecord {
@@ -2585,7 +2594,7 @@ export async function getUserSubscriptionInfo(userId: string) {
       tier: 'free_trial',
       status: 'active',
       isTrial: true,
-      trialDaysRemaining: 7,
+      trialDaysRemaining: 30,
       trialExpired: false,
       boqCredits: 0,
       canGenerateBoq: true,
@@ -2601,10 +2610,10 @@ export async function getUserSubscriptionInfo(userId: string) {
   const boqCredits = Number(row[5] || 0);
   const licenseKey = (row[6] as string) || '';
 
-  // Free tier valid for 7 days
+  // Free tier valid for 30 days
   const now = Date.now();
   const daysElapsed = Math.floor((now - createdAt) / (1000 * 60 * 60 * 24));
-  const trialDaysRemaining = Math.max(0, 7 - daysElapsed);
+  const trialDaysRemaining = Math.max(0, 30 - daysElapsed);
   const trialExpired = trialDaysRemaining <= 0;
 
   // Check if active subscription or license
@@ -2639,7 +2648,7 @@ export async function consumeBoqCredit(userId: string): Promise<boolean> {
     return true;
   }
   if (info.isTrial && !info.trialExpired) {
-    // Free within 7 days trial
+    // Free within 30 days trial
     return true;
   }
   if (info.boqCredits > 0) {
@@ -2755,10 +2764,10 @@ export async function autoCalculateFinalAccount(projectId: string) {
     defects_liability_end_date: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 6 months standard DLP
     defects_certificate_issued: 0,
     status: 'Draft',
-    qs_signoff_name: 'Isaac Emmanuel, MNIQS',
-    qs_registration_number: 'RQS/NIQS/8421',
+    qs_signoff_name: 'Isaac Emmanuel, MYQSF',
+    qs_registration_number: 'MYQSF/QS/8421',
     signoff_date: new Date().toISOString().split('T')[0],
-    notes: 'Prepared in accordance with NIQS Standard Conditions of Building Contract (SMM7/CESMM4).',
+    notes: 'Prepared in accordance with Standard Conditions of Building Contract & BESMM4.',
     created_at: now,
     updated_at: now
   };
@@ -2803,8 +2812,8 @@ export async function saveProjectFinalAccount(projectId: string, data: any) {
       data.defects_liability_end_date || '',
       data.defects_certificate_issued ? 1 : 0,
       data.status || 'Draft',
-      data.qs_signoff_name || 'Isaac Emmanuel, MNIQS',
-      data.qs_registration_number || 'RQS/NIQS/8421',
+      data.qs_signoff_name || 'Isaac Emmanuel, MYQSF',
+      data.qs_registration_number || 'MYQSF/QS/8421',
       data.signoff_date || '',
       data.notes || '',
       data.created_at || now,
@@ -2906,7 +2915,7 @@ export async function compileExecutiveProjectDossier(projectId: string, user?: a
   return {
     project,
     compiledAt: new Date().toISOString(),
-    compiledBy: user?.full_name || 'Isaac Emmanuel, MNIQS',
+    compiledBy: user?.full_name?.replace(/MNIQS/g, 'MYQSF') || 'Isaac Emmanuel, MYQSF',
     summary: {
       subtotal: project.subtotal,
       vat: project.vat_amount,
@@ -2923,12 +2932,12 @@ export async function compileExecutiveProjectDossier(projectId: string, user?: a
     fluctuationSummary,
     finalAccountSummary,
     licenseVerification: {
-      leadQs: 'Isaac Emmanuel, MNIQS',
-      registrationNumber: 'RQS/NIQS/8421',
+      leadQs: 'Isaac Emmanuel, MYQSF',
+      registrationNumber: 'MYQSF/QS/8421',
       bankAccount: 'Access Bank 081515121',
       accountName: 'Isaac Emmanuel',
       licenseStatus: userInfo?.status || 'Active Registered Consultant',
-      licenseKey: userInfo?.licenseKey || 'LE-2026-QS-MNIQS-81515121',
+      licenseKey: userInfo?.licenseKey || 'LE-2026-QS-MYQSF-81515121',
       certifiedAt: new Date().toISOString().split('T')[0]
     }
   };

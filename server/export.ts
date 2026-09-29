@@ -471,10 +471,10 @@ export interface UserGuideOptions {
  * Generate a comprehensive, professional User Guide & Onboarding Manual PDF for new users
  */
 export function generateUserGuidePdfBuffer(options?: UserGuideOptions): Promise<Buffer> {
-  const contactEmail = options?.contactEmail || 'emmanuelisaac888@gmail.com';
+  const contactEmail = options?.contactEmail || 'estimatewithisaac@gmail.com';
   const whatsappPhone = options?.whatsappPhone || '';
   const brandName = options?.brandName || 'Estimate with Isaac';
-  const leadQsName = options?.leadQsName || 'Emmanuel Isaac, MNIQS';
+  const leadQsName = options?.leadQsName || 'Emmanuel Isaac, MYQSF';
   const footerLabel = `Let's Estimate 2.0 User Manual - ${brandName} (${contactEmail})`;
 
   return new Promise((resolve, reject) => {

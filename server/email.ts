@@ -108,7 +108,7 @@ export async function sendVerificationEmail(
           </p>
         </div>
         <div class="footer">
-          &copy; ${new Date().getFullYear()} Let's Estimate. Lead QS Isaac Emmanuel, MNIQS. Port Harcourt & Lagos, Nigeria.
+          &copy; ${new Date().getFullYear()} Let's Estimate. Lead QS Isaac Emmanuel, MYQSF. Port Harcourt & Lagos, Nigeria.
         </div>
       </div>
     </body>

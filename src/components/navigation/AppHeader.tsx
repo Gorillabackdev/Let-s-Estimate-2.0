@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
+  Home,
   Search, 
   Menu, 
   Bell, 
@@ -284,9 +285,20 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         </div>
       </div>
 
-      {/* Right: Notifications + User Profile (Clean & Uncluttered) */}
-      <div className="flex items-center space-x-3 sm:space-x-4">
+      {/* Right: Home button, Notifications + User Profile */}
+      <div className="flex items-center space-x-2 sm:space-x-3">
         
+        {/* Public Home Page Button (Does NOT log out user) */}
+        <button
+          type="button"
+          onClick={() => onNavigate('landing')}
+          className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 hover:text-emerald-700 bg-slate-100/90 hover:bg-emerald-50 border border-slate-200 transition cursor-pointer"
+          title="Visit Public Home page"
+        >
+          <Home className="w-3.5 h-3.5 text-emerald-600" />
+          <span className="hidden sm:inline">Home</span>
+        </button>
+
         {/* Notifications Bell */}
         <div ref={notificationsRef} className="relative">
           <button
@@ -409,17 +421,19 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                   <span>Help &amp; Support</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsProfileOpen(false);
-                    onNavigate('admin-portal');
-                  }}
-                  className="w-full px-3.5 py-2 text-left text-amber-700 hover:bg-amber-50 flex items-center space-x-2 transition cursor-pointer font-bold border-t border-slate-100"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Admin Command Portal</span>
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsProfileOpen(false);
+                      onNavigate('admin-portal');
+                    }}
+                    className="w-full px-3.5 py-2 text-left text-amber-700 hover:bg-amber-50 flex items-center space-x-2 transition cursor-pointer font-bold border-t border-slate-100"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Admin Command Portal</span>
+                  </button>
+                )}
               </div>
 
               <div className="border-t border-slate-100 pt-1">

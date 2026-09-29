@@ -26,14 +26,14 @@ export const HelpSupportView: React.FC<HelpSupportViewProps> = ({ onNavigate }) 
   const [downloadingGuide, setDownloadingGuide] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
-  const userEmail = user?.email || 'emmanuelisaac888@gmail.com';
+  const contactEmail = 'estimatewithisaac@gmail.com';
   const userPhone = user?.phone || '';
 
   const handleDownloadGuide = async () => {
     try {
       setDownloadingGuide(true);
       const params = new URLSearchParams();
-      if (userEmail) params.append('email', userEmail);
+      params.append('email', contactEmail);
       if (userPhone) params.append('phone', userPhone);
       const queryString = params.toString() ? `?${params.toString()}` : '';
       const res = await fetch(`/api/guide/pdf${queryString}`);
@@ -102,14 +102,14 @@ export const HelpSupportView: React.FC<HelpSupportViewProps> = ({ onNavigate }) 
             <span>{downloadingGuide ? 'Generating PDF...' : downloadSuccess ? 'Downloaded!' : 'Download User Guide (PDF)'}</span>
           </button>
 
-          {/* Section 2: Public Website Link in Help Menu */}
+          {/* Section 2: Public Home Link in Help Menu */}
           <button
             type="button"
             onClick={() => onNavigate('landing')}
             className="px-4 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold border border-slate-200 inline-flex items-center space-x-2 shadow-2xs self-start sm:self-auto cursor-pointer"
           >
             <Globe className="w-4 h-4 text-emerald-600" />
-            <span>Visit Public Website</span>
+            <span>Home</span>
             <ExternalLink className="w-3 h-3 text-slate-400" />
           </button>
         </div>
@@ -210,8 +210,8 @@ export const HelpSupportView: React.FC<HelpSupportViewProps> = ({ onNavigate }) 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
             <div>
               <span className="text-slate-500 block text-[11px] font-medium">Official Contact Email</span>
-              <a href={`mailto:${userEmail}`} className="font-bold text-emerald-700 hover:underline">
-                {userEmail}
+              <a href={`mailto:${contactEmail}`} className="font-bold text-emerald-700 hover:underline">
+                {contactEmail}
               </a>
             </div>
             {userPhone ? (
@@ -222,11 +222,11 @@ export const HelpSupportView: React.FC<HelpSupportViewProps> = ({ onNavigate }) 
             ) : null}
             <div className="pt-1 border-t border-slate-200/60">
               <span className="text-slate-500 block text-[11px] font-medium">Lead Consultant &amp; Practice</span>
-              <span className="font-bold text-slate-900">{user?.full_name || 'Emmanuel Isaac, MNIQS'} • Estimate with Isaac</span>
+              <span className="font-bold text-slate-900">Emmanuel Isaac, MYQSF • Estimate with Isaac</span>
             </div>
             <div>
-              <span className="text-slate-500 block text-[11px] font-medium">Accreditation</span>
-              <span className="font-semibold text-emerald-800">NIQS / BESMM4 Technical Standards Partner</span>
+              <span className="text-slate-500 block text-[11px] font-medium">Professional Practice &amp; Standards</span>
+              <span className="font-semibold text-emerald-800">MYQSF • Cost Engineering &amp; BESMM4 Standards</span>
             </div>
           </div>
         </div>

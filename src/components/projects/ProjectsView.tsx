@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Project } from '../../types';
 import { formatNaira } from '../../utils/format';
+import { getProjectCoverImage } from '../../utils/projectImages';
 import { ProjectEditModal } from './ProjectEditModal';
 import { DeleteProjectModal } from './DeleteProjectModal';
 
@@ -362,6 +363,23 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           )}
                         </div>
                       )}
+                    </div>
+                  </div>
+
+                  {/* Project Cover Visual */}
+                  <div 
+                    onClick={() => onOpenProject(project.id)}
+                    className="w-full h-32 rounded-xl overflow-hidden bg-slate-100 border border-slate-200/90 mb-3 cursor-pointer group-hover:border-emerald-500/50 transition-all relative shadow-2xs"
+                    title="Open project estimate workspace"
+                  >
+                    <img
+                      src={project.image_url || project.cover_image_url || getProjectCoverImage(project)}
+                      alt={project.title}
+                      className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute bottom-1.5 left-1.5 px-2 py-0.5 rounded bg-slate-900/75 backdrop-blur-xs text-[9px] font-bold text-white tracking-wider uppercase">
+                      {project.project_type || 'Building'}
                     </div>
                   </div>
 

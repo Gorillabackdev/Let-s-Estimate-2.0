@@ -284,7 +284,7 @@ export const ExecutiveDossierModal: React.FC<ExecutiveDossierModalProps> = ({
                       Certified Professional QS Audit Stamp
                     </h4>
                     <p className="text-xs text-slate-600 mt-0.5">
-                      Prepared by Isaac Emmanuel (MNIQS, RQS/NIQS/8421). Formatted to Nigerian SMM7 / NIQS Cost Information rules.
+                      Prepared by Isaac Emmanuel (MYQSF). Formatted to Nigerian Construction Cost Information &amp; BESMM4 rules.
                     </p>
                   </div>
                 </div>
