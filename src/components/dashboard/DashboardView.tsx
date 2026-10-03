@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Building2, 
   Sparkles, 
@@ -20,19 +20,21 @@ import {
   Database,
   ExternalLink,
   ChevronRight,
-  Check,
   Play,
   HardHat,
   ShieldCheck,
   FileText,
   DollarSign,
-  Truck
+  Truck,
+  FolderPlus,
+  History
 } from 'lucide-react';
 import { Project, AppGlobalView } from '../../types';
 import { formatNaira } from '../../utils/format';
 import { useAuth } from '../../context/AuthContext';
 import { LetsEstimateLogo } from '../brand/LetsEstimateLogo';
 import { getProjectCoverImage } from '../../utils/projectImages';
+import { safeFetchJson } from '../../utils/api';
 
 // High fidelity construction photography assets
 import HERO_CONSTRUCTION_IMG from '../../assets/images/construction_hero_crane_1790509965704.jpg';
@@ -53,6 +55,8 @@ interface DashboardViewProps {
   onOpenRates?: () => void;
   onOpenSubscription?: () => void;
   onImportBoq?: () => void;
+  activities?: any[];
+  user?: any;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -67,94 +71,81 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenRates,
   onOpenSubscription,
   onImportBoq,
+  activities: propActivities,
+  user: propUser,
 }) => {
-  const { user } = useAuth();
+  const { user: authUser, token } = useAuth();
+  const user = propUser || authUser;
   
   // Interactive state for tasks, projects filtering, and actions menu
   const [projectSearch, setProjectSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
-  // Default tasks from reference design with checkable state
-  const [tasks, setTasks] = useState([
-    { id: 't1', title: 'Review OML 17 HCDT interview prep', date: 'Sep 16, 2026 • 10:00 AM', done: false },
-    { id: 't2', title: 'Finalize BOQ for Hospital Project', date: 'Sep 18, 2026', done: false },
-    { id: 't3', title: 'Update rates database (Q3 2026)', date: 'Sep 20, 2026', done: false },
-    { id: 't4', title: 'Submit certificate of completion', date: 'Sep 22, 2026', done: false },
-    { id: 't5', title: 'Client follow up - US estimate', date: 'Sep 24, 2026', done: false },
-  ]);
+  // Fetch real user activity history from backend
+  const [activities, setActivities] = useState<any[]>(propActivities || []);
+  const [loadingActivities, setLoadingActivities] = useState<boolean>(!propActivities);
 
-  // Demo fallback projects matching reference design if database is empty
-  const defaultReferenceProjects = useMemo(() => [
-    {
-      id: 'ref-proj-1',
-      title: 'Hostel Block 1 & 2',
-      location: 'Port Harcourt, Rivers State',
-      project_type: 'Building',
-      date: 'Sep 22, 2026',
-      status: 'Completed',
-      grand_total: 72000000,
-      image: HOSTEL_THUMB_IMG,
-    },
-    {
-      id: 'ref-proj-2',
-      title: '3 Bedroom Bungalow',
-      location: 'Port Harcourt',
-      project_type: 'Residential',
-      date: 'Sep 20, 2026',
-      status: 'In Progress',
-      grand_total: 38500000,
-      image: BUNGALOW_THUMB_IMG,
-    },
-    {
-      id: 'ref-proj-3',
-      title: 'Community Clinic',
-      location: 'Rivers State',
-      project_type: 'Healthcare',
-      date: 'Sep 17, 2026',
-      status: 'Draft',
-      grand_total: 26800000,
-      image: CLINIC_THUMB_IMG,
-    },
-    {
-      id: 'ref-proj-4',
-      title: 'Oando Maintenance',
-      location: 'Tebidaba Flowstation',
-      project_type: 'Industrial',
-      date: 'Sep 14, 2026',
-      status: 'In Progress',
-      grand_total: 52400000,
-      image: null,
-    },
-    {
-      id: 'ref-proj-5',
-      title: 'Warehouse Project',
-      location: 'Port Harcourt',
-      project_type: 'Commercial',
-      date: 'Sep 10, 2026',
-      status: 'Completed',
-      grand_total: 41300000,
-      image: null,
-    },
-  ], []);
-
-  // Merge real user projects with reference defaults if needed
-  const displayProjects = useMemo(() => {
-    if (projects.length > 0) {
-      return projects.map((p, idx) => ({
-        id: p.id,
-        title: p.title,
-        location: p.location || 'Nigeria',
-        project_type: p.project_type || (idx % 2 === 0 ? 'Residential' : 'Commercial'),
-        date: p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Sep 2026',
-        status: p.status || 'Draft',
-        grand_total: p.grand_total || 0,
-        image: p.image_url || p.cover_image_url || getProjectCoverImage(p, idx),
-        isReal: true
-      }));
+  useEffect(() => {
+    if (propActivities) {
+      setActivities(propActivities);
+      setLoadingActivities(false);
     }
-    return defaultReferenceProjects.map(p => ({ ...p, isReal: false }));
-  }, [projects, defaultReferenceProjects]);
+  }, [propActivities]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchActivities = async () => {
+      try {
+        setLoadingActivities(true);
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const { ok, data } = await safeFetchJson<{ activities: any[] }>('/api/activities', { headers });
+        if (isMounted && ok && Array.isArray(data?.activities)) {
+          setActivities(data.activities);
+        }
+      } catch (err) {
+        console.error('Failed to load user activities:', err);
+      } finally {
+        if (isMounted) setLoadingActivities(false);
+      }
+    };
+    fetchActivities();
+    return () => { isMounted = false; };
+  }, [projects, token]);
+
+  // Relative time helper for real activities
+  const formatTimeAgo = (dateStr?: string) => {
+    if (!dateStr) return 'Recently';
+    const past = new Date(dateStr).getTime();
+    if (isNaN(past)) return 'Recently';
+    const now = Date.now();
+    const diffSec = Math.max(0, Math.floor((now - past) / 1000));
+    if (diffSec < 60) return 'Just now';
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHours = Math.floor(diffMin / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 30) return `${diffDays}d ago`;
+    return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Real projects list (no fake mock fallbacks)
+  const displayProjects = useMemo(() => {
+    return projects.map((p, idx) => ({
+      id: p.id,
+      title: p.title,
+      location: p.location || 'Nigeria',
+      project_type: p.project_type || 'Building',
+      date: p.created_at ? new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+      status: p.status || 'Draft',
+      grand_total: p.grand_total || 0,
+      image: p.image_url || p.cover_image_url || getProjectCoverImage(p, idx),
+      isReal: true
+    }));
+  }, [projects]);
 
   // Filter projects by search query and status filter
   const filteredProjects = useMemo(() => {
@@ -169,23 +160,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     });
   }, [displayProjects, projectSearch, statusFilter]);
 
-  // Key KPI values matching reference design with live fallbacks
-  const totalProjectsCount = projects.length > 0 ? projects.length : 8;
-  const boqsGeneratedCount = projects.length > 0 ? Math.max(projects.length - 2, 4) : 6;
-  const estimatesCreatedCount = projects.length > 0 ? projects.length + 2 : 10;
-  const totalPortfolioValue = projects.length > 0 
-    ? projects.reduce((acc, p) => acc + (p.grand_total || 0), 0) || 248500000 
-    : 248500000;
+  // Real KPI values based on user's actual projects
+  const totalProjectsCount = projects.length;
+  const boqsGeneratedCount = projects.filter(p => (p.items && p.items.length > 0) || p.status === 'Submitted' || p.status === 'Approved').length;
+  const estimatesCreatedCount = projects.filter(p => (p.grand_total || 0) > 0).length;
+  const totalPortfolioValue = projects.reduce((acc, p) => acc + (p.grand_total || 0), 0);
 
-  const toggleTask = (taskId: string) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, done: !t.done } : t));
-  };
+  // Display only genuine activity records from backend audit log (no made-up or synthetic entries)
+  const displayedActivities = useMemo(() => {
+    if (activities && activities.length > 0) {
+      return activities.slice(0, 8).map((a) => ({
+        id: a.id || `act-${Math.random()}`,
+        action: a.action || 'Activity Recorded',
+        title: a.project_title ? `${a.action}: ${a.project_title}` : a.action,
+        subtitle: a.details || 'Project details updated',
+        time: formatTimeAgo(a.created_at),
+        type: (a.action || '').toLowerCase()
+      }));
+    }
+    // Return empty array so the genuine empty state is displayed when there are no logged activities
+    return [];
+  }, [activities]);
 
   const handleRowClick = (project: any) => {
-    if (project.isReal) {
+    if (project.id) {
       onOpenProject(project.id);
-    } else {
-      onNewProject();
     }
   };
 
@@ -221,7 +220,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   };
 
-  const firstName = (user?.full_name || 'Isaac').split(' ')[0];
+  const userGreetingName = user?.full_name?.trim()
+    ? user.full_name.trim().split(' ')[0]
+    : (user?.email ? user.email.split('@')[0] : '');
 
   return (
     <div id="redesigned-dashboard" className="space-y-6 max-w-[1400px] mx-auto pb-12">
@@ -246,7 +247,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         <div className="relative z-10 max-w-xl">
           {/* Pill Badge */}
           <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-100/90 text-emerald-900 border border-emerald-300 text-xs font-bold mb-3 shadow-2xs">
-            <span>Welcome back, {firstName}</span>
+            <span>{userGreetingName ? `Welcome back, ${userGreetingName}` : "Welcome to Let's Estimate"}</span>
             <span role="img" aria-label="leaf">🍃</span>
           </div>
 
@@ -339,12 +340,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-2xl font-black text-slate-900 font-mono">
               {totalProjectsCount}
             </span>
-            <span className="text-[11px] font-bold text-emerald-600 flex items-center">
-              ↑ 33%
+            <span className="text-[11px] font-bold text-slate-500 flex items-center">
+              {totalProjectsCount > 0 ? `${totalProjectsCount} active` : '0 active'}
             </span>
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">
-            vs. last 30 days
+            {totalProjectsCount > 0 ? 'In your workspace' : 'Create your first project'}
           </span>
         </div>
 
@@ -360,12 +361,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-2xl font-black text-slate-900 font-mono">
               {boqsGeneratedCount}
             </span>
-            <span className="text-[11px] font-bold text-emerald-600 flex items-center">
-              ↑ 50%
+            <span className="text-[11px] font-bold text-slate-500 flex items-center">
+              {boqsGeneratedCount > 0 ? 'Priced' : '0 generated'}
             </span>
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">
-            vs. last 30 days
+            {boqsGeneratedCount > 0 ? 'Ready for export' : 'Automated BESMM bills'}
           </span>
         </div>
 
@@ -381,12 +382,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-2xl font-black text-slate-900 font-mono">
               {estimatesCreatedCount}
             </span>
-            <span className="text-[11px] font-bold text-emerald-600 flex items-center">
-              ↑ 67%
+            <span className="text-[11px] font-bold text-slate-500 flex items-center">
+              {estimatesCreatedCount > 0 ? 'Costed' : '0 costed'}
             </span>
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">
-            vs. last 30 days
+            {estimatesCreatedCount > 0 ? 'With market rates' : 'Market rates & takeoff'}
           </span>
         </div>
 
@@ -402,12 +403,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <span className="text-xl sm:text-2xl font-black text-slate-900 font-mono truncate" title={formatNaira(totalPortfolioValue)}>
               {formatNaira(totalPortfolioValue)}
             </span>
-            <span className="text-[11px] font-bold text-emerald-600 shrink-0">
-              ↑ 45%
-            </span>
+            {totalPortfolioValue > 0 && (
+              <span className="text-[11px] font-bold text-emerald-600 shrink-0">
+                Portfolio
+              </span>
+            )}
           </div>
           <span className="text-[11px] text-slate-400 mt-1 block">
-            vs. last 30 days
+            {totalPortfolioValue > 0 ? 'Total pipeline value' : 'Cumulative project value'}
           </span>
         </div>
 
@@ -423,32 +426,40 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         {/* ======================================================================= */}
         <div className="lg:col-span-8 space-y-6">
           
-          {/* A. PROJECT OVERVIEW CHART & MONTHLY GOAL ROW */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
-            
-            {/* Project Overview Chart Card (md:col-span-8) */}
-            <div className="md:col-span-8 bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-sm font-bold text-slate-900">Project Overview</h2>
-                    <p className="text-[11px] text-slate-500 mt-0.5">Your estimating activity over the last 6 months</p>
-                  </div>
-                  <div className="flex items-center space-x-3 text-[11px]">
-                    <span className="flex items-center space-x-1.5 text-slate-600 font-medium">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span>Value (₦)</span>
-                    </span>
-                    <span className="flex items-center space-x-1.5 text-slate-400 font-medium">
-                      <span className="w-2 h-2 rounded-full bg-slate-300" />
-                      <span>Projects</span>
-                    </span>
-                  </div>
+          {/* A. PROJECT OVERVIEW CHART */}
+          <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Project Overview</h2>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Your estimating activity over the last 6 months</p>
                 </div>
+                <div className="flex items-center space-x-3 text-[11px]">
+                  <span className="flex items-center space-x-1.5 text-slate-600 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span>Value (₦)</span>
+                  </span>
+                  <span className="flex items-center space-x-1.5 text-slate-400 font-medium">
+                    <span className="w-2 h-2 rounded-full bg-slate-300" />
+                    <span>Projects</span>
+                  </span>
+                </div>
+              </div>
 
-                {/* SVG Area / Line Chart with smooth curve */}
-                <div className="mt-4 h-48 w-full relative">
-                  <svg viewBox="0 0 450 160" className="w-full h-full overflow-visible">
+              {/* SVG Area / Line Chart with smooth curve */}
+              <div className="mt-4 h-48 w-full relative flex items-center justify-center">
+                {projects.length === 0 ? (
+                  <div className="text-center p-6">
+                    <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center mx-auto mb-2 text-emerald-600">
+                      <TrendingUp className="w-5 h-5" />
+                    </div>
+                    <p className="text-xs font-bold text-slate-700">No project activity recorded yet</p>
+                    <p className="text-[11px] text-slate-400 mt-1 max-w-xs mx-auto leading-relaxed">
+                      Your monthly estimating volume and valuation trends will plot here as you create projects.
+                    </p>
+                  </div>
+                ) : (
+                  <svg viewBox="0 0 650 160" preserveAspectRatio="none" className="w-full h-full overflow-visible">
                     <defs>
                       <linearGradient id="chartEmeraldGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#10b981" stopOpacity="0.25" />
@@ -457,10 +468,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </defs>
 
                     {/* Horizontal grid lines */}
-                    <line x1="30" y1="20" x2="440" y2="20" stroke="#f1f5f9" strokeDasharray="3 3" />
-                    <line x1="30" y1="55" x2="440" y2="55" stroke="#f1f5f9" strokeDasharray="3 3" />
-                    <line x1="30" y1="90" x2="440" y2="90" stroke="#f1f5f9" strokeDasharray="3 3" />
-                    <line x1="30" y1="125" x2="440" y2="125" stroke="#f1f5f9" />
+                    <line x1="30" y1="20" x2="640" y2="20" stroke="#f1f5f9" strokeDasharray="3 3" />
+                    <line x1="30" y1="55" x2="640" y2="55" stroke="#f1f5f9" strokeDasharray="3 3" />
+                    <line x1="30" y1="90" x2="640" y2="90" stroke="#f1f5f9" strokeDasharray="3 3" />
+                    <line x1="30" y1="125" x2="640" y2="125" stroke="#f1f5f9" />
 
                     {/* Y-Axis Labels */}
                     <text x="5" y="24" fill="#94a3b8" fontSize="10" fontFamily="monospace">8M</text>
@@ -470,13 +481,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                     {/* Area fill under curve */}
                     <path
-                      d="M 50 120 C 110 110, 160 90, 220 85 C 280 80, 330 65, 380 62 L 430 45 L 430 135 L 50 135 Z"
+                      d="M 50 120 C 140 110, 220 90, 310 85 C 400 80, 480 65, 550 62 L 630 45 L 630 135 L 50 135 Z"
                       fill="url(#chartEmeraldGrad)"
                     />
 
                     {/* Main Line with smooth curve */}
                     <path
-                      d="M 50 120 C 110 110, 160 90, 220 85 C 280 80, 330 65, 380 62 L 430 45"
+                      d="M 50 120 C 140 110, 220 90, 310 85 C 400 80, 480 65, 550 62 L 630 45"
                       fill="none"
                       stroke="#059669"
                       strokeWidth="2.5"
@@ -485,81 +496,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
                     {/* Data Points on curve */}
                     <circle cx="50" cy="120" r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
-                    <circle cx="130" cy="105" r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
-                    <circle cx="210" cy="86" r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
-                    <circle cx="290" cy="80" r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
-                    <circle cx="370" cy="63" r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
-                    <circle cx="430" cy="45" r="4.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx="166" cy="105" r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx="282" cy="86" r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx="398" cy="80" r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx="514" cy="63" r="3.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
+                    <circle cx="630" cy="45" r="4.5" fill="#059669" stroke="#ffffff" strokeWidth="2" />
                   </svg>
-                </div>
-              </div>
-
-              {/* X-Axis Month Labels */}
-              <div className="flex justify-between px-8 text-[11px] text-slate-500 font-medium pt-1">
-                <span>Apr</span>
-                <span>May</span>
-                <span>Jun</span>
-                <span>Jul</span>
-                <span>Aug</span>
-                <span>Sep</span>
+                )}
               </div>
             </div>
 
-            {/* Monthly Goal Card (md:col-span-4) */}
-            <div className="md:col-span-4 bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs flex flex-col justify-between items-center text-center">
-              <div className="w-full text-left">
-                <div className="flex items-center space-x-1.5 text-slate-900 font-bold text-xs">
-                  <Award className="w-4 h-4 text-emerald-600" />
-                  <span>Monthly Goal</span>
-                </div>
-              </div>
-
-              {/* Circular Gauge Ring */}
-              <div className="my-auto py-2 relative flex items-center justify-center">
-                <svg className="w-32 h-32 transform -rotate-90">
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="52"
-                    stroke="#f1f5f9"
-                    strokeWidth="10"
-                    fill="transparent"
-                  />
-                  <circle
-                    cx="64"
-                    cy="64"
-                    r="52"
-                    stroke="#059669"
-                    strokeWidth="10"
-                    strokeDasharray={326}
-                    strokeDashoffset={326 * (1 - 0.49)}
-                    strokeLinecap="round"
-                    fill="transparent"
-                  />
-                </svg>
-                
-                {/* Center Content in Gauge */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                  <span className="text-xs font-black text-slate-900 font-mono">
-                    ₦248.5M
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-medium">
-                    of ₦500M
-                  </span>
-                </div>
-              </div>
-
-              {/* Progress Summary */}
-              <div className="w-full pt-1">
-                <span className="text-xl font-black text-slate-900">
-                  49%
-                </span>
-                <span className="text-[11px] font-bold text-emerald-600 block mt-0.5">
-                  ↑ 12% vs last month
-                </span>
-              </div>
+            {/* X-Axis Month Labels */}
+            <div className="flex justify-between px-8 text-[11px] text-slate-500 font-medium pt-3">
+              <span>Apr</span>
+              <span>May</span>
+              <span>Jun</span>
+              <span>Jul</span>
+              <span>Aug</span>
+              <span>Sep</span>
             </div>
-
           </div>
 
           {/* B. QUICK ACTIONS: Create Estimate, BTL Estimator, AI Plan to BOQ, Market Rates, Suppliers, My BOQs, Certificates */}
@@ -792,8 +747,50 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {filteredProjects.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400">
-                        No projects match your filter.
+                      <td colSpan={6} className="py-12 px-4 text-center">
+                        {projects.length === 0 ? (
+                          <div className="max-w-md mx-auto flex flex-col items-center">
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center mb-3 border border-emerald-100 shadow-2xs">
+                              <FolderPlus className="w-6 h-6 text-emerald-700" />
+                            </div>
+                            <h3 className="text-sm font-bold text-slate-800">No projects created yet</h3>
+                            <p className="text-xs text-slate-500 mt-1 mb-4 leading-relaxed max-w-sm">
+                              Your workspace is ready. Create your first project estimate or upload an architectural drawing to start takeoffs and BOQs.
+                            </p>
+                            <div className="flex flex-wrap items-center justify-center gap-2.5">
+                              <button
+                                type="button"
+                                onClick={onNewProject}
+                                className="px-4 py-2 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white text-xs font-bold inline-flex items-center space-x-1.5 shadow-sm transition cursor-pointer active:scale-95"
+                              >
+                                <Plus className="w-4 h-4" />
+                                <span>Create New Project</span>
+                              </button>
+                              {onAiTakeoff && (
+                                <button
+                                  type="button"
+                                  onClick={onAiTakeoff}
+                                  className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold inline-flex items-center space-x-1.5 transition cursor-pointer active:scale-95"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                                  <span>AI Plan Takeoff</span>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="py-6 text-center">
+                            <p className="font-semibold text-slate-700 text-xs">No projects match your filter.</p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Try clearing your search query or resetting the status dropdown.</p>
+                            <button
+                              type="button"
+                              onClick={() => { setProjectSearch(''); setStatusFilter('all'); }}
+                              className="mt-2 text-xs font-bold text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                            >
+                              Reset filters
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ) : (
@@ -933,144 +930,58 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
 
             <div className="space-y-3.5 text-xs">
-              
-              {/* Event 1 */}
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900 leading-snug">
-                    BOQ generated for Hostel Block 1 &amp; 2
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    750 m² • 2 Storey
-                  </p>
-                </div>
-                <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
-                  2h ago
-                </span>
-              </div>
-
-              {/* Event 2 */}
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 mt-0.5">
-                  <Calculator className="w-4 h-4 text-teal-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900 leading-snug">
-                    Estimate created for Oando Maintenance
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Tebidaba Flowstation
-                  </p>
-                </div>
-                <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
-                  4h ago
-                </span>
-              </div>
-
-              {/* Event 3 */}
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                  <Building2 className="w-4 h-4 text-amber-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900 leading-snug">
-                    Project &ldquo;3 Bedroom Bungalow&rdquo; updated
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Rates and quantities edited
-                  </p>
-                </div>
-                <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
-                  6h ago
-                </span>
-              </div>
-
-              {/* Event 4 */}
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-700 flex items-center justify-center shrink-0 mt-0.5">
-                  <Award className="w-4 h-4 text-purple-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900 leading-snug">
-                    Certificate of Completion issued
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Project: Community Clinic
-                  </p>
-                </div>
-                <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
-                  8h ago
-                </span>
-              </div>
-
-              {/* Event 5 */}
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center shrink-0 mt-0.5">
-                  <ShieldCheck className="w-4 h-4 text-blue-600" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-slate-900 leading-snug">
-                    New user registered
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5 truncate">
-                    {user?.email || 'example@gmail.com'}
-                  </p>
-                </div>
-                <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
-                  12h ago
-                </span>
-              </div>
-
-            </div>
-          </div>
-
-          {/* 2. UPCOMING TASKS CARD */}
-          <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
-              <h2 className="text-sm font-bold text-slate-900">Upcoming Tasks</h2>
-              <button 
-                type="button"
-                onClick={() => onNavigate('controls')}
-                className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 cursor-pointer"
-              >
-                View all
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              {tasks.map(task => (
-                <div 
-                  key={task.id}
-                  onClick={() => toggleTask(task.id)}
-                  className="flex items-start space-x-3 p-1.5 rounded-lg hover:bg-slate-50 cursor-pointer transition"
-                >
-                  <button
-                    type="button"
-                    className={`w-4 h-4 rounded-full border shrink-0 mt-0.5 flex items-center justify-center transition-colors ${
-                      task.done 
-                        ? 'bg-emerald-600 border-emerald-600 text-white' 
-                        : 'border-slate-400 hover:border-slate-600'
-                    }`}
-                  >
-                    {task.done && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-semibold text-slate-800 leading-snug ${task.done ? 'line-through text-slate-400' : ''}`}>
-                      {task.title}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {task.date}
-                    </p>
+              {displayedActivities.length === 0 ? (
+                <div className="py-6 text-center text-slate-400">
+                  <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2 text-slate-400">
+                    <Clock className="w-4 h-4" />
                   </div>
+                  <p className="font-bold text-slate-700 text-xs">No recent activity yet</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5 max-w-[200px] mx-auto leading-relaxed">
+                    Your project updates, takeoffs, and BOQ actions will appear here in real time.
+                  </p>
                 </div>
-              ))}
+              ) : (
+                displayedActivities.map((act) => {
+                  const type = act.type || '';
+                  const isBoq = type.includes('boq') || type.includes('estimate') || type.includes('version');
+                  const isVal = type.includes('valuation') || type.includes('variation');
+                  const isAuth = type.includes('auth') || type.includes('login') || type.includes('registered') || type.includes('user') || type.includes('active');
+                  const isCert = type.includes('cert') || type.includes('approved');
+
+                  return (
+                    <div key={act.id} className="flex items-start space-x-3">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                        isBoq ? 'bg-emerald-50 text-emerald-700' :
+                        isVal ? 'bg-teal-50 text-teal-700' :
+                        isAuth ? 'bg-blue-50 text-blue-700' :
+                        isCert ? 'bg-purple-50 text-purple-700' :
+                        'bg-slate-100 text-slate-700'
+                      }`}>
+                        {isBoq && <FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
+                        {isVal && <Calculator className="w-4 h-4 text-teal-600" />}
+                        {isAuth && <ShieldCheck className="w-4 h-4 text-blue-600" />}
+                        {isCert && <Award className="w-4 h-4 text-purple-600" />}
+                        {!isBoq && !isVal && !isAuth && !isCert && <Building2 className="w-4 h-4 text-slate-600" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-slate-900 leading-snug truncate">
+                          {act.title}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                          {act.subtitle}
+                        </p>
+                      </div>
+                      <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
+                        {act.time}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
-          {/* 3. NEED HELP WITH A PROJECT? (Support / Help Panel) */}
+          {/* 2. NEED HELP WITH A PROJECT? (Support / Help Panel) */}
           <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-[#12232f] via-[#102a3a] to-[#0c1f2b] p-5 text-white shadow-md">
             
             {/* Hardhat / Blueprint Imagery on Right */}

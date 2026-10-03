@@ -11,7 +11,7 @@
  */
 
 import { GoogleGenAI } from '@google/genai';
-import { generateDynamicTakeoffItems as generateDynamicTakeoffItemsBESMM4 } from './dynamicTakeoff';
+import { generateDynamicTakeoffItems as generateDynamicTakeoffItemsBESMM4 } from './dynamicTakeoff.js';
 
 export interface TakeoffItem {
   section?: string;

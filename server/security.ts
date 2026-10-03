@@ -3,8 +3,8 @@
  * Rate limiting, project ownership verification, and subscription entitlement checks.
  */
 
-import { Request, Response, NextFunction } from 'express';
-import { AuthRequest } from './auth.js';
+import type { Request, Response, NextFunction } from 'express';
+import type { AuthRequest } from './auth.js';
 import { getProjectById, getUserSubscriptionInfo, consumeBoqCredit } from './db.js';
 
 interface RateLimitEntry {

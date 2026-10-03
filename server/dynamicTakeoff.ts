@@ -1,4 +1,4 @@
-import { TakeoffItem } from './ai';
+import type { TakeoffItem } from './ai.js';
 
 /**
  * Regional rate multipliers relative to Lagos benchmark (1.00)

@@ -1057,6 +1057,10 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               setTakeoffEngine('manual');
               setActiveTab('takeoff');
             }}
+            onOpenBtlEstimator={() => {
+              setTakeoffEngine('btl');
+              setActiveTab('takeoff');
+            }}
           />
         </div>
       )}
@@ -1183,6 +1187,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               questionnaire={localQuestionnaire}
               onOpenQuestionnaire={() => setActiveTab('questionnaire')}
               onOpenManualTakeoff={() => setTakeoffEngine('manual')}
+              onOpenBtlEstimator={() => setTakeoffEngine('btl')}
             />
           )}
         </div>

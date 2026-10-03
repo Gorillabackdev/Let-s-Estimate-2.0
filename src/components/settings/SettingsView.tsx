@@ -65,7 +65,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onOpenSubscriptionMo
                   <label className="font-bold text-slate-700 block mb-1">Lead QS Name</label>
                   <input
                     type="text"
-                    defaultValue={user?.full_name || 'Isaac Emmanuel'}
+                    defaultValue={user?.full_name || ''}
+                    placeholder="Enter your full name"
                     className="w-full px-3 py-2 bg-slate-50 rounded-lg border border-slate-200 font-semibold"
                   />
                 </div>

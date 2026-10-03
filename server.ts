@@ -3,7 +3,8 @@
  * Handles AI Vision Takeoff, SQLite CRUD, and Excel/PDF Exports
  */
 
-import express, { Request, Response } from 'express';
+import express from 'express';
+import type { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
@@ -88,19 +89,33 @@ import {
   requireAdmin,
   optionalAuth, 
   ensureDefaultUser, 
-  MASTER_ADMIN_KEY,
-  AuthRequest 
+  MASTER_ADMIN_KEY
 } from './server/auth.js';
+import type { AuthRequest } from './server/auth.js';
 import { performAiTakeoff, estimateFromDescription, analyzeBoqItems, auditValueEngineeringAndRisks } from './server/ai.js';
 import { runDrawingTakeoffPipeline } from './server/takeoffPipeline.js';
-import { generateExcelBuffer, generatePdfBuffer, generateUserGuidePdfBuffer, calculateMaterialRequirements, ExportData } from './server/export.js';
+import { generateExcelBuffer, generatePdfBuffer, generateUserGuidePdfBuffer, calculateMaterialRequirements } from './server/export.js';
+import type { ExportData } from './server/export.js';
 import { getRateLibrary, getUserCustomRates, saveUserCustomRate, deleteUserCustomRate, updateUserCustomRate } from './server/rates.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from './server/email.js';
+import {
+  firestoreSaveUser,
+  firestoreUpdateUser,
+  firestoreDeleteUser,
+  syncUsersWithFirestore,
+  firestoreSavePayment,
+  firestoreUpdatePayment,
+} from './server/firestore.js';
 
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+
+// Parse command-line args for port or default to 3000 (do not bind to nginx container port 8080)
+const cliArgs = process.argv.slice(2);
+const portFlagIndex = cliArgs.indexOf('--port');
+const cliPort = portFlagIndex !== -1 && cliArgs[portFlagIndex + 1] ? Number(cliArgs[portFlagIndex + 1]) : null;
+const PORT = cliPort || (process.env.PORT && process.env.PORT !== '8080' ? Number(process.env.PORT) : 3000);
 
 // Set up Multer for handling architectural drawing uploads (.jpg, .png, .pdf)
 const upload = multer({
@@ -233,7 +248,6 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
 
     const { hash, salt } = hashPassword(password);
     const userId = 'usr-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
-    const verificationToken = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit verification code
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30-day free trial
     const licenseKey = 'QS-TRIAL-' + Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -259,8 +273,8 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
         state,
         currency,
         measurement_system,
-        verificationToken,
-        0, // initially unverified
+        '',
+        1, // Instantly verified upon registration
         cleanEmail === 'emmanuelisaac888@gmail.com' ? 'superadmin' : 'Owner',
         company_type,
         'active', // active access by default with trial
@@ -273,23 +287,61 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     );
     saveDbToDisk();
 
+    // Persist to Cloud Firestore so user exists across preview and dev containers
+    await firestoreSaveUser({
+      id: userId,
+      email: cleanEmail,
+      email_lower: cleanEmail,
+      password_hash: hash,
+      salt,
+      full_name: full_name.trim(),
+      phone: phone.trim(),
+      profession,
+      company: company.trim(),
+      job_title: job_title.trim(),
+      country,
+      state,
+      currency,
+      measurement_system,
+      verification_token: '',
+      email_verified: 1, // Instantly verified upon registration
+      role: cleanEmail === 'emmanuelisaac888@gmail.com' ? 'superadmin' : 'Owner',
+      company_type,
+      access_status: 'active',
+      subscription_tier: 'free_trial',
+      subscription_status: 'active',
+      subscription_expires_at: expiresAt,
+      boq_credits: 5,
+      license_key: licenseKey,
+      can_ai_takeoff: 1,
+      can_valuations: 1,
+      can_variations: 1,
+      can_export_pdf_excel: 1,
+      can_rates_library: 1,
+      can_team_collab: 1,
+      max_projects: 10,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
     const user = await getUserById(userId);
     const ip = req.ip || (req.headers['x-forwarded-for'] as string) || '';
     const userAgent = req.headers['user-agent'] || '';
     const token = await createSession(userId, userAgent, ip);
     await recordLogin(userId, ip, userAgent, 'success');
-
-    // Asynchronously dispatch real email via Nodemailer
-    sendVerificationEmail(cleanEmail, full_name.trim(), verificationToken).catch(err => {
-      console.warn('Background email dispatch warning:', err?.message || err);
-    });
+    await recordActivity(
+      'account',
+      userId,
+      user?.full_name || 'New Estimator',
+      'Account Registered',
+      `Welcome to Let's Estimate! Free Trial Activated (${cleanEmail})`
+    );
 
     res.status(201).json({
       success: true,
-      message: 'Account created successfully. A 6-digit verification code has been sent to your email.',
+      message: 'Account created successfully! Welcome to Let\'s Estimate.',
       token,
-      user,
-      verificationCode: verificationToken // included so preview/testing users are never blocked
+      user
     });
   } catch (error: any) {
     console.error('Registration error:', error);
@@ -326,6 +378,13 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
 
     const token = await createSession(userRecord.id, userAgent, ip);
     await recordLogin(userRecord.id, ip, userAgent, 'success');
+    await recordActivity(
+      'account',
+      userRecord.id,
+      userRecord.full_name || 'Estimator',
+      'User Signed In',
+      `Signed in successfully (${cleanEmail})`
+    );
     const user = await getUserById(userRecord.id);
 
     res.json({
@@ -380,6 +439,29 @@ app.post('/api/auth/google', async (req: Request, res: Response) => {
         ]
       );
       saveDbToDisk();
+
+      await firestoreSaveUser({
+        id: userId,
+        email: cleanEmail,
+        email_lower: cleanEmail,
+        password_hash: hash,
+        salt,
+        full_name: name || 'Google User',
+        avatar_url: avatarUrl || '',
+        email_verified: 1,
+        role: 'Owner',
+        country: 'Nigeria',
+        state: 'Lagos',
+        currency: 'NGN',
+        profession: 'Quantity Surveyor',
+        access_status: 'active',
+        subscription_tier: 'free_trial',
+        subscription_status: 'active',
+        boq_credits: 5,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
       userRecord = (await getUserByEmail(cleanEmail))!;
     }
 
@@ -743,6 +825,7 @@ app.post('/api/auth/delete-account', requireAuth, async (req: AuthRequest, res: 
 app.get('/api/admin/overview', requireAdmin, async (_req: AuthRequest, res: Response) => {
   try {
     const database = await getDb();
+    await syncUsersWithFirestore(database);
     
     // User metrics
     const userStats = database.exec(`
@@ -836,10 +919,29 @@ app.get('/api/admin/overview', requireAdmin, async (_req: AuthRequest, res: Resp
   }
 });
 
-// B. Super Admin: List All Registered Users with Full Details
+// A2. Super Admin: Force Manual Bi-directional Sync with Persistent Firestore
+app.post('/api/admin/sync', requireAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const database = await getDb();
+    const result = await syncUsersWithFirestore(database);
+    res.json({
+      success: true,
+      message: `Database synchronization complete: pulled ${result.pulled} users from Firestore, pushed ${result.pushed} users to Firestore.`,
+      result
+    });
+  } catch (error: any) {
+    console.error('Manual admin sync error:', error);
+    res.status(500).json({ error: 'Manual database sync failed: ' + error.message });
+  }
+});
+
+/// B. Super Admin: List All Registered Users with Full Details
 app.get('/api/admin/users', requireAdmin, async (_req: AuthRequest, res: Response) => {
   try {
     const database = await getDb();
+    // Sync with Cloud Firestore to fetch any users registered across preview, dev, or new instances
+    await syncUsersWithFirestore(database);
+
     const resUsers = database.exec(`
       SELECT 
         u.id, u.email, u.full_name, u.phone, u.profession, u.company, u.job_title,
@@ -895,6 +997,9 @@ app.put('/api/admin/users/:userId/access', requireAdmin, async (req: AuthRequest
     );
     saveDbToDisk();
 
+    // Propagate to Firestore
+    firestoreUpdateUser(userId, { access_status, admin_notes: admin_notes || '' }).catch(() => {});
+
     const user = await getUserById(userId);
     res.json({ success: true, message: `Access status updated to ${access_status}.`, user });
   } catch (error: any) {
@@ -928,6 +1033,14 @@ app.put('/api/admin/users/:userId/subscription', requireAdmin, async (req: AuthR
     );
     saveDbToDisk();
 
+    // Propagate to Firestore
+    firestoreUpdateUser(userId, {
+      subscription_tier: tier,
+      subscription_status: status,
+      subscription_expires_at: expiresAt,
+      boq_credits: boq_credits !== undefined ? boq_credits : 5
+    }).catch(() => {});
+
     const user = await getUserById(userId);
     res.json({ success: true, message: `Subscription plan updated successfully.`, user });
   } catch (error: any) {
@@ -942,6 +1055,10 @@ app.put('/api/admin/users/:userId/verify-email', requireAdmin, async (req: AuthR
     const database = await getDb();
     database.run(`UPDATE users SET email_verified = 1, verification_token = '', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [userId]);
     saveDbToDisk();
+
+    // Propagate to Firestore
+    firestoreUpdateUser(userId, { email_verified: 1, verification_token: '' }).catch(() => {});
+
     const user = await getUserById(userId);
     res.json({ success: true, message: 'User email manually verified by Administrator.', user });
   } catch (error: any) {
@@ -961,6 +1078,10 @@ app.put('/api/admin/users/:userId/role', requireAdmin, async (req: AuthRequest, 
     const database = await getDb();
     database.run(`UPDATE users SET role = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [role, userId]);
     saveDbToDisk();
+
+    // Propagate to Firestore
+    firestoreUpdateUser(userId, { role }).catch(() => {});
+
     const user = await getUserById(userId);
     res.json({ success: true, message: `User role changed to ${role}.`, user });
   } catch (error: any) {
@@ -982,6 +1103,10 @@ app.delete('/api/admin/users/:userId', requireAdmin, async (req: AuthRequest, re
     database.run(`DELETE FROM login_history WHERE user_id = ?`, [userId]);
     database.run(`DELETE FROM users WHERE id = ?`, [userId]);
     saveDbToDisk();
+
+    // Propagate deletion to Firestore
+    firestoreDeleteUser(userId).catch(() => {});
+
     res.json({ success: true, message: 'User account removed successfully.' });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to delete user: ' + error.message });
@@ -1500,6 +1625,17 @@ app.patch('/api/projects/:id/rename', optionalAuth, async (req: AuthRequest, res
     res.json({ success: true, project: updated, message: 'Project renamed successfully.' });
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to rename project: ' + error.message });
+  }
+});
+
+// 8.5 Get recent activities for current authenticated user or system
+app.get('/api/activities', optionalAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id || (req.query.user_id as string) || undefined;
+    const activities = await getProjectActivities(undefined, userId);
+    res.json({ success: true, activities });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to fetch user activities: ' + error.message });
   }
 });
 
@@ -2836,10 +2972,21 @@ async function startServer() {
   const database = await getDb();
   await ensureDefaultUser(database);
 
-  // Check if running in production mode or if built dist assets exist
+  // Ensure all registered accounts are marked verified and active (verification PIN code is removed)
+  database.run(`UPDATE users SET email_verified = 1 WHERE email_verified = 0`);
+  saveDbToDisk();
+
+  // Synchronize users with Firestore immediately on server boot
+  try {
+    const syncRes = await syncUsersWithFirestore(database);
+    console.log(`[Server Boot] Firestore user synchronization complete:`, syncRes);
+  } catch (syncErr) {
+    console.warn('[Server Boot] Initial Firestore user synchronization failed:', syncErr);
+  }
+
+  // Check if running in production mode
   const distPath = path.join(process.cwd(), 'dist');
-  const hasBuiltDist = fs.existsSync(path.join(distPath, 'index.html'));
-  const isProduction = process.env.NODE_ENV === 'production' || (hasBuiltDist && !process.env.VITE_DEV_SERVER);
+  const isProduction = process.env.NODE_ENV === 'production' || (fs.existsSync(path.join(distPath, 'index.html')) && process.env.npm_lifecycle_event !== 'dev');
 
   if (!isProduction) {
     const vite = await createViteServer({

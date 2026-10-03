@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { generateDynamicTakeoffItems as generateDynamicTakeoffItemsBESMM4 } from "./dynamicTakeoff";
+import { generateDynamicTakeoffItems as generateDynamicTakeoffItemsBESMM4 } from "./dynamicTakeoff.js";
 const REGIONAL_RATE_MULTIPLIERS = {
   "lagos": 1,
   "abuja": 1.08,

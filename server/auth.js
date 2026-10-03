@@ -1,5 +1,13 @@
 import crypto from "crypto";
-import { getDb, saveDbToDisk } from "./db";
+import { getDb, saveDbToDisk } from "./db.js";
+import {
+  firestoreGetUserByEmail,
+  firestoreGetUserById,
+  firestoreSaveSession,
+  firestoreGetSession,
+  firestoreDeleteSession,
+  firestoreDeleteAllUserSessions
+} from "./firestore.js";
 const MASTER_ADMIN_KEY = process.env.MASTER_ADMIN_KEY || "QS-MASTER-KEY-2026-EMMANUEL-ADMIN";
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -21,40 +29,169 @@ async function getUserByEmail(email) {
   const database = await getDb();
   const safeEmail = email.trim().toLowerCase().replace(/'/g, "''");
   const res = database.exec(`SELECT * FROM users WHERE LOWER(email) = '${safeEmail}'`);
-  if (res.length === 0 || res[0].values.length === 0) return null;
-  const cols = res[0].columns;
-  const row = res[0].values[0];
-  const userObj = {};
-  cols.forEach((col, idx) => {
-    userObj[col] = row[idx];
-  });
-  return userObj;
+  if (res.length > 0 && res[0].values.length > 0) {
+    const cols = res[0].columns;
+    const row = res[0].values[0];
+    const userObj = {};
+    cols.forEach((col, idx) => {
+      userObj[col] = row[idx];
+    });
+    return userObj;
+  }
+  try {
+    const firestoreUser = await firestoreGetUserByEmail(email);
+    if (firestoreUser) {
+      database.run(
+        `INSERT OR REPLACE INTO users (
+          id, email, password_hash, salt, full_name, phone, profession, company,
+          job_title, country, state, currency, measurement_system, avatar_url,
+          email_verified, verification_token, role, company_type, access_status,
+          subscription_tier, subscription_status, subscription_expires_at, boq_credits,
+          license_key, admin_notes, can_ai_takeoff, can_valuations, can_variations,
+          can_export_pdf_excel, can_rates_library, can_team_collab, max_projects,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          firestoreUser.id,
+          firestoreUser.email,
+          firestoreUser.password_hash || "",
+          firestoreUser.salt || "",
+          firestoreUser.full_name || "",
+          firestoreUser.phone || "",
+          firestoreUser.profession || "Quantity Surveyor",
+          firestoreUser.company || "",
+          firestoreUser.job_title || "Principal QS",
+          firestoreUser.country || "Nigeria",
+          firestoreUser.state || "Lagos",
+          firestoreUser.currency || "NGN",
+          firestoreUser.measurement_system || "Metric",
+          firestoreUser.avatar_url || "",
+          1,
+          // Verified
+          "",
+          firestoreUser.role || "Owner",
+          firestoreUser.company_type || "Individual",
+          firestoreUser.access_status || "active",
+          firestoreUser.subscription_tier || "free_trial",
+          firestoreUser.subscription_status || "active",
+          firestoreUser.subscription_expires_at || "",
+          firestoreUser.boq_credits !== void 0 ? firestoreUser.boq_credits : 5,
+          firestoreUser.license_key || "",
+          firestoreUser.admin_notes || "",
+          firestoreUser.can_ai_takeoff !== void 0 ? firestoreUser.can_ai_takeoff : 1,
+          firestoreUser.can_valuations !== void 0 ? firestoreUser.can_valuations : 1,
+          firestoreUser.can_variations !== void 0 ? firestoreUser.can_variations : 1,
+          firestoreUser.can_export_pdf_excel !== void 0 ? firestoreUser.can_export_pdf_excel : 1,
+          firestoreUser.can_rates_library !== void 0 ? firestoreUser.can_rates_library : 1,
+          firestoreUser.can_team_collab !== void 0 ? firestoreUser.can_team_collab : 1,
+          firestoreUser.max_projects !== void 0 ? firestoreUser.max_projects : 10,
+          firestoreUser.created_at || (/* @__PURE__ */ new Date()).toISOString(),
+          firestoreUser.updated_at || (/* @__PURE__ */ new Date()).toISOString()
+        ]
+      );
+      saveDbToDisk();
+      return firestoreUser;
+    }
+  } catch (err) {
+    console.warn("[Auth] Firestore getUserByEmail fallback error:", err);
+  }
+  return null;
 }
 async function getUserById(id) {
   const database = await getDb();
   const safeId = id.replace(/'/g, "''");
   const res = database.exec(`SELECT * FROM users WHERE id = '${safeId}'`);
-  if (res.length === 0 || res[0].values.length === 0) return null;
-  const cols = res[0].columns;
-  const row = res[0].values[0];
-  const userObj = {};
-  cols.forEach((col, idx) => {
-    if (col !== "password_hash" && col !== "salt") {
-      userObj[col] = row[idx];
+  if (res.length > 0 && res[0].values.length > 0) {
+    const cols = res[0].columns;
+    const row = res[0].values[0];
+    const userObj = {};
+    cols.forEach((col, idx) => {
+      if (col !== "password_hash" && col !== "salt") {
+        userObj[col] = row[idx];
+      }
+    });
+    return userObj;
+  }
+  try {
+    const firestoreUser = await firestoreGetUserById(id);
+    if (firestoreUser) {
+      database.run(
+        `INSERT OR REPLACE INTO users (
+          id, email, password_hash, salt, full_name, phone, profession, company,
+          job_title, country, state, currency, measurement_system, avatar_url,
+          email_verified, verification_token, role, company_type, access_status,
+          subscription_tier, subscription_status, subscription_expires_at, boq_credits,
+          license_key, admin_notes, can_ai_takeoff, can_valuations, can_variations,
+          can_export_pdf_excel, can_rates_library, can_team_collab, max_projects,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          firestoreUser.id,
+          firestoreUser.email,
+          firestoreUser.password_hash || "",
+          firestoreUser.salt || "",
+          firestoreUser.full_name || "",
+          firestoreUser.phone || "",
+          firestoreUser.profession || "Quantity Surveyor",
+          firestoreUser.company || "",
+          firestoreUser.job_title || "Principal QS",
+          firestoreUser.country || "Nigeria",
+          firestoreUser.state || "Lagos",
+          firestoreUser.currency || "NGN",
+          firestoreUser.measurement_system || "Metric",
+          firestoreUser.avatar_url || "",
+          1,
+          // Verified
+          "",
+          firestoreUser.role || "Owner",
+          firestoreUser.company_type || "Individual",
+          firestoreUser.access_status || "active",
+          firestoreUser.subscription_tier || "free_trial",
+          firestoreUser.subscription_status || "active",
+          firestoreUser.subscription_expires_at || "",
+          firestoreUser.boq_credits !== void 0 ? firestoreUser.boq_credits : 5,
+          firestoreUser.license_key || "",
+          firestoreUser.admin_notes || "",
+          firestoreUser.can_ai_takeoff !== void 0 ? firestoreUser.can_ai_takeoff : 1,
+          firestoreUser.can_valuations !== void 0 ? firestoreUser.can_valuations : 1,
+          firestoreUser.can_variations !== void 0 ? firestoreUser.can_variations : 1,
+          firestoreUser.can_export_pdf_excel !== void 0 ? firestoreUser.can_export_pdf_excel : 1,
+          firestoreUser.can_rates_library !== void 0 ? firestoreUser.can_rates_library : 1,
+          firestoreUser.can_team_collab !== void 0 ? firestoreUser.can_team_collab : 1,
+          firestoreUser.max_projects !== void 0 ? firestoreUser.max_projects : 10,
+          firestoreUser.created_at || (/* @__PURE__ */ new Date()).toISOString(),
+          firestoreUser.updated_at || (/* @__PURE__ */ new Date()).toISOString()
+        ]
+      );
+      saveDbToDisk();
+      const { password_hash, salt, ...safeUser } = firestoreUser;
+      return safeUser;
     }
-  });
-  return userObj;
+  } catch (err) {
+    console.warn("[Auth] Firestore getUserById fallback error:", err);
+  }
+  return null;
 }
 async function createSession(userId, userAgent = "", ipAddress = "") {
   const database = await getDb();
   const token = generateToken(32);
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3).toISOString();
+  const now = (/* @__PURE__ */ new Date()).toISOString();
   database.run(
     `INSERT INTO sessions (token, user_id, expires_at, user_agent, ip_address, last_active)
      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
     [token, userId, expiresAt, userAgent.slice(0, 255), ipAddress.slice(0, 64)]
   );
   saveDbToDisk();
+  firestoreSaveSession({
+    token,
+    user_id: userId,
+    created_at: now,
+    expires_at: expiresAt,
+    user_agent: userAgent.slice(0, 255),
+    ip_address: ipAddress.slice(0, 64),
+    last_active: now
+  }).catch((err) => console.warn("[Auth] Firestore save session error:", err));
   return token;
 }
 async function validateSession(token) {
@@ -62,19 +199,37 @@ async function validateSession(token) {
   const database = await getDb();
   const safeToken = token.replace(/'/g, "''");
   const res = database.exec(`SELECT * FROM sessions WHERE token = '${safeToken}' AND expires_at > CURRENT_TIMESTAMP`);
-  if (res.length === 0 || res[0].values.length === 0) return null;
-  const sessionRow = {};
-  res[0].columns.forEach((col, idx) => {
-    sessionRow[col] = res[0].values[0][idx];
-  });
-  database.run(`UPDATE sessions SET last_active = CURRENT_TIMESTAMP WHERE token = '${safeToken}'`);
-  return getUserById(sessionRow.user_id);
+  if (res.length > 0 && res[0].values.length > 0) {
+    const sessionRow = {};
+    res[0].columns.forEach((col, idx) => {
+      sessionRow[col] = res[0].values[0][idx];
+    });
+    database.run(`UPDATE sessions SET last_active = CURRENT_TIMESTAMP WHERE token = '${safeToken}'`);
+    return getUserById(sessionRow.user_id);
+  }
+  try {
+    const fsSession = await firestoreGetSession(token);
+    if (fsSession) {
+      database.run(
+        `INSERT OR REPLACE INTO sessions (token, user_id, expires_at, user_agent, ip_address, last_active)
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [fsSession.token, fsSession.user_id, fsSession.expires_at, fsSession.user_agent, fsSession.ip_address]
+      );
+      saveDbToDisk();
+      return getUserById(fsSession.user_id);
+    }
+  } catch (err) {
+    console.warn("[Auth] Firestore validateSession error:", err);
+  }
+  return null;
 }
 async function revokeSession(token) {
   const database = await getDb();
   const safeToken = token.replace(/'/g, "''");
   database.run(`DELETE FROM sessions WHERE token = '${safeToken}'`);
   saveDbToDisk();
+  firestoreDeleteSession(token).catch(() => {
+  });
   return true;
 }
 async function revokeAllUserSessions(userId) {
@@ -82,6 +237,8 @@ async function revokeAllUserSessions(userId) {
   const safeId = userId.replace(/'/g, "''");
   database.run(`DELETE FROM sessions WHERE user_id = '${safeId}'`);
   saveDbToDisk();
+  firestoreDeleteAllUserSessions(userId).catch(() => {
+  });
   return true;
 }
 async function recordLogin(userId, ipAddress = "", userAgent = "", status = "success") {

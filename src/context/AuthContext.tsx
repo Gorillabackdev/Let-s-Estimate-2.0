@@ -81,32 +81,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token, fetchCurrentUser]);
 
-  const saveAuthSession = (newToken: string, newUser: User) => {
+  const saveAuthSession = (newToken: string, newUser: User, closeModal = true) => {
     safeStorage.setItem(TOKEN_KEY, newToken);
     setToken(newToken);
     setUser(newUser);
-    setIsAuthModalOpen(false);
-    if (onSuccessCallback) {
-      try {
-        onSuccessCallback();
-      } catch (err) {
-        console.error('Error in onAuthSuccess callback:', err);
+    if (closeModal) {
+      setIsAuthModalOpen(false);
+      if (typeof window !== 'undefined') {
+        const currentHash = window.location.hash.toLowerCase();
+        if (currentHash.includes('register') || currentHash.includes('signup') || currentHash.includes('login')) {
+          window.location.hash = '#dashboard';
+        }
       }
-      setOnSuccessCallback(null);
+      if (onSuccessCallback) {
+        try {
+          onSuccessCallback();
+        } catch (err) {
+          console.error('Error in onAuthSuccess callback:', err);
+        }
+        setOnSuccessCallback(null);
+      }
     }
   };
 
   const login = async (email: string, password: string) => {
+    const cleanEmail = email.trim();
     const { ok, data, error } = await safeFetchJson<{ success: boolean; token: string; user: User; error?: string }>('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email: cleanEmail, password }),
     });
 
     if (!ok || !data?.success) {
       return { success: false, error: data?.error || error || 'Invalid credentials' };
     }
-    saveAuthSession(data.token, data.user);
+    saveAuthSession(data.token, data.user, true);
     return { success: true, user: data.user };
   };
 
@@ -114,28 +123,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { ok, data, error } = await safeFetchJson<{ success: boolean; token: string; user: User; error?: string }>('/api/auth/admin-key-login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ adminKey }),
+      body: JSON.stringify({ adminKey: adminKey.trim() }),
     });
 
     if (!ok || !data?.success) {
       return { success: false, error: data?.error || error || 'Master Admin Key authentication failed' };
     }
-    saveAuthSession(data.token, data.user);
+    saveAuthSession(data.token, data.user, true);
     return { success: true, user: data.user };
   };
 
   const register = async (userData: any) => {
+    const cleanEmail = (userData.email || '').trim();
+    const payload = { ...userData, email: cleanEmail };
     const { ok, data, error } = await safeFetchJson<{ success: boolean; token: string; user: User; verificationCode?: string; error?: string }>('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(userData),
+      body: JSON.stringify(payload),
     });
 
     if (!ok || !data?.success) {
       return { success: false, error: data?.error || error || 'Failed to create account' };
     }
-    saveAuthSession(data.token, data.user);
-    return { success: true, verificationCode: data.verificationCode };
+    // Save session and immediately close modal so the user enters their workspace directly
+    saveAuthSession(data.token, data.user, true);
+    return { success: true, user: data.user };
   };
 
   const verifyEmail = async (code: string, targetEmail?: string) => {
@@ -200,6 +212,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setStats(null);
     setIsProfileModalOpen(false);
+    if (typeof window !== 'undefined') {
+      window.location.hash = '#home';
+    }
   };
 
   const updateProfile = async (profileData: Partial<User>) => {

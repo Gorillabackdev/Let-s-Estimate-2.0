@@ -79,7 +79,7 @@ export const AdminLoginGateway: React.FC<AdminLoginGatewayProps> = ({
       const res = await login(email.trim(), password);
       setIsLoading(false);
       if (res.success) {
-        if (res.user?.role === 'superadmin' || res.user?.role === 'admin' || res.user?.email === 'emmanuelisaac888@gmail.com') {
+        if (res.user?.role === 'superadmin' || res.user?.role === 'admin' || res.user?.email?.toLowerCase() === 'emmanuelisaac888@gmail.com') {
           setSuccess('Administrator Authenticated. Loading Dashboard...');
           setTimeout(() => {
             onAdminAuthenticated();

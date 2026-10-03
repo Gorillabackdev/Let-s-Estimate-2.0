@@ -97,7 +97,11 @@ export const ProjectShareModal: React.FC<ProjectShareModalProps> = ({
 
   // Copy share URL
   const getShareUrl = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    if (typeof window === 'undefined') return '';
+    let origin = window.location.origin;
+    if (origin.includes('ais-dev-')) {
+      origin = origin.replace('ais-dev-', 'ais-pre-');
+    }
     return `${origin}/share/${shareToken || 'preview'}`;
   };
 

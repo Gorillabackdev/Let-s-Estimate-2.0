@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calculator, 
   Layers, 
@@ -44,18 +44,46 @@ interface CalculatorsHubViewProps {
   ) => Promise<void> | void;
   activeProject?: Project;
   projects?: Project[];
+  initialSubView?: string;
 }
 
 export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({ 
   onApplyToBoq, 
   onApplyBulkToBoq,
   activeProject,
-  projects = []
+  projects = [],
+  initialSubView
 }) => {
   const [viewMode, setViewMode] = useState<'btl_estimator' | 'measured_takeoff' | 'general_aids'>('btl_estimator');
   const [selectedCategory, setSelectedCategory] = useState<CalculatorCategory>('construction');
   const [activeCalcId, setActiveCalcId] = useState<string>('concrete_volume');
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!initialSubView) return;
+    if (initialSubView === 'btl' || initialSubView === 'btl_estimator') {
+      setViewMode('btl_estimator');
+    } else if (initialSubView === 'measured' || initialSubView === 'measured_takeoff') {
+      setViewMode('measured_takeoff');
+    } else if (initialSubView === 'budgeting' || initialSubView === 'outreach') {
+      setViewMode('general_aids');
+      setSelectedCategory('budgeting');
+    } else if (initialSubView === 'construction') {
+      setViewMode('general_aids');
+      setSelectedCategory('construction');
+    } else if (initialSubView === 'civil') {
+      setViewMode('general_aids');
+      setSelectedCategory('civil');
+    } else if (initialSubView === 'structural') {
+      setViewMode('general_aids');
+      setSelectedCategory('structural');
+    } else if (initialSubView === 'qs') {
+      setViewMode('general_aids');
+      setSelectedCategory('qs');
+    } else if (initialSubView === 'general_aids' || initialSubView === 'conversion') {
+      setViewMode('general_aids');
+    }
+  }, [initialSubView]);
 
   // Transfer to BOQ Modal state
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
@@ -554,7 +582,7 @@ export const CalculatorsHubView: React.FC<CalculatorsHubViewProps> = ({
             }`}
           >
             <Calculator className="w-3.5 h-3.5" />
-            <span>Conversion &amp; Outreach Aids</span>
+            <span>Conversion &amp; Aids</span>
           </button>
         </div>
       </div>

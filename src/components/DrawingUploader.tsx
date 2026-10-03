@@ -12,7 +12,11 @@ import {
   Building,
   Check,
   RotateCcw,
-  Ruler
+  Ruler,
+  AlertTriangle,
+  ArrowRight,
+  Calculator,
+  ShieldAlert
 } from 'lucide-react';
 import { ProjectQuestionnaire } from '../types';
 import { safeFetchJson } from '../utils/api';
@@ -24,6 +28,7 @@ interface DrawingUploaderProps {
   questionnaire?: ProjectQuestionnaire;
   onOpenQuestionnaire?: () => void;
   onOpenManualTakeoff?: () => void;
+  onOpenBtlEstimator?: () => void;
 }
 
 export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
@@ -33,6 +38,7 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
   questionnaire,
   onOpenQuestionnaire,
   onOpenManualTakeoff,
+  onOpenBtlEstimator,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -164,34 +170,59 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
         </div>
       </div>
 
-      {/* Project Parameters Preview Bar */}
-      {questionnaire && (
-        <div className="mb-5 bg-slate-50 rounded-xl p-3 sm:p-4 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center space-x-3 overflow-hidden">
+      {/* Top Advisory Note & Prominent Specifications Questionnaire */}
+      <div className="mb-5 rounded-xl bg-slate-50 border border-slate-200 p-3.5 sm:p-4 text-xs space-y-3">
+        {/* Note / Tip Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-start sm:items-center space-x-2.5">
+            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5 sm:mt-0" />
+            <p className="text-slate-600 leading-relaxed text-xs">
+              <span className="font-bold text-slate-800">Note:</span> AI-generated BOQs are preliminary and depend on details provided in the questionnaire. Please review your BOQ, and use the <span className="font-semibold text-emerald-800">BTL Estimator</span> for even better and more accurate results.
+            </p>
+          </div>
+          {onOpenBtlEstimator && (
+            <button
+              type="button"
+              onClick={onOpenBtlEstimator}
+              className="shrink-0 px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-200 transition cursor-pointer flex items-center space-x-1"
+            >
+              <span>Try BTL Estimator</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Prominent Questionnaire Access Bar */}
+        <div className="pt-2.5 border-t border-slate-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 bg-white/60 p-2.5 rounded-lg border border-slate-200/60">
+          <div className="flex items-center space-x-2.5 overflow-hidden">
             <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
               <Sliders className="w-4 h-4" />
             </div>
             <div className="text-xs">
               <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                <span>Active Specification:</span>
-                <span className="text-emerald-700 font-semibold">{questionnaire.general?.buildingType || 'Standard'} ({questionnaire.general?.numberOfFloors || 1} Floor)</span>
+                <span>Project Specs Questionnaire:</span>
+                <span className="text-emerald-700 font-semibold">
+                  {questionnaire?.general?.buildingType || 'Standard Building'} ({questionnaire?.general?.numberOfFloors || 1} Floor)
+                </span>
               </div>
-              <p className="text-slate-500 truncate max-w-lg mt-0.5">
-                {questionnaire.substructure?.foundationType} • {questionnaire.superstructure?.structuralSystem} • {questionnaire.roofing?.roofType}
+              <p className="text-slate-500 truncate max-w-md mt-0.5 text-[11px]">
+                {questionnaire?.substructure?.foundationType || 'Strip foundation'} • {questionnaire?.superstructure?.structuralSystem || 'Load-bearing masonry'} • {questionnaire?.roofing?.roofType || 'Timber roof'}
               </p>
             </div>
           </div>
 
           {onOpenQuestionnaire && (
             <button
+              type="button"
               onClick={onOpenQuestionnaire}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-emerald-700 transition-colors shrink-0 shadow-2xs"
+              className="text-xs font-bold px-3.5 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white transition-colors shrink-0 shadow-2xs flex items-center space-x-1.5 cursor-pointer"
             >
-              Adjust Specs Questionnaire
+              <Sliders className="w-3.5 h-3.5" />
+              <span>{questionnaire ? 'Review / Edit Specs Questionnaire' : 'Open Questionnaire'}</span>
             </button>
           )}
         </div>
-      )}
+      </div>
 
       {/* Hidden Native File Input */}
       <input

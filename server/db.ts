@@ -4,7 +4,7 @@
  * Persists to disk at `data/database.sqlite`.
  */
 
-import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
+import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import { SEED_PLANT_LABOUR_PRELIM_SUPPLIERS, DEFAULT_LIBRARY_RATES } from './defaultRatesData.js';
@@ -459,9 +459,11 @@ export function saveDbToDisk(): void {
  * "2-Storey 100-Room Hostel Port Harcourt"
  * Only seeded when the projects table is completely empty.
  */
-function seedSampleProject(database: Database): void {
-  // Only seed sample project if the projects table is completely empty
-  const checkAny = database.exec("SELECT COUNT(*) as count FROM projects");
+function seedSampleProject(_database: Database): void {
+  // Disabled: New users start with a clean, blank dashboard so they can add their own projects
+  return;
+  /*
+  const checkAny = _database.exec("SELECT COUNT(*) as count FROM projects");
   if (checkAny.length > 0 && checkAny[0].values.length > 0 && Number(checkAny[0].values[0][0]) > 0) {
     return; // Already has projects, do not re-seed or interfere
   }
@@ -747,6 +749,7 @@ function seedSampleProject(database: Database): void {
       ]
     );
   }
+  */
 }
 
 function parseProjectExtras(proj: any): ProjectRecord {
@@ -1102,13 +1105,18 @@ export async function recordActivity(projectId: string, userId: string, userName
  */
 export async function getProjectActivities(projectId?: string, userId?: string): Promise<any[]> {
   const database = await getDb();
-  let sql = 'SELECT * FROM project_activities';
+  let sql = `
+    SELECT pa.*, p.title as project_title 
+    FROM project_activities pa 
+    LEFT JOIN projects p ON pa.project_id = p.id
+  `;
   if (projectId) {
-    sql += ` WHERE project_id = '${projectId.replace(/'/g, "''")}'`;
-  } else if (userId) {
-    sql += ` WHERE user_id = '${userId.replace(/'/g, "''")}'`;
+    sql += ` WHERE pa.project_id = '${projectId.replace(/'/g, "''")}'`;
+  } else if (userId && userId !== 'ADMIN_ALL') {
+    const safeUser = userId.replace(/'/g, "''");
+    sql += ` WHERE (pa.user_id = '${safeUser}' OR p.user_id = '${safeUser}')`;
   }
-  sql += ' ORDER BY created_at DESC LIMIT 50';
+  sql += ' ORDER BY pa.created_at DESC LIMIT 50';
 
   const res = database.exec(sql);
   if (res.length === 0) return [];

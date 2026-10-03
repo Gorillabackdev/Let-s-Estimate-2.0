@@ -115,6 +115,7 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
   const [loginActivities, setLoginActivities] = useState<LoginActivity[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -143,6 +144,32 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
   });
   const [isSavingServices, setIsSavingServices] = useState(false);
 
+  const handleForceSync = async () => {
+    if (!token) return;
+    setIsSyncing(true);
+    setError(null);
+    try {
+      const { ok, data: resData, error: syncErr } = await safeFetchJson<{ success: boolean; message: string; error?: string }>(
+        '/api/admin/sync',
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+      if (ok && resData?.success) {
+        setActionSuccess(resData.message);
+        await fetchAdminData();
+        setTimeout(() => setActionSuccess(null), 4000);
+      } else {
+        setError(resData?.error || syncErr || 'Database sync failed');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Sync operation failed');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const fetchAdminData = async () => {
     if (!token) return;
     setIsLoading(true);
@@ -152,22 +179,26 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
         safeFetchJson<{ success: boolean; error?: string } & AdminData>('/api/admin/overview', {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        safeFetchJson<{ success: boolean; users: User[] }>('/api/admin/users', {
+        safeFetchJson<{ success: boolean; users: User[]; error?: string }>('/api/admin/users', {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        safeFetchJson<{ success: boolean; activities: LoginActivity[] }>('/api/admin/login-history', {
+        safeFetchJson<{ success: boolean; activities: LoginActivity[]; error?: string }>('/api/admin/login-history', {
           headers: { Authorization: `Bearer ${token}` },
         }),
-        safeFetchJson<{ success: boolean; payments: PaymentRecord[] }>('/api/admin/payments', {
+        safeFetchJson<{ success: boolean; payments: PaymentRecord[]; error?: string }>('/api/admin/payments', {
           headers: { Authorization: `Bearer ${token}` },
         }),
       ]);
 
       if (overviewRes.ok && overviewRes.data?.success) {
         setData(overviewRes.data);
+      } else if (!overviewRes.ok && overviewRes.error) {
+        setError(overviewRes.data?.error || overviewRes.error);
       }
       if (usersRes.ok && usersRes.data?.users) {
         setUsers(usersRes.data.users);
+      } else if (!usersRes.ok && usersRes.error) {
+        setError(usersRes.data?.error || usersRes.error);
       }
       if (loginsRes.ok && loginsRes.data?.activities) {
         setLoginActivities(loginsRes.data.activities);
@@ -413,8 +444,15 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
   };
 
   const getColleagueInviteLink = () => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://letsestimate.com';
-    return `${origin}/#register?plan=${invitePresetPlan}&invited_by=isaac-emmanuel`;
+    if (typeof window === 'undefined') {
+      return 'https://ais-pre-sg3ad57pt3vb2iqfgsf2ku-391264280807.europe-west1.run.app/#register';
+    }
+    let origin = window.location.origin;
+    // When in dev container (ais-dev-...), convert to shared preview container (ais-pre-...) so colleagues can access it without AI Studio login
+    if (origin.includes('ais-dev-')) {
+      origin = origin.replace('ais-dev-', 'ais-pre-');
+    }
+    return `${origin}/#register?plan=${invitePresetPlan}`;
   };
 
   const copyInviteLink = () => {
@@ -503,8 +541,18 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
 
           <div className="flex flex-wrap items-center gap-2.5">
             <button
+              onClick={handleForceSync}
+              disabled={isSyncing || isLoading}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-800/80 hover:bg-emerald-700 text-xs font-semibold text-emerald-100 border border-emerald-600/60 transition active:scale-95 cursor-pointer shadow-xs"
+              title="Pull all users from Google Cloud Firestore and push local accounts"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'Sync Cloud Database'}</span>
+            </button>
+
+            <button
               onClick={fetchAdminData}
-              disabled={isLoading}
+              disabled={isLoading || isSyncing}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition active:scale-95 cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -1304,6 +1352,16 @@ export const AdminDashboard: React.FC<{ onBackToWorkspace?: () => void }> = ({ o
                   <span>{copiedInvite ? 'Copied!' : 'Copy Link'}</span>
                 </button>
               </div>
+              <div className="p-3 bg-amber-950/30 border border-amber-800/40 rounded-xl text-xs text-amber-200 space-y-1">
+                <div className="font-bold flex items-center gap-1.5 text-amber-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>Important: Official Live Cloud Web Address</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Your live application is securely deployed on Google Cloud Run. Please ensure colleagues click the exact copied URL above. Do <strong>not</strong> manually type or share <code>letsestimate.ai.studio</code>, as <code>.ai.studio</code> is not a valid hosting domain and will cause a &quot;Page not found&quot; error.
+                </p>
+              </div>
+
               <p className="text-[11px] text-slate-500">
                 Tip: Send this link via WhatsApp, LinkedIn, or Email. When colleagues register through this URL, their selected plan is provisioned.
               </p>

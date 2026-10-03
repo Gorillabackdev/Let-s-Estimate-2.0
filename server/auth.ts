@@ -5,9 +5,18 @@
  */
 
 import crypto from 'crypto';
-import { Database } from 'sql.js';
-import { getDb, saveDbToDisk } from './db';
-import { Request, Response, NextFunction } from 'express';
+import type { Database } from 'sql.js';
+import { getDb, saveDbToDisk } from './db.js';
+import type { Request, Response, NextFunction } from 'express';
+import {
+  firestoreGetUserByEmail,
+  firestoreGetUserById,
+  firestoreSaveSession,
+  firestoreGetSession,
+  firestoreDeleteSession,
+  firestoreDeleteAllUserSessions,
+  firestoreSaveUser,
+} from './firestore.js';
 
 export interface UserRecord {
   id: string;
@@ -101,21 +110,83 @@ export function generateToken(bytes = 32): string {
 }
 
 /**
- * Get user by email
+ * Get user by email (checks SQLite, with transparent fallback to Firestore)
  */
 export async function getUserByEmail(email: string): Promise<(UserRecord & { password_hash: string; salt: string; verification_token: string; reset_token: string; reset_token_expires: string | null }) | null> {
   const database = await getDb();
   const safeEmail = email.trim().toLowerCase().replace(/'/g, "''");
   const res = database.exec(`SELECT * FROM users WHERE LOWER(email) = '${safeEmail}'`);
-  if (res.length === 0 || res[0].values.length === 0) return null;
+  
+  if (res.length > 0 && res[0].values.length > 0) {
+    const cols = res[0].columns;
+    const row = res[0].values[0];
+    const userObj: Record<string, any> = {};
+    cols.forEach((col, idx) => {
+      userObj[col] = row[idx];
+    });
+    return userObj as any;
+  }
 
-  const cols = res[0].columns;
-  const row = res[0].values[0];
-  const userObj: Record<string, any> = {};
-  cols.forEach((col, idx) => {
-    userObj[col] = row[idx];
-  });
-  return userObj as any;
+  // Fallback: Check persistent Cloud Firestore (covers users registered on another instance)
+  try {
+    const firestoreUser = await firestoreGetUserByEmail(email);
+    if (firestoreUser) {
+      // Upsert into local SQLite cache so future queries and relations are immediate
+      database.run(
+        `INSERT OR REPLACE INTO users (
+          id, email, password_hash, salt, full_name, phone, profession, company,
+          job_title, country, state, currency, measurement_system, avatar_url,
+          email_verified, verification_token, role, company_type, access_status,
+          subscription_tier, subscription_status, subscription_expires_at, boq_credits,
+          license_key, admin_notes, can_ai_takeoff, can_valuations, can_variations,
+          can_export_pdf_excel, can_rates_library, can_team_collab, max_projects,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          firestoreUser.id,
+          firestoreUser.email,
+          firestoreUser.password_hash || '',
+          firestoreUser.salt || '',
+          firestoreUser.full_name || '',
+          firestoreUser.phone || '',
+          firestoreUser.profession || 'Quantity Surveyor',
+          firestoreUser.company || '',
+          firestoreUser.job_title || 'Principal QS',
+          firestoreUser.country || 'Nigeria',
+          firestoreUser.state || 'Lagos',
+          firestoreUser.currency || 'NGN',
+          firestoreUser.measurement_system || 'Metric',
+          firestoreUser.avatar_url || '',
+          1, // Verified
+          '',
+          firestoreUser.role || 'Owner',
+          firestoreUser.company_type || 'Individual',
+          firestoreUser.access_status || 'active',
+          firestoreUser.subscription_tier || 'free_trial',
+          firestoreUser.subscription_status || 'active',
+          firestoreUser.subscription_expires_at || '',
+          firestoreUser.boq_credits !== undefined ? firestoreUser.boq_credits : 5,
+          firestoreUser.license_key || '',
+          firestoreUser.admin_notes || '',
+          firestoreUser.can_ai_takeoff !== undefined ? firestoreUser.can_ai_takeoff : 1,
+          firestoreUser.can_valuations !== undefined ? firestoreUser.can_valuations : 1,
+          firestoreUser.can_variations !== undefined ? firestoreUser.can_variations : 1,
+          firestoreUser.can_export_pdf_excel !== undefined ? firestoreUser.can_export_pdf_excel : 1,
+          firestoreUser.can_rates_library !== undefined ? firestoreUser.can_rates_library : 1,
+          firestoreUser.can_team_collab !== undefined ? firestoreUser.can_team_collab : 1,
+          firestoreUser.max_projects !== undefined ? firestoreUser.max_projects : 10,
+          firestoreUser.created_at || new Date().toISOString(),
+          firestoreUser.updated_at || new Date().toISOString(),
+        ]
+      );
+      saveDbToDisk();
+      return firestoreUser as any;
+    }
+  } catch (err) {
+    console.warn('[Auth] Firestore getUserByEmail fallback error:', err);
+  }
+
+  return null;
 }
 
 /**
@@ -125,27 +196,90 @@ export async function getUserById(id: string): Promise<UserRecord | null> {
   const database = await getDb();
   const safeId = id.replace(/'/g, "''");
   const res = database.exec(`SELECT * FROM users WHERE id = '${safeId}'`);
-  if (res.length === 0 || res[0].values.length === 0) return null;
+  
+  if (res.length > 0 && res[0].values.length > 0) {
+    const cols = res[0].columns;
+    const row = res[0].values[0];
+    const userObj: Record<string, any> = {};
+    cols.forEach((col, idx) => {
+      // Strip sensitive security hashes
+      if (col !== 'password_hash' && col !== 'salt') {
+        userObj[col] = row[idx];
+      }
+    });
+    return userObj as UserRecord;
+  }
 
-  const cols = res[0].columns;
-  const row = res[0].values[0];
-  const userObj: Record<string, any> = {};
-  cols.forEach((col, idx) => {
-    // Strip sensitive security hashes
-    if (col !== 'password_hash' && col !== 'salt') {
-      userObj[col] = row[idx];
+  // Fallback to Firestore
+  try {
+    const firestoreUser = await firestoreGetUserById(id);
+    if (firestoreUser) {
+      database.run(
+        `INSERT OR REPLACE INTO users (
+          id, email, password_hash, salt, full_name, phone, profession, company,
+          job_title, country, state, currency, measurement_system, avatar_url,
+          email_verified, verification_token, role, company_type, access_status,
+          subscription_tier, subscription_status, subscription_expires_at, boq_credits,
+          license_key, admin_notes, can_ai_takeoff, can_valuations, can_variations,
+          can_export_pdf_excel, can_rates_library, can_team_collab, max_projects,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          firestoreUser.id,
+          firestoreUser.email,
+          firestoreUser.password_hash || '',
+          firestoreUser.salt || '',
+          firestoreUser.full_name || '',
+          firestoreUser.phone || '',
+          firestoreUser.profession || 'Quantity Surveyor',
+          firestoreUser.company || '',
+          firestoreUser.job_title || 'Principal QS',
+          firestoreUser.country || 'Nigeria',
+          firestoreUser.state || 'Lagos',
+          firestoreUser.currency || 'NGN',
+          firestoreUser.measurement_system || 'Metric',
+          firestoreUser.avatar_url || '',
+          1, // Verified
+          '',
+          firestoreUser.role || 'Owner',
+          firestoreUser.company_type || 'Individual',
+          firestoreUser.access_status || 'active',
+          firestoreUser.subscription_tier || 'free_trial',
+          firestoreUser.subscription_status || 'active',
+          firestoreUser.subscription_expires_at || '',
+          firestoreUser.boq_credits !== undefined ? firestoreUser.boq_credits : 5,
+          firestoreUser.license_key || '',
+          firestoreUser.admin_notes || '',
+          firestoreUser.can_ai_takeoff !== undefined ? firestoreUser.can_ai_takeoff : 1,
+          firestoreUser.can_valuations !== undefined ? firestoreUser.can_valuations : 1,
+          firestoreUser.can_variations !== undefined ? firestoreUser.can_variations : 1,
+          firestoreUser.can_export_pdf_excel !== undefined ? firestoreUser.can_export_pdf_excel : 1,
+          firestoreUser.can_rates_library !== undefined ? firestoreUser.can_rates_library : 1,
+          firestoreUser.can_team_collab !== undefined ? firestoreUser.can_team_collab : 1,
+          firestoreUser.max_projects !== undefined ? firestoreUser.max_projects : 10,
+          firestoreUser.created_at || new Date().toISOString(),
+          firestoreUser.updated_at || new Date().toISOString(),
+        ]
+      );
+      saveDbToDisk();
+      const { password_hash, salt, ...safeUser } = firestoreUser;
+      return safeUser as UserRecord;
     }
-  });
-  return userObj as UserRecord;
+  } catch (err) {
+    console.warn('[Auth] Firestore getUserById fallback error:', err);
+  }
+
+  return null;
 }
 
 /**
- * Create a new user session in database
+ * Create a new user session in database and Firestore
  */
 export async function createSession(userId: string, userAgent = '', ipAddress = ''): Promise<string> {
   const database = await getDb();
   const token = generateToken(32);
   const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
+  const now = new Date().toISOString();
 
   database.run(
     `INSERT INTO sessions (token, user_id, expires_at, user_agent, ip_address, last_active)
@@ -154,6 +288,18 @@ export async function createSession(userId: string, userAgent = '', ipAddress = 
   );
 
   saveDbToDisk();
+
+  // Async save to Firestore so sessions work across multiple container instances
+  firestoreSaveSession({
+    token,
+    user_id: userId,
+    created_at: now,
+    expires_at: expiresAt,
+    user_agent: userAgent.slice(0, 255),
+    ip_address: ipAddress.slice(0, 64),
+    last_active: now,
+  }).catch(err => console.warn('[Auth] Firestore save session error:', err));
+
   return token;
 }
 
@@ -166,17 +312,35 @@ export async function validateSession(token: string): Promise<UserRecord | null>
   const safeToken = token.replace(/'/g, "''");
   
   const res = database.exec(`SELECT * FROM sessions WHERE token = '${safeToken}' AND expires_at > CURRENT_TIMESTAMP`);
-  if (res.length === 0 || res[0].values.length === 0) return null;
+  if (res.length > 0 && res[0].values.length > 0) {
+    const sessionRow: Record<string, any> = {};
+    res[0].columns.forEach((col, idx) => {
+      sessionRow[col] = res[0].values[0][idx];
+    });
 
-  const sessionRow: Record<string, any> = {};
-  res[0].columns.forEach((col, idx) => {
-    sessionRow[col] = res[0].values[0][idx];
-  });
+    // Touch last_active
+    database.run(`UPDATE sessions SET last_active = CURRENT_TIMESTAMP WHERE token = '${safeToken}'`);
+    return getUserById(sessionRow.user_id);
+  }
 
-  // Touch last_active
-  database.run(`UPDATE sessions SET last_active = CURRENT_TIMESTAMP WHERE token = '${safeToken}'`);
-  
-  return getUserById(sessionRow.user_id);
+  // Fallback to Firestore session
+  try {
+    const fsSession = await firestoreGetSession(token);
+    if (fsSession) {
+      // Re-insert into local SQLite
+      database.run(
+        `INSERT OR REPLACE INTO sessions (token, user_id, expires_at, user_agent, ip_address, last_active)
+         VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        [fsSession.token, fsSession.user_id, fsSession.expires_at, fsSession.user_agent, fsSession.ip_address]
+      );
+      saveDbToDisk();
+      return getUserById(fsSession.user_id);
+    }
+  } catch (err) {
+    console.warn('[Auth] Firestore validateSession error:', err);
+  }
+
+  return null;
 }
 
 /**
@@ -187,6 +351,7 @@ export async function revokeSession(token: string): Promise<boolean> {
   const safeToken = token.replace(/'/g, "''");
   database.run(`DELETE FROM sessions WHERE token = '${safeToken}'`);
   saveDbToDisk();
+  firestoreDeleteSession(token).catch(() => {});
   return true;
 }
 
@@ -198,6 +363,7 @@ export async function revokeAllUserSessions(userId: string): Promise<boolean> {
   const safeId = userId.replace(/'/g, "''");
   database.run(`DELETE FROM sessions WHERE user_id = '${safeId}'`);
   saveDbToDisk();
+  firestoreDeleteAllUserSessions(userId).catch(() => {});
   return true;
 }
 
@@ -378,9 +544,7 @@ export async function ensureDefaultUser(database: Database): Promise<UserRecord>
     ]
   );
 
-  // Link sample hostel project to this user
-  database.run(`UPDATE projects SET user_id = ? WHERE id = 'sample-hostel-ph'`, [userId]);
-
+  // User accounts start clean with a blank project dashboard
   saveDbToDisk();
   return (await getUserById(userId))!;
 }

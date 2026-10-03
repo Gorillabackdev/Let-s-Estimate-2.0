@@ -106,11 +106,30 @@ export const AuthModal: React.FC = () => {
 
   const strength = getPasswordStrength(regPassword);
 
+  const switchToLogin = (prefillEmail?: string) => {
+    const emailToUse = prefillEmail || regEmail.trim();
+    if (emailToUse) {
+      setLoginEmail(emailToUse);
+    }
+    setView('login');
+    setError(null);
+  };
+
+  const switchToRegister = (prefillEmail?: string) => {
+    const emailToUse = prefillEmail || loginEmail.trim();
+    if (emailToUse) {
+      setRegEmail(emailToUse);
+    }
+    setView('register');
+    setError(null);
+  };
+
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
-    const res = await login(loginEmail, loginPassword);
+    const cleanEmail = loginEmail.trim().toLowerCase();
+    const res = await login(cleanEmail, loginPassword);
     setIsSubmitting(false);
     if (!res.success) {
       setError(res.error || 'Login failed. Please check your credentials.');
@@ -125,27 +144,25 @@ export const AuthModal: React.FC = () => {
       return;
     }
     setIsSubmitting(true);
+    const cleanEmail = regEmail.trim().toLowerCase();
     const res = await register({
-      full_name: regFullName,
-      email: regEmail,
+      full_name: regFullName.trim(),
+      email: cleanEmail,
       password: regPassword,
-      phone: regPhone,
+      phone: regPhone.trim(),
       profession: regProfession,
-      company: regCompany,
+      company: regCompany.trim(),
       state: regState,
       country: 'Nigeria',
     });
     setIsSubmitting(false);
     if (res.success) {
-      setVerifyEmailAddress(regEmail);
-      if (res.verificationCode) {
-        setTestingPinNotice(res.verificationCode);
-        setVerificationCode(res.verificationCode);
-      }
-      setView('verify');
-      setSuccessMsg(`Account created successfully! Please enter your 6-digit verification PIN.`);
+      closeAuthModal();
     } else {
       setError(res.error || 'Failed to create account.');
+      if (res.error && res.error.toLowerCase().includes('already exists')) {
+        setLoginEmail(cleanEmail);
+      }
     }
   };
 
@@ -248,7 +265,7 @@ export const AuthModal: React.FC = () => {
             <div>
               <h3 className="font-bold text-base tracking-tight text-white">
                 {view === 'login' && 'Sign In to Let\'s Estimate'}
-                {view === 'register' && 'Register QS Account for Testing'}
+                {view === 'register' && 'Create Your Account'}
                 {view === 'forgot' && 'Reset Your Password'}
                 {view === 'verify' && 'Email Verification (Required)'}
               </h3>
@@ -266,15 +283,15 @@ export const AuthModal: React.FC = () => {
           </button>
         </div>
 
-        {/* Modal Nav Tabs (Login / Register / Master Admin Key) */}
+        {/* Modal Nav Tabs (Login / Register) */}
         {view !== 'verify' && view !== 'forgot' && (
           <div className="flex border-b border-slate-800 bg-slate-950/60 p-1 gap-1 text-xs font-semibold">
             <button
               type="button"
-              onClick={() => { setView('login'); setError(null); }}
-              className={`flex-1 py-2 px-3 rounded-lg text-center transition ${
+              onClick={() => switchToLogin()}
+              className={`flex-1 py-2 px-3 rounded-lg text-center transition cursor-pointer ${
                 view === 'login'
-                  ? 'bg-slate-800 text-white shadow-xs'
+                  ? 'bg-slate-800 text-white shadow-xs font-bold'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
               }`}
             >
@@ -282,10 +299,10 @@ export const AuthModal: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => { setView('register'); setError(null); }}
-              className={`flex-1 py-2 px-3 rounded-lg text-center transition ${
+              onClick={() => switchToRegister()}
+              className={`flex-1 py-2 px-3 rounded-lg text-center transition cursor-pointer ${
                 view === 'register'
-                  ? 'bg-slate-800 text-white shadow-xs'
+                  ? 'bg-slate-800 text-white shadow-xs font-bold'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900'
               }`}
             >
@@ -297,9 +314,20 @@ export const AuthModal: React.FC = () => {
         {/* Modal Body */}
         <div className="p-6">
           {error && (
-            <div className="mb-4 p-3 rounded-xl bg-red-950/80 border border-red-700/60 text-red-200 text-xs flex items-start gap-2 animate-fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
-              <span>{error}</span>
+            <div className="mb-4 p-3.5 rounded-xl bg-red-950/80 border border-red-700/60 text-red-200 text-xs flex flex-col gap-2 animate-fade-in">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+                <span>{error}</span>
+              </div>
+              {error.toLowerCase().includes('already exists') && (
+                <button
+                  type="button"
+                  onClick={() => switchToLogin()}
+                  className="self-start mt-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                >
+                  <span>Click here to Sign In with this email &rarr;</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -517,15 +545,15 @@ export const AuthModal: React.FC = () => {
               </div>
 
               <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-800/40 text-[11px] text-emerald-300">
-                Includes 30-Day Free Evaluation Pass with Nigerian market prices & BOQ generator. Email verification PIN will be issued upon signup.
+                Includes 30-Day Free Evaluation Pass with Nigerian market prices &amp; BOQ generator. Instant activation.
               </div>
 
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition shadow-sm disabled:opacity-50"
+                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition shadow-sm disabled:opacity-50 cursor-pointer"
               >
-                {isSubmitting ? 'Registering Account...' : 'Sign Up & Verify Email'}
+                {isSubmitting ? 'Creating Account...' : 'Create Account & Start Estimating'}
               </button>
 
               <div className="pt-1 text-center text-xs text-slate-400">

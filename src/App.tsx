@@ -94,32 +94,33 @@ function MainApp() {
   // Navigation state: Default to public Home page ('landing') for unauthenticated or first-time visitors
   const [currentView, setCurrentView] = useState<AppGlobalView>(() => {
     if (typeof window !== 'undefined') {
-      const hash = window.location.hash.toLowerCase();
+      const rawHash = window.location.hash.toLowerCase().replace('#', '');
+      const hash = rawHash.split('?')[0];
       const path = window.location.pathname.toLowerCase();
-      if (hash === '#landing' || hash === '#home' || hash === '#pricing' || hash === '#features' || hash === '#about' || hash === '#resources' || hash === '' || path === '/' || path === '/home') {
+      if (hash === 'landing' || hash === 'home' || hash === 'pricing' || hash === 'features' || hash === 'about' || hash === 'resources' || hash === '' || hash === 'register' || hash === 'signup' || hash === 'login' || path === '/' || path === '/home') {
         // If there's an existing valid login session, check if hash explicitly asks for dashboard
-        if (hash === '#dashboard' || hash === '#workspace') return 'dashboard';
-        if (hash === '#admin-portal' || hash === '#sys-admin' || hash === '#admin') return 'admin-portal';
-        if (hash === '#projects') return 'projects';
-        if (hash === '#calculators') return 'calculators';
-        if (hash === '#estimating') return 'estimating';
-        if (hash === '#controls') return 'controls';
-        if (hash === '#documents') return 'documents';
-        if (hash === '#team') return 'team';
-        if (hash === '#settings') return 'settings';
-        if (hash === '#help') return 'help';
+        if (hash === 'dashboard' || hash === 'workspace') return 'dashboard';
+        if (hash === 'admin-portal' || hash === 'sys-admin' || hash === 'admin') return 'admin-portal';
+        if (hash === 'projects') return 'projects';
+        if (hash === 'calculators') return 'calculators';
+        if (hash === 'estimating') return 'estimating';
+        if (hash === 'controls') return 'controls';
+        if (hash === 'documents') return 'documents';
+        if (hash === 'team') return 'team';
+        if (hash === 'settings') return 'settings';
+        if (hash === 'help') return 'help';
         return 'landing';
       }
-      if (hash === '#admin-portal' || hash === '#sys-admin' || hash === '#admin') return 'admin-portal';
-      if (hash === '#dashboard' || hash === '#workspace') return 'dashboard';
-      if (hash === '#projects') return 'projects';
-      if (hash === '#calculators') return 'calculators';
-      if (hash === '#estimating') return 'estimating';
-      if (hash === '#controls') return 'controls';
-      if (hash === '#documents') return 'documents';
-      if (hash === '#team') return 'team';
-      if (hash === '#settings') return 'settings';
-      if (hash === '#help') return 'help';
+      if (hash === 'admin-portal' || hash === 'sys-admin' || hash === 'admin') return 'admin-portal';
+      if (hash === 'dashboard' || hash === 'workspace') return 'dashboard';
+      if (hash === 'projects') return 'projects';
+      if (hash === 'calculators') return 'calculators';
+      if (hash === 'estimating') return 'estimating';
+      if (hash === 'controls') return 'controls';
+      if (hash === 'documents') return 'documents';
+      if (hash === 'team') return 'team';
+      if (hash === 'settings') return 'settings';
+      if (hash === 'help') return 'help';
     }
     return 'landing';
   });
@@ -130,6 +131,7 @@ function MainApp() {
 
   // Projects and active work
   const [projects, setProjects] = useState<Project[]>([]);
+  const [activities, setActivities] = useState<any[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [activeProject, setActiveProject] = useState<Project>(DEFAULT_NEW_PROJECT);
   const [isSaving, setIsSaving] = useState(false);
@@ -184,15 +186,24 @@ function MainApp() {
   // Sync with browser hash navigation
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.toLowerCase().replace('#', '');
+      const rawHash = window.location.hash.toLowerCase().replace('#', '');
+      const hash = rawHash.split('?')[0];
       if (hash === 'landing' || hash === 'home' || hash === 'pricing' || hash === 'features' || hash === 'resources' || hash === 'about') {
         setCurrentView('landing');
       } else if (hash === 'login') {
-        setCurrentView('landing');
-        openAuthModal('login', () => navigateView('dashboard'));
+        if (!user && !token) {
+          setCurrentView('landing');
+          openAuthModal('login', () => navigateView('dashboard'));
+        } else {
+          setCurrentView('dashboard');
+        }
       } else if (hash === 'signup' || hash === 'register') {
-        setCurrentView('landing');
-        openAuthModal('register', () => navigateView('dashboard'));
+        if (!user && !token) {
+          setCurrentView('landing');
+          openAuthModal('register', () => navigateView('dashboard'));
+        } else {
+          setCurrentView('dashboard');
+        }
       } else if (hash === 'admin-portal' || hash === 'sys-admin' || hash === 'admin') {
         setCurrentView('admin-portal');
       } else if (hash === 'dashboard' || hash === 'workspace') {
@@ -228,12 +239,21 @@ function MainApp() {
 
     // Check on initial mount for login/signup in hash or path
     if (typeof window !== 'undefined') {
-      const hash = window.location.hash.toLowerCase();
+      const rawHash = window.location.hash.toLowerCase().replace('#', '');
+      const hash = rawHash.split('?')[0];
       const path = window.location.pathname.toLowerCase();
-      if (hash === '#login' || path === '/login') {
-        openAuthModal('login', () => navigateView('dashboard'));
-      } else if (hash === '#signup' || hash === '#register' || path === '/signup' || path === '/register') {
-        openAuthModal('register', () => navigateView('dashboard'));
+      if (hash === 'login' || path === '/login') {
+        if (!user && !token) {
+          openAuthModal('login', () => navigateView('dashboard'));
+        } else {
+          setCurrentView('dashboard');
+        }
+      } else if (hash === 'signup' || hash === 'register' || path === '/signup' || path === '/register') {
+        if (!user && !token) {
+          openAuthModal('register', () => navigateView('dashboard'));
+        } else {
+          setCurrentView('dashboard');
+        }
       }
     }
 
@@ -241,9 +261,22 @@ function MainApp() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [user, token, openAuthModal]);
 
-  // Fetch all projects & subscription status on mount & whenever auth token changes
+  // When a user signs out, take them directly back to the Home page
+  const prevUserRef = React.useRef(user);
+  useEffect(() => {
+    if (prevUserRef.current && !user) {
+      setCurrentView('landing');
+      if (typeof window !== 'undefined') {
+        window.location.hash = '#home';
+      }
+    }
+    prevUserRef.current = user;
+  }, [user]);
+
+  // Fetch all projects, activities & subscription status on mount & whenever auth token changes
   useEffect(() => {
     loadProjects();
+    loadActivities();
     loadSubscription();
   }, [token]);
 
@@ -299,6 +332,23 @@ function MainApp() {
       // Handled gracefully
     } finally {
       setLoadingProjects(false);
+    }
+  };
+
+  const loadActivities = async () => {
+    try {
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const { ok, data } = await safeFetchJson<{ activities: any[] }>('/api/activities', { headers });
+      if (ok && Array.isArray(data?.activities)) {
+        setActivities(data.activities);
+      } else {
+        setActivities([]);
+      }
+    } catch {
+      setActivities([]);
     }
   };
 
@@ -1209,6 +1259,8 @@ function MainApp() {
         return (
           <DashboardView
             projects={projects}
+            activities={activities}
+            user={user}
             onOpenProject={handleOpenProject}
             onNewProject={handleNewProject}
             onNavigate={navigateView}
@@ -1273,6 +1325,7 @@ function MainApp() {
           <CalculatorsHubView
             activeProject={activeProject}
             projects={projects}
+            initialSubView={activeSubView}
             onApplyBulkToBoq={handleApplyBulkToBoq}
             onApplyToBoq={(calcItem) => {
               const r = calcItem.rate || 16500;
@@ -1331,6 +1384,7 @@ function MainApp() {
                 setIsProcessing={setIsProcessingTakeoff}
                 questionnaire={activeProject.questionnaire}
                 onOpenQuestionnaire={() => setIsQuestionnaireModalOpen(true)}
+                onOpenBtlEstimator={() => navigateView('calculators', 'btl')}
               />
             )}
             <EstimatingHubView
@@ -1405,6 +1459,8 @@ function MainApp() {
         return (
           <DashboardView
             projects={projects}
+            activities={activities}
+            user={user}
             onOpenProject={handleOpenProject}
             onNewProject={handleNewProject}
             onNavigate={navigateView}
@@ -1434,6 +1490,83 @@ function MainApp() {
         onNewProject={handleNewProject}
         onOpenRates={() => setIsRatesModalOpen(true)}
         onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+        onOpenManualTakeoff={() => {
+          navigateView('estimating', 'manual-takeoff');
+        }}
+        onOpenQuestionnaire={() => {
+          if (!activeProject.id && projects.length === 0) {
+            showToast('Please create a project first to set its specification questionnaire.');
+            setIsCreateProjectModalOpen(true);
+          } else {
+            setIsQuestionnaireModalOpen(true);
+          }
+        }}
+        onOpenBoqImport={() => setIsBoqImportModalOpen(true)}
+        onOpenVariations={() => {
+          if (!activeProject.id && projects.length === 0) {
+            showToast('Please create or select a project first to manage Variations.');
+            setIsCreateProjectModalOpen(true);
+          } else {
+            setIsVariationsModalOpen(true);
+          }
+        }}
+        onOpenValuations={() => {
+          if (!activeProject.id && projects.length === 0) {
+            showToast('Please create or select a project first to manage Interim Valuations.');
+            setIsCreateProjectModalOpen(true);
+          } else {
+            setIsValuationsModalOpen(true);
+          }
+        }}
+        onOpenCashFlow={() => {
+          if (!activeProject.id && projects.length === 0) {
+            showToast('Please create or select a project first to view Cash Flow.');
+            setIsCreateProjectModalOpen(true);
+          } else {
+            setIsCashFlowModalOpen(true);
+          }
+        }}
+        onOpenTender={() => {
+          if (!activeProject.id && projects.length === 0) {
+            showToast('Please create or select a project first to compare Tenders.');
+            setIsCreateProjectModalOpen(true);
+          } else {
+            setIsTenderModalOpen(true);
+          }
+        }}
+        onOpenRiskAudit={() => {
+          if (!activeProject.id && projects.length === 0) {
+            showToast('Please create or select a project first to conduct a Risk Audit.');
+            setIsCreateProjectModalOpen(true);
+          } else {
+            setIsRiskAuditModalOpen(true);
+          }
+        }}
+        onOpenFinalAccount={() => {
+          if (!activeProject.id && projects.length === 0) {
+            showToast('Please create or select a project first for Final Account Settlement.');
+            setIsCreateProjectModalOpen(true);
+          } else {
+            setIsFinalAccountModalOpen(true);
+          }
+        }}
+        onOpenExecutiveDossier={() => {
+          if (!activeProject.id && projects.length === 0) {
+            showToast('Please create or select a project first to generate Executive Dossier.');
+            setIsCreateProjectModalOpen(true);
+          } else {
+            setIsExecutiveDossierModalOpen(true);
+          }
+        }}
+        onOpenMaterialSchedule={() => {
+          if (!activeProject.id && projects.length === 0) {
+            showToast('Please create or select a project first to view Material Schedule & BBS.');
+            setIsCreateProjectModalOpen(true);
+          } else {
+            setIsMaterialModalOpen(true);
+          }
+        }}
+        onOpenHelp={() => navigateView('help')}
       />
 
       {/* 2. Main Content Layout Container */}
