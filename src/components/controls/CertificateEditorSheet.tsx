@@ -8,11 +8,13 @@ import {
   Calendar, 
   ShieldCheck, 
   RotateCcw,
-  UserCheck
+  UserCheck,
+  FileText
 } from 'lucide-react';
 import { CertificateType, ProjectValuation } from '../../types';
 import { formatNaira } from '../../utils/format';
 import { FormattedNumberInput } from '../common/FormattedNumberInput';
+import { exportValuationCertificatePdf } from '../../utils/specializedPdfExport';
 
 export interface CertificateFormData {
   certNumber: string;
@@ -63,6 +65,34 @@ export const CertificateEditorSheet: React.FC<CertificateEditorSheetProps> = ({
       retentionAmount: ret,
       netAmountCertified: net
     });
+  };
+
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportPdf = async () => {
+    try {
+      setIsExportingPdf(true);
+      await exportValuationCertificatePdf({
+        valuationNumber: certData.certNumber || 'IPC-01',
+        valuationDate: certData.issueDate || new Date().toISOString().split('T')[0],
+        projectName: certData.projectTitle || 'Construction Works',
+        clientName: certData.clientName || 'Private Client',
+        location: 'Nigeria',
+        description: certTitleMap[selectedCertType] || 'Payment Certificate',
+        previousValuation: Number(certData.previousPayments || 0),
+        currentValuation: Number(certData.grossValuation || 0),
+        cumulativeValue: Number(certData.previousPayments || 0) + Number(certData.grossValuation || 0),
+        retentionPercent: Number(certData.retentionPct || 5),
+        retentionAmount: Number(certData.retentionAmount || 0),
+        advancePaymentDeduction: Number(certData.advanceDeduction || 0),
+        previousPayments: Number(certData.previousPayments || 0),
+        amountDue: Number(certData.netAmountCertified || 0)
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to export Payment Certificate PDF.');
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   const handlePrint = () => {
@@ -147,6 +177,21 @@ export const CertificateEditorSheet: React.FC<CertificateEditorSheetProps> = ({
                 <span>Edit All Fields</span>
               </>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            disabled={isExportingPdf}
+            className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center space-x-1.5 transition cursor-pointer shadow-2xs disabled:opacity-50"
+            title="Download Official Payment Certificate PDF"
+          >
+            {isExportingPdf ? (
+              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <FileText className="w-3.5 h-3.5" />
+            )}
+            <span>{isExportingPdf ? 'Exporting...' : 'Export PDF'}</span>
           </button>
 
           <button

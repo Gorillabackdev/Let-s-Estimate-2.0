@@ -22,6 +22,7 @@ import { ProjectsView } from './components/projects/ProjectsView';
 import { ProjectWorkspaceView } from './components/workspace/ProjectWorkspaceView';
 import { CalculatorsHubView, TemplateBoqItem } from './components/calculators/CalculatorsHubView';
 import { EstimatingHubView } from './components/estimating/EstimatingHubView';
+import { SmartTakeoffStudio } from './components/takeoff/SmartTakeoffStudio';
 import { ProjectControlsView } from './components/controls/ProjectControlsView';
 import { DocumentsReportsView } from './components/documents/DocumentsReportsView';
 import { TeamClientsView } from './components/team/TeamClientsView';
@@ -1093,16 +1094,133 @@ function MainApp() {
     }
   };
 
+  // Transfer Smart Takeoff Studio verified items to project BOQ and persist to database
+  const handleCommitSmartTakeoffToBoq = async (
+    verifiedItems: BoqItem[],
+    notes?: string,
+    options?: {
+      targetProjectId?: string;
+      createNewProject?: boolean;
+      projectTitle?: string;
+      openProjectNow?: boolean;
+    }
+  ) => {
+    setIsSaving(true);
+    try {
+      let targetProject: Project;
+      const shouldCreateNew = options?.createNewProject || (!activeProject?.id && !options?.targetProjectId);
+
+      if (shouldCreateNew) {
+        const newProjId = `proj-${Date.now()}`;
+        const newItems: BoqItem[] = verifiedItems.map((it, idx) => ({
+          ...it,
+          id: it.id || `smart-item-${Date.now()}-${idx + 1}`,
+          project_id: newProjId,
+          item_number: idx + 1,
+        }));
+
+        const totals = calculateBoqTotals(newItems, 15, 7.5, 0);
+
+        targetProject = {
+          id: newProjId,
+          user_id: '',
+          title: options?.projectTitle || `Smart Takeoff - ${new Date().toLocaleDateString('en-GB')}`,
+          location: 'Nigeria',
+          project_type: 'Residential',
+          client_name: 'Private Client',
+          subtotal: totals.subtotal,
+          po_percent: 15,
+          po_amount: totals.poAmount,
+          vat_percent: 7.5,
+          vat_amount: totals.vatAmount,
+          swamp_premium_percent: 0,
+          grand_total: totals.grandTotal,
+          items: newItems,
+          notes: notes || 'Generated and verified via Smart Takeoff Studio',
+          status: 'In Progress',
+          drawing_filename: '',
+          active_version: 'V1',
+          created_at: new Date().toISOString()
+        };
+      } else {
+        const projToUpdate = (options?.targetProjectId && projects.find(p => p.id === options.targetProjectId)) || activeProject;
+        const newItems: BoqItem[] = verifiedItems.map((it, idx) => ({
+          ...it,
+          id: it.id || `smart-item-${Date.now()}-${idx + 1}`,
+          project_id: projToUpdate.id,
+          item_number: idx + 1,
+        }));
+
+        const totals = calculateBoqTotals(
+          newItems,
+          projToUpdate.po_percent || 15,
+          projToUpdate.vat_percent || 7.5,
+          projToUpdate.swamp_premium_percent || 0
+        );
+
+        targetProject = {
+          ...projToUpdate,
+          items: newItems,
+          notes: notes || projToUpdate.notes,
+          subtotal: totals.subtotal,
+          po_amount: totals.poAmount,
+          vat_amount: totals.vatAmount,
+          grand_total: totals.grandTotal
+        };
+      }
+
+      // Persist to SQLite Database via POST /api/projects
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const { ok, data, error } = await safeFetchJson<{ project: Project; error?: string }>('/api/projects', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(targetProject),
+      });
+
+      const savedProject = (ok && data?.project) ? {
+        ...data.project,
+        items: data.project.items || targetProject.items
+      } : targetProject;
+
+      setActiveProject(savedProject);
+      setHasUnsavedChanges(false);
+
+      // Refresh project list and stats
+      await loadProjects();
+      await refreshStats();
+
+      showToast(`Saved ${verifiedItems.length} verified item(s) to "${savedProject.title}" and saved to database!`);
+
+      // Open the project BOQ workspace if requested (default true)
+      if (options?.openProjectNow !== false) {
+        navigateView('project-workspace', 'boq');
+      }
+    } catch (err: any) {
+      console.error('Failed to commit takeoff to BOQ:', err);
+      alert('Transfer to BOQ failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Export Excel (.xlsx) trigger - Generates genuine multi-tab workbook
-  const handleExportExcel = async () => {
-    if (!activeProject.items || activeProject.items.length === 0) {
+  const handleExportExcel = async (itemsOverride?: BoqItem[], projOverride?: Partial<Project>) => {
+    const targetItems = itemsOverride && itemsOverride.length > 0 ? itemsOverride : (activeProject.items || []);
+    if (targetItems.length === 0) {
       alert('Please add or detect at least one BOQ item before exporting to Excel.');
       return;
     }
+    const targetProject: Project = {
+      ...activeProject,
+      ...(projOverride || {}),
+      items: targetItems
+    };
     try {
       showToast('Generating official 3-Tab Excel (.xlsx) workbook...');
-      await exportProjectToExcel(activeProject);
-      showToast(`Downloaded "${activeProject.title || 'Project'}" (.xlsx) successfully!`);
+      await exportProjectToExcel(targetProject);
+      showToast(`Downloaded "${targetProject.title || 'Project'}" (.xlsx) successfully!`);
     } catch (err: any) {
       console.error('Excel export error:', err);
       alert(err.message || 'Failed to export Excel file.');
@@ -1110,15 +1228,21 @@ function MainApp() {
   };
 
   // Export PDF trigger - Generates stamped tender Bill of Quantities
-  const handleExportPdf = async () => {
-    if (!activeProject.items || activeProject.items.length === 0) {
+  const handleExportPdf = async (itemsOverride?: BoqItem[], projOverride?: Partial<Project>) => {
+    const targetItems = itemsOverride && itemsOverride.length > 0 ? itemsOverride : (activeProject.items || []);
+    if (targetItems.length === 0) {
       alert('Please add or detect at least one BOQ item before exporting to PDF.');
       return;
     }
+    const targetProject: Project = {
+      ...activeProject,
+      ...(projOverride || {}),
+      items: targetItems
+    };
     try {
       showToast('Generating official certified PDF Bill of Quantities...');
-      await exportProjectToPdf(activeProject);
-      showToast(`Downloaded "${activeProject.title || 'Project'}" (.pdf) successfully!`);
+      await exportProjectToPdf(targetProject);
+      showToast(`Downloaded "${targetProject.title || 'Project'}" (.pdf) successfully!`);
     } catch (err: any) {
       console.error('PDF export error:', err);
       alert(err.message || 'Failed to export PDF file.');
@@ -1374,6 +1498,18 @@ function MainApp() {
           />
         );
 
+      case 'smart-takeoff':
+        return (
+          <SmartTakeoffStudio
+            project={activeProject}
+            projects={projects}
+            onCommitToBoq={handleCommitSmartTakeoffToBoq}
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+            onNavigate={navigateView}
+          />
+        );
+
       case 'estimating':
         return (
           <div className="space-y-6">
@@ -1404,7 +1540,9 @@ function MainApp() {
               onDeleteBoqItem={handleDeleteItem}
               onApplyMarketRates={handleApplyMarketRates}
               onExportExcel={handleExportExcel}
+              onExportPdf={handleExportPdf}
               onImportBoq={() => setIsBoqImportModalOpen(true)}
+              onApplyBulkToBoq={handleApplyBulkToBoq}
             />
           </div>
         );
@@ -1491,7 +1629,7 @@ function MainApp() {
         onOpenRates={() => setIsRatesModalOpen(true)}
         onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
         onOpenManualTakeoff={() => {
-          navigateView('estimating', 'manual-takeoff');
+          navigateView('smart-takeoff');
         }}
         onOpenQuestionnaire={() => {
           if (!activeProject.id && projects.length === 0) {

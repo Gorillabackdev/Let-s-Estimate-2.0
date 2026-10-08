@@ -687,7 +687,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     required
                     value={newPhone}
                     onChange={(e) => setNewPhone(e.target.value)}
-                    placeholder="e.g. +234 803 123 4567"
+                    placeholder="e.g. +234 800 000 0000"
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200"
                   />
                 </div>
@@ -700,7 +700,7 @@ export const SuppliersView: React.FC<SuppliersViewProps> = ({
                     type="text"
                     value={newWhatsapp}
                     onChange={(e) => setNewWhatsapp(e.target.value)}
-                    placeholder="e.g. +234 803 123 4567"
+                    placeholder="e.g. +234 800 000 0000"
                     className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200"
                   />
                 </div>

@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Project } from '../../types';
 import { formatNaira } from '../../utils/format';
+import { exportValuationCertificatePdf } from '../../utils/specializedPdfExport';
 
 interface DocumentsReportsViewProps {
   projects: Project[];
@@ -63,11 +64,33 @@ export const DocumentsReportsView: React.FC<DocumentsReportsViewProps> = ({
     {
       title: 'Interim Payment Certificate (IPC 002)',
       category: 'Certificate',
-      format: 'PDF Printable',
+      format: 'PDF Document',
       project: activeProject?.title || 'Active Project',
       date: 'March 2026',
-      action: () => window.print(),
-      actionLabel: 'Print Certificate'
+      action: async () => {
+        try {
+          const baseSum = Number(activeProject?.grand_total || activeProject?.target_budget || 50000000);
+          await exportValuationCertificatePdf({
+            valuationNumber: 'IPC-002',
+            valuationDate: new Date().toISOString().split('T')[0],
+            projectName: activeProject?.title || 'Commercial Project',
+            clientName: activeProject?.client_name || 'Project Employer',
+            location: activeProject?.location || 'Nigeria',
+            description: 'Interim Payment Certificate (IPC)',
+            previousValuation: baseSum * 0.25,
+            currentValuation: baseSum * 0.15,
+            cumulativeValue: baseSum * 0.40,
+            retentionPercent: 5,
+            retentionAmount: baseSum * 0.15 * 0.05,
+            advancePaymentDeduction: 0,
+            previousPayments: baseSum * 0.25 * 0.95,
+            amountDue: baseSum * 0.15 * 0.95
+          });
+        } catch (e: any) {
+          alert(e.message || 'Failed to export Payment Certificate PDF.');
+        }
+      },
+      actionLabel: 'Download PDF'
     },
     {
       title: 'Contract Variation Summary Schedule',

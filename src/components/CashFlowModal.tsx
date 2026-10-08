@@ -13,9 +13,11 @@ import {
   Clock, 
   AlertCircle,
   BarChart3,
-  Layers
+  Layers,
+  FileText
 } from 'lucide-react';
 import { CashFlowForecast, CashFlowMilestone } from '../types';
+import { exportCashFlowPdf } from '../utils/specializedPdfExport';
 
 interface CashFlowModalProps {
   isOpen: boolean;
@@ -36,6 +38,7 @@ export const CashFlowModal: React.FC<CashFlowModalProps> = ({
   const [forecast, setForecast] = useState<CashFlowForecast | null>(null);
   const [durationMonths, setDurationMonths] = useState(12);
   const [chartMode, setChartMode] = useState<'s-curve' | 'monthly-bars'>('s-curve');
+  const [exportingPdf, setExportingPdf] = useState(false);
   
   // Milestone add state
   const [showAddForm, setShowAddForm] = useState(false);
@@ -166,6 +169,32 @@ export const CashFlowModal: React.FC<CashFlowModalProps> = ({
     }
   };
 
+  const handleExportPdf = async () => {
+    try {
+      setExportingPdf(true);
+      const dist = forecast?.monthlyDistribution || [];
+      await exportCashFlowPdf({
+        projectName,
+        projectTotal: forecast?.projectTotal || projectTotal,
+        durationMonths,
+        peakMonthlyOutlay: forecast?.peakMonthlyOutlay,
+        distribution: dist.map(d => ({
+          month: d.month,
+          monthName: d.monthLabel,
+          plannedPct: (d.plannedMonthly / (forecast?.projectTotal || projectTotal || 1)) * 100,
+          monthlyOutlay: d.plannedMonthly,
+          cumulativePct: d.percentageComplete,
+          cumulativeOutlay: d.plannedCumulative,
+          milestone: forecast?.milestones?.find(m => m.month_number === d.month)?.milestone_name || 'Active Progress',
+        }))
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to export Cash Flow PDF.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const exportCashFlowCsv = () => {
     if (!forecast) return;
     let csv = 'Month,Month Label,Planned Monthly (NGN),Planned Cumulative (NGN),Actual Cumulative (NGN),Progress (%)\n';
@@ -220,8 +249,21 @@ export const CashFlowModal: React.FC<CashFlowModalProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg border border-emerald-400/40 transition shadow-2xs cursor-pointer disabled:opacity-50"
+              title="Download Official Cash Flow & S-Curve PDF"
+            >
+              {exportingPdf ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5" />
+              )}
+              <span>{exportingPdf ? 'Exporting...' : 'Export PDF'}</span>
+            </button>
+            <button
               onClick={exportCashFlowCsv}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20 transition cursor-pointer"
               title="Export to CSV"
             >
               <Download className="w-3.5 h-3.5" />
@@ -229,7 +271,7 @@ export const CashFlowModal: React.FC<CashFlowModalProps> = ({
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-emerald-200 hover:text-white hover:bg-white/10 rounded-lg transition"
+              className="p-1.5 text-emerald-200 hover:text-white hover:bg-white/10 rounded-lg transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>

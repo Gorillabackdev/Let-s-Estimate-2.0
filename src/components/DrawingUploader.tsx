@@ -136,7 +136,7 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
         reason: isResolutionIssue 
           ? 'PDF contains scanned pages with insufficient resolution or unscaled details.'
           : 'Drawing layout lacks legible dimensional gridlines, high contrast scale, or readable room dimensions.',
-        recommendation: 'Upload a higher-resolution drawing or use Manual Takeoff to calibrate scale and measure dimensions directly.',
+        recommendation: 'Upload a higher-resolution drawing or use Smart Takeoff Studio to calibrate scale and verify dimensions.',
       });
       setErrorMsg(null);
     } finally {
@@ -348,8 +348,8 @@ export const DrawingUploader: React.FC<DrawingUploaderProps> = ({
                 }}
                 className="px-3.5 py-1.5 rounded-lg bg-emerald-800 hover:bg-emerald-700 text-white font-bold text-xs transition inline-flex items-center space-x-1.5 cursor-pointer shadow-2xs"
               >
-                <Ruler className="w-3.5 h-3.5 text-emerald-200" />
-                <span>Open Manual Takeoff</span>
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Open Smart Takeoff</span>
               </button>
             )}
           </div>

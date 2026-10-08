@@ -16,9 +16,11 @@ import {
   Building2,
   Phone,
   Mail,
-  FileCheck2
+  FileCheck2,
+  FileText
 } from 'lucide-react';
 import { TenderBidder, TenderAnalysisSummary, BoqItem } from '../types';
+import { exportTenderComparisonPdf } from '../utils/specializedPdfExport';
 
 interface TenderComparisonModalProps {
   isOpen: boolean;
@@ -140,6 +142,32 @@ export const TenderComparisonModal: React.FC<TenderComparisonModalProps> = ({
     }
   };
 
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  const handleExportPdf = async () => {
+    try {
+      setExportingPdf(true);
+      const bList = summary?.bidders || [];
+      const bench = summary?.benchmarkTotal || projectSubtotal || 1;
+      await exportTenderComparisonPdf({
+        projectName,
+        benchmarkTotal: bench,
+        bidders: bList.map(b => ({
+          name: b.bidder_name,
+          contact: b.contact_person,
+          totalBid: Number(b.total_bid_amount),
+          variancePct: bench > 0 ? (((Number(b.total_bid_amount) - bench) / bench) * 100) : 0,
+          technicalScore: Number(b.technical_score),
+          status: b.compliance_status || (b.recommendation_rank === 1 ? 'Recommended Awardee' : 'Compliant'),
+        }))
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to export Tender Comparison PDF.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const exportTenderCsv = () => {
     if (!summary) return;
     let csv = 'Tender Evaluation Matrix - ' + projectName + '\n';
@@ -195,11 +223,25 @@ export const TenderComparisonModal: React.FC<TenderComparisonModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg border border-emerald-400/40 transition shadow-2xs cursor-pointer disabled:opacity-50"
+              title="Download Official Tender Evaluation Matrix PDF"
+            >
+              {exportingPdf ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5" />
+              )}
+              <span>{exportingPdf ? 'Exporting...' : 'Export PDF'}</span>
+            </button>
+            <button
               onClick={exportTenderCsv}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20 transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 hover:bg-white/20 text-white rounded-lg border border-white/20 transition cursor-pointer"
+              title="Export Evaluation to CSV"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>Export Evaluation</span>
+              <span>Export CSV</span>
             </button>
             <button
               onClick={onClose}

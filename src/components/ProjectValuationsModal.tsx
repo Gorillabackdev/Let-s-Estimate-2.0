@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Award, Plus, Trash2, X, CheckCircle2, Printer, Building2, Calendar, DollarSign, FileCheck } from 'lucide-react';
+import { Award, Plus, Trash2, X, CheckCircle2, Printer, Building2, Calendar, DollarSign, FileCheck, FileText } from 'lucide-react';
 import { ProjectValuation, Project } from '../types';
 import { formatNaira } from '../utils/format';
 import { FormattedNumberInput } from './common/FormattedNumberInput';
+import { exportValuationCertificatePdf } from '../utils/specializedPdfExport';
 
 interface ProjectValuationsModalProps {
   project: Project;
@@ -22,6 +23,33 @@ export const ProjectValuationsModal: React.FC<ProjectValuationsModalProps> = ({
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedCertificate, setSelectedCertificate] = useState<ProjectValuation | null>(null);
   const [saving, setSaving] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportCertificatePdf = async (cert: ProjectValuation) => {
+    try {
+      setIsExportingPdf(true);
+      await exportValuationCertificatePdf({
+        valuationNumber: cert.valuation_number || 'IPC-01',
+        valuationDate: cert.valuation_date || new Date().toISOString().split('T')[0],
+        projectName: project.title,
+        clientName: project.client_name,
+        location: project.location,
+        description: cert.description || 'Interim Payment Certificate',
+        previousValuation: Number(cert.previous_valuation || 0),
+        currentValuation: Number(cert.current_valuation || 0),
+        cumulativeValue: Number(cert.cumulative_value || ((cert.previous_valuation || 0) + (cert.current_valuation || 0))),
+        retentionPercent: Number(cert.retention_percent || 5),
+        retentionAmount: Number(cert.retention_amount || 0),
+        advancePaymentDeduction: Number(cert.advance_payment_deduction || 0),
+        previousPayments: Number(cert.previous_payments || 0),
+        amountDue: Number(cert.amount_due || 0)
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to export Valuation Certificate PDF.');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   // Form State
   const [valNumber, setValNumber] = useState('');
@@ -193,16 +221,30 @@ export const ProjectValuationsModal: React.FC<ProjectValuationsModalProps> = ({
                 <div className="flex items-center space-x-2">
                   <button
                     type="button"
+                    onClick={() => handleExportCertificatePdf(selectedCertificate)}
+                    disabled={isExportingPdf}
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500 shadow-2xs transition cursor-pointer disabled:opacity-50"
+                    title="Download Official Payment Certificate PDF"
+                  >
+                    {isExportingPdf ? (
+                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5" />
+                    )}
+                    <span>{isExportingPdf ? 'Exporting...' : 'Export PDF'}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => window.print()}
-                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700"
+                    className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 cursor-pointer"
                   >
                     <Printer className="w-3.5 h-3.5" />
-                    <span>Print Certificate</span>
+                    <span>Print</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedCertificate(null)}
-                    className="p-1.5 text-slate-400 hover:text-slate-700"
+                    className="p-1.5 text-slate-400 hover:text-slate-700 cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -520,10 +562,19 @@ export const ProjectValuationsModal: React.FC<ProjectValuationsModalProps> = ({
                           <div className="flex items-center justify-center space-x-1.5">
                             <button
                               type="button"
+                              onClick={() => handleExportCertificatePdf(v)}
+                              className="px-2 py-1 rounded bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-semibold text-[11px] transition inline-flex items-center space-x-1"
+                              title="Download Certificate PDF"
+                            >
+                              <FileText className="w-3 h-3" />
+                              <span>PDF</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => setSelectedCertificate(v)}
                               className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition"
                             >
-                              View / Print
+                              View
                             </button>
                             <button
                               type="button"

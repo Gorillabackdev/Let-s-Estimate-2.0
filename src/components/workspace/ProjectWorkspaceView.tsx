@@ -42,6 +42,7 @@ import {
 } from 'lucide-react';
 import { Project, ProjectWorkspaceTab, BoqItem, ProjectQuestionnaire } from '../../types';
 import { formatNaira, formatNumber, calculateBoqTotals } from '../../utils/format';
+import { calculateMaterialBreakdown } from '../../utils/excelExport';
 import { generateDeterministicBoq, normalizeQuestionnaire } from '../../utils/constructionKnowledgeBase';
 import { DEFAULT_QUESTIONNAIRE } from '../ProjectQuestionnaireModal';
 import { getProjectCoverImage, fileToDataUrl } from '../../utils/projectImages';
@@ -51,7 +52,6 @@ import { BtlEstimator } from '../estimating/BtlEstimator';
 import { ProjectControlsView } from '../controls/ProjectControlsView';
 import { CalculatorsHubView } from '../calculators/CalculatorsHubView';
 import { DrawingUploader } from '../DrawingUploader';
-import { ManualTakeoffWorkspace } from '../estimating/ManualTakeoffWorkspace';
 import { MarketRatesEngine } from '../estimating/MarketRatesEngine';
 import { ProjectEditModal } from '../projects/ProjectEditModal';
 import { DeleteProjectModal } from '../projects/DeleteProjectModal';
@@ -143,7 +143,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
   onImportBoq,
 }) => {
   const [activeTab, setActiveTab] = useState<ProjectWorkspaceTab>(initialTab || 'overview');
-  const [takeoffEngine, setTakeoffEngine] = useState<'btl' | 'calculator' | 'manual' | 'ai'>('btl');
+  const [takeoffEngine, setTakeoffEngine] = useState<'btl' | 'calculator' | 'ai'>('btl');
   const [isAdvancedMode, setIsAdvancedMode] = useState<boolean>(true);
   const [selectedDocCategory, setSelectedDocCategory] = useState<string | null>(null);
   const [docSearchQuery, setDocSearchQuery] = useState<string>('');
@@ -1054,7 +1054,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
             questionnaire={localQuestionnaire}
             onOpenQuestionnaire={() => setActiveTab('questionnaire')}
             onOpenManualTakeoff={() => {
-              setTakeoffEngine('manual');
+              setTakeoffEngine('calculator');
               setActiveTab('takeoff');
             }}
             onOpenBtlEstimator={() => {
@@ -1101,18 +1101,6 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTakeoffEngine('manual')}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
-                    takeoffEngine === 'manual'
-                      ? 'bg-white text-emerald-900 shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Ruler className="w-3.5 h-3.5 text-emerald-700" />
-                  <span>Manual Takeoff</span>
-                </button>
-                <button
-                  type="button"
                   onClick={() => setTakeoffEngine('ai')}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center space-x-1.5 ${
                     takeoffEngine === 'ai'
@@ -1129,10 +1117,8 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
             <span className="text-[11px] text-slate-500 font-medium">
               {takeoffEngine === 'btl'
                 ? "Let's Estimate 2.0 - Build Mode with 6 trade roll accordions & live rates"
-                : takeoffEngine === 'manual' 
-                ? 'Precise linear, area, volume & deduction measurements' 
                 : takeoffEngine === 'ai'
-                ? 'Automated blueprint dimensional extraction via Gemini'
+                ? 'Automated blueprint dimensional extraction via Smart Takeoff Studio'
                 : 'Deterministic BESMM4 trade takeoffs with live material breakdowns'}
             </span>
           </div>
@@ -1147,7 +1133,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
             />
           )}
 
-          {/* Engine 0: Measured Works Take-Off Calculator System */}
+          {/* Engine: Measured Works Take-Off Calculator System */}
           {takeoffEngine === 'calculator' && (
             <MeasuredWorksTakeOff
               activeProject={project}
@@ -1157,18 +1143,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
             />
           )}
 
-          {/* Engine 1: Manual Takeoff */}
-          {takeoffEngine === 'manual' && (
-            <ManualTakeoffWorkspace
-              project={project}
-              onAddBoqItem={onAddBoqItem}
-              onUpdateProjectMeasurements={(measurements) => {
-                onUpdateProject({ manual_measurements: measurements });
-              }}
-            />
-          )}
-
-          {/* Engine 2: AI Takeoff */}
+          {/* Engine: AI Vision Takeoff via Smart Takeoff Studio */}
           {takeoffEngine === 'ai' && (
             <DrawingUploader
               onTakeoffSuccess={(items, filename, provider, summary) => {
@@ -1186,7 +1161,7 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               setIsProcessing={() => {}}
               questionnaire={localQuestionnaire}
               onOpenQuestionnaire={() => setActiveTab('questionnaire')}
-              onOpenManualTakeoff={() => setTakeoffEngine('manual')}
+              onOpenManualTakeoff={() => setTakeoffEngine('calculator')}
               onOpenBtlEstimator={() => setTakeoffEngine('btl')}
             />
           )}
@@ -1199,14 +1174,16 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
       {(activeTab === 'boq' || activeTab === 'estimate') && (
         <div className="space-y-4">
           <BoqTable
+            project={project}
             items={project.items || []}
             onUpdateItem={onUpdateBoqItem}
             onAddItem={onAddBoqItem}
             onDeleteItem={onDeleteBoqItem}
             onApplyMarketRates={onApplyMarketRates}
             onImportBoq={onImportBoq}
+            onExportExcel={onExportExcel}
+            onExportPdf={onExportPdf}
             onViewOnDrawing={(item) => {
-              setTakeoffEngine('manual');
               setActiveTab('takeoff');
             }}
           />
@@ -1265,142 +1242,207 @@ export const ProjectWorkspaceView: React.FC<ProjectWorkspaceViewProps> = ({
               </div>
             </div>
 
-            {/* Financial Breakdown Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
-                <thead>
-                  <tr className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider">
-                    <th className="py-2.5 px-4">Bill Element</th>
-                    <th className="py-2.5 px-4">Description</th>
-                    <th className="py-2.5 px-4 text-right">Amount (₦)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 text-slate-800">
-                  <tr>
-                    <td className="py-2.5 px-4 font-bold">Bill No 1: Preliminaries</td>
-                    <td className="py-2.5 px-4 text-slate-500">Site setup, insurance, supervisor, safety, tests</td>
-                    <td className="py-2.5 px-4 font-mono font-bold text-right">
-                      {formatNaira(Math.round((project.subtotal || 0) * 0.05))}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-4 font-bold">Bill No 2: Substructure</td>
-                    <td className="py-2.5 px-4 text-slate-500">Excavation, hardcore, blinding, foundation concrete, ground slab</td>
-                    <td className="py-2.5 px-4 font-mono font-bold text-right">
-                      {formatNaira(Math.round((project.subtotal || 0) * 0.32))}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-4 font-bold">Bill No 3: Superstructure Frame</td>
-                    <td className="py-2.5 px-4 text-slate-500">Reinforced concrete columns, suspended beams &amp; slabs, staircase</td>
-                    <td className="py-2.5 px-4 font-mono font-bold text-right">
-                      {formatNaira(Math.round((project.subtotal || 0) * 0.28))}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-4 font-bold">Bill No 4: Blockwork &amp; Roofing</td>
-                    <td className="py-2.5 px-4 text-slate-500">External &amp; internal hollow sandcrete walls, timber trusses, longspan sheets</td>
-                    <td className="py-2.5 px-4 font-mono font-bold text-right">
-                      {formatNaira(Math.round((project.subtotal || 0) * 0.20))}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="py-2.5 px-4 font-bold">Bill No 5: Finishes &amp; Services</td>
-                    <td className="py-2.5 px-4 text-slate-500">Plastering, POP, floor tiling, electrical wiring, sanitary plumbing</td>
-                    <td className="py-2.5 px-4 font-mono font-bold text-right">
-                      {formatNaira(Math.round((project.subtotal || 0) * 0.15))}
-                    </td>
-                  </tr>
+            {/* Dynamic Elemental Trade Breakdown from real BOQ items */}
+            {(() => {
+              const safeItems = Array.isArray(project.items) ? project.items : [];
+              const map = new Map<string, { count: number; total: number; sampleDesc: string }>();
+              for (const it of safeItems) {
+                const sec = (it.section || 'General Trade Works').trim();
+                const existing = map.get(sec) || { count: 0, total: 0, sampleDesc: it.description || it.item || '' };
+                existing.count += 1;
+                const itQty = Number(it.qty || 0);
+                const itRate = Number(it.rate || 0);
+                const itAmount = Number(it.amount ?? (itQty * itRate));
+                existing.total += itAmount;
+                map.set(sec, existing);
+              }
 
-                  {/* Subtotal */}
-                  <tr className="bg-slate-50 font-bold">
-                    <td colSpan={2} className="py-2.5 px-4 text-right">Measured Works Subtotal:</td>
-                    <td className="py-2.5 px-4 font-mono text-right">{formatNaira(project.subtotal || 0)}</td>
-                  </tr>
+              const elementalBreakdown = Array.from(map.entries()).map(([section, data], idx) => ({
+                billNo: idx + 1,
+                section,
+                count: data.count,
+                amount: data.total,
+                sampleDesc: data.sampleDesc,
+                percentage: (project.subtotal || 0) > 0 ? (data.total / project.subtotal) * 100 : 0
+              }));
 
-                  {/* Swamp Ground */}
-                  {project.swamp_premium_percent > 0 && (
-                    <tr className="text-amber-900 bg-amber-50/50">
-                      <td colSpan={2} className="py-2.5 px-4 text-right font-medium">
-                        Swamp Ground Surcharge (+{project.swamp_premium_percent}%):
-                      </td>
-                      <td className="py-2.5 px-4 font-mono font-bold text-right">
-                        {formatNaira(Math.round((project.subtotal || 0) * (project.swamp_premium_percent / 100)))}
-                      </td>
-                    </tr>
-                  )}
+              const dynamicMaterials = calculateMaterialBreakdown(safeItems);
 
-                  {/* Contractor P&O */}
-                  <tr>
-                    <td colSpan={2} className="py-2.5 px-4 text-right text-slate-600 font-medium">
-                      Contractor's Profit &amp; Overheads ({project.po_percent || 15}%):
-                    </td>
-                    <td className="py-2.5 px-4 font-mono font-bold text-right">
-                      {formatNaira(project.po_amount || 0)}
-                    </td>
-                  </tr>
+              return (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider">
+                          <th className="py-2.5 px-4">Bill Element</th>
+                          <th className="py-2.5 px-4">Trade Scope &amp; Measured Items</th>
+                          <th className="py-2.5 px-4 text-right">Amount (₦)</th>
+                          <th className="py-2.5 px-4 text-right">% of Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 text-slate-800">
+                        {elementalBreakdown.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="py-6 text-center text-slate-400">
+                              No measured BOQ items in this project yet. Use AI Takeoff, BTL Estimator, or + Add Item to price works.
+                            </td>
+                          </tr>
+                        ) : (
+                          elementalBreakdown.map((elem) => (
+                            <tr key={elem.billNo} className="hover:bg-slate-50 transition">
+                              <td className="py-2.5 px-4 font-bold text-slate-900">
+                                Bill No {elem.billNo}: {elem.section}
+                              </td>
+                              <td className="py-2.5 px-4 text-slate-600 max-w-md truncate">
+                                {elem.count} item{elem.count > 1 ? 's' : ''} measured to BESMM4 ({elem.sampleDesc || 'Measured construction scope'})
+                              </td>
+                              <td className="py-2.5 px-4 font-mono font-bold text-right text-slate-900">
+                                {formatNaira(elem.amount)}
+                              </td>
+                              <td className="py-2.5 px-4 font-mono text-right text-emerald-700 font-semibold">
+                                {elem.percentage.toFixed(1)}%
+                              </td>
+                            </tr>
+                          ))
+                        )}
 
-                  {/* VAT */}
-                  <tr>
-                    <td colSpan={2} className="py-2.5 px-4 text-right text-slate-600 font-medium">
-                      Value Added Tax (VAT @ 7.5%):
-                    </td>
-                    <td className="py-2.5 px-4 font-mono font-bold text-right">
-                      {formatNaira(project.vat_amount || 0)}
-                    </td>
-                  </tr>
+                        {/* Subtotal */}
+                        <tr className="bg-slate-50 font-bold border-t-2 border-slate-300">
+                          <td colSpan={2} className="py-2.5 px-4 text-right">Measured Works Subtotal:</td>
+                          <td className="py-2.5 px-4 font-mono text-right">{formatNaira(project.subtotal || 0)}</td>
+                          <td className="py-2.5 px-4 text-right font-mono text-slate-500">100.0%</td>
+                        </tr>
 
-                  {/* Grand Total */}
-                  <tr className="bg-emerald-100/70 text-emerald-950 font-black text-sm">
-                    <td colSpan={2} className="py-3 px-4 text-right uppercase">
-                      Grand Total Contract Estimate:
-                    </td>
-                    <td className="py-3 px-4 font-mono text-right text-emerald-900 text-base">
-                      {formatNaira(project.grand_total || 0)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                        {/* Swamp Ground */}
+                        {project.swamp_premium_percent > 0 && (
+                          <tr className="text-amber-900 bg-amber-50/50">
+                            <td colSpan={2} className="py-2.5 px-4 text-right font-medium">
+                              Swamp Ground Surcharge (+{project.swamp_premium_percent}%):
+                            </td>
+                            <td className="py-2.5 px-4 font-mono font-bold text-right">
+                              +{formatNaira(Math.round((project.subtotal || 0) * (project.swamp_premium_percent / 100)))}
+                            </td>
+                            <td></td>
+                          </tr>
+                        )}
 
-            {/* Material Requirement Schedule */}
-            <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-              <span className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px] block">
-                Primary Material Procurement Schedule
-              </span>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-                <div className="p-3 bg-white rounded-lg border border-slate-200">
-                  <span className="text-slate-400 block font-medium">Portland Cement:</span>
-                  <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {formatNumber(Math.round((project.gfa || 350) * 3.8))} Bags
-                  </span>
-                </div>
-                <div className="p-3 bg-white rounded-lg border border-slate-200">
-                  <span className="text-slate-400 block font-medium">Sharp Sand:</span>
-                  <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {formatNumber(Math.round((project.gfa || 350) * 0.45))} Tonnes
-                  </span>
-                </div>
-                <div className="p-3 bg-white rounded-lg border border-slate-200">
-                  <span className="text-slate-400 block font-medium">Granite Chippings:</span>
-                  <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {formatNumber(Math.round((project.gfa || 350) * 0.55))} Tonnes
-                  </span>
-                </div>
-                <div className="p-3 bg-white rounded-lg border border-slate-200">
-                  <span className="text-slate-400 block font-medium">High-Yield Rebar:</span>
-                  <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {formatNumber(Number(((project.gfa || 350) * 0.038).toFixed(1)))} Tonnes
-                  </span>
-                </div>
-                <div className="p-3 bg-white rounded-lg border border-slate-200">
-                  <span className="text-slate-400 block font-medium">Sandcrete Blocks:</span>
-                  <span className="text-sm font-bold text-slate-900 mt-0.5 block">
-                    {formatNumber(Math.round((project.gfa || 350) * 12.5))} Pieces
-                  </span>
-                </div>
-              </div>
-            </div>
+                        {/* Contractor P&O */}
+                        <tr>
+                          <td colSpan={2} className="py-2.5 px-4 text-right text-slate-600 font-medium">
+                            Contractor's Profit &amp; Overheads ({project.po_percent || 15}%):
+                          </td>
+                          <td className="py-2.5 px-4 font-mono font-bold text-right text-emerald-800">
+                            +{formatNaira(project.po_amount || 0)}
+                          </td>
+                          <td></td>
+                        </tr>
+
+                        {/* VAT */}
+                        <tr>
+                          <td colSpan={2} className="py-2.5 px-4 text-right text-slate-600 font-medium">
+                            Value Added Tax (VAT @ 7.5%):
+                          </td>
+                          <td className="py-2.5 px-4 font-mono font-bold text-right">
+                            +{formatNaira(project.vat_amount || 0)}
+                          </td>
+                          <td></td>
+                        </tr>
+
+                        {/* Grand Total */}
+                        <tr className="bg-emerald-100/70 text-emerald-950 font-black text-sm">
+                          <td colSpan={2} className="py-3 px-4 text-right uppercase">
+                            Grand Total Contract Estimate:
+                          </td>
+                          <td className="py-3 px-4 font-mono text-right text-emerald-900 text-base">
+                            {formatNaira(project.grand_total || 0)}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Primary Material Procurement Schedule - strictly computed from active BOQ items */}
+                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <span className="font-extrabold text-slate-800 uppercase tracking-wider text-[11px] block">
+                          Primary Material Procurement Schedule (Synchronized with Active BOQ Items)
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          Raw material quantities derived strictly from measured bill dimensions. No arbitrary estimates.
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
+                        Direct Material Budget: {formatNaira(dynamicMaterials.totalCost)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-xs">
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-400 block font-medium">Sandcrete Blocks:</span>
+                        <span className="text-sm font-bold text-slate-900 mt-0.5 block font-mono">
+                          {formatNumber(dynamicMaterials.blocks225 + dynamicMaterials.blocks150)} Units
+                        </span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          {dynamicMaterials.blocks225} (9") + {dynamicMaterials.blocks150} (6")
+                        </span>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-400 block font-medium">Portland Cement:</span>
+                        <span className="text-sm font-bold text-slate-900 mt-0.5 block font-mono">
+                          {formatNumber(dynamicMaterials.cementBags)} Bags
+                        </span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          Mortar &amp; concrete (50kg)
+                        </span>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-400 block font-medium">Sharp River Sand:</span>
+                        <span className="text-sm font-bold text-slate-900 mt-0.5 block font-mono">
+                          {formatNumber(dynamicMaterials.sandTonnes)} Tonnes
+                        </span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          ~{Math.ceil(dynamicMaterials.sandTonnes / 20)} tipper trips (20t)
+                        </span>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-400 block font-medium">Crushed Granite:</span>
+                        <span className="text-sm font-bold text-slate-900 mt-0.5 block font-mono">
+                          {formatNumber(dynamicMaterials.graniteTonnes)} Tonnes
+                        </span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          {dynamicMaterials.graniteTonnes > 0 ? `~${Math.ceil(dynamicMaterials.graniteTonnes / 30)} trips (30t)` : 'None required'}
+                        </span>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-400 block font-medium">High-Yield Rebar:</span>
+                        <span className="text-sm font-bold text-slate-900 mt-0.5 block font-mono">
+                          {formatNumber(dynamicMaterials.rebarTonnes)} Tonnes
+                        </span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          {dynamicMaterials.rebarTonnes > 0 ? `~${Math.round(dynamicMaterials.rebarTonnes * 105)} bars (12m)` : 'None required'}
+                        </span>
+                      </div>
+
+                      <div className="p-3 bg-white rounded-lg border border-slate-200">
+                        <span className="text-slate-400 block font-medium">Roofing Sheets:</span>
+                        <span className="text-sm font-bold text-slate-900 mt-0.5 block font-mono">
+                          {formatNumber(dynamicMaterials.roofingSqm)} m²
+                        </span>
+                        <span className="text-[10px] text-slate-500 block mt-0.5">
+                          {dynamicMaterials.roofingSqm > 0 ? '0.55mm longspan/tile' : 'None required'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
 
           </div>
         </div>

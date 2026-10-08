@@ -1072,6 +1072,40 @@ Preliminaries,Water & Dewatering,Submersible Dewatering Pump 3-inch,3-inch dirty
                     Est: {formatNaira((projectMaterials.rebar?.totalTonnes || 0) * 1420000)}
                   </div>
                 </div>
+
+                {/* Sandcrete Blocks 225mm */}
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">225mm Hollow Blocks</span>
+                    <Package className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="text-2xl font-black text-slate-900">
+                    {formatNumber(projectMaterials.block225?.totalUnits || 0)} <span className="text-xs font-normal text-slate-500">Units</span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 pt-2 border-t border-slate-200">
+                    9" Perimeter Blocks (5% waste included)
+                  </div>
+                  <div className="text-xs font-bold text-emerald-800">
+                    Est: {formatNaira((projectMaterials.block225?.totalUnits || 0) * (projectMaterials.block225?.unitCost || 520))}
+                  </div>
+                </div>
+
+                {/* Sandcrete Blocks 150mm */}
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">150mm Partition Blocks</span>
+                    <Package className="w-4 h-4 text-teal-600" />
+                  </div>
+                  <div className="text-2xl font-black text-slate-900">
+                    {formatNumber(projectMaterials.block150?.totalUnits || 0)} <span className="text-xs font-normal text-slate-500">Units</span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 pt-2 border-t border-slate-200">
+                    6" Partition Blocks (5% waste included)
+                  </div>
+                  <div className="text-xs font-bold text-emerald-800">
+                    Est: {formatNaira((projectMaterials.block150?.totalUnits || 0) * (projectMaterials.block150?.unitCost || 420))}
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="p-8 text-center text-xs text-slate-500">

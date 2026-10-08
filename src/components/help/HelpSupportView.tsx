@@ -26,15 +26,16 @@ export const HelpSupportView: React.FC<HelpSupportViewProps> = ({ onNavigate }) 
   const [downloadingGuide, setDownloadingGuide] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
 
-  const contactEmail = 'estimatewithisaac@gmail.com';
-  const userPhone = user?.phone || '';
+  const contactEmail = 'emmanuelisaac888@gmail.com';
 
   const handleDownloadGuide = async () => {
     try {
       setDownloadingGuide(true);
       const params = new URLSearchParams();
-      params.append('email', contactEmail);
-      if (userPhone) params.append('phone', userPhone);
+      params.append('email', user?.email || contactEmail);
+      if (user?.phone && !user.phone.includes('123 4567') && !user.phone.includes('000 0000')) {
+        params.append('phone', user.phone);
+      }
       const queryString = params.toString() ? `?${params.toString()}` : '';
       const res = await fetch(`/api/guide/pdf${queryString}`);
       if (!res.ok) throw new Error('Failed to download guide');
@@ -214,12 +215,6 @@ export const HelpSupportView: React.FC<HelpSupportViewProps> = ({ onNavigate }) 
                 {contactEmail}
               </a>
             </div>
-            {userPhone ? (
-              <div>
-                <span className="text-slate-500 block text-[11px] font-medium">Hotline / WhatsApp</span>
-                <span className="font-bold text-slate-900">{userPhone}</span>
-              </div>
-            ) : null}
             <div className="pt-1 border-t border-slate-200/60">
               <span className="text-slate-500 block text-[11px] font-medium">Lead Consultant &amp; Practice</span>
               <span className="font-bold text-slate-900">Emmanuel Isaac, MYQSF • Estimate with Isaac</span>

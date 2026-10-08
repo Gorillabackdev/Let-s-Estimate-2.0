@@ -9,11 +9,13 @@ import {
   ShieldCheck, 
   AlertCircle,
   TrendingUp,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileText
 } from 'lucide-react';
 import { ProjectFinalAccount } from '../../types';
 import { formatNaira } from '../../utils/format';
 import { FormattedNumberInput } from '../common/FormattedNumberInput';
+import { exportFinalAccountPdf } from '../../utils/specializedPdfExport';
 
 interface FinalAccountSheetProps {
   finalAccount: ProjectFinalAccount | null;
@@ -74,6 +76,40 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
     grossFinalSum - 
     Number(formData.total_previous_payments || 0) + 
     Number(formData.retention_released || 0);
+
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+
+  const handleExportPdf = async () => {
+    try {
+      setIsExportingPdf(true);
+      await exportFinalAccountPdf({
+        projectName: projectTitle || 'Project Final Account',
+        clientName: clientName || 'Client Project',
+        contractorName: contractorName || 'Lead Building Contractor',
+        originalContractSum: formData.original_contract_sum || 0,
+        approvedVariationsAdditions: Math.max(0, formData.net_variations || 0),
+        approvedVariationsOmissions: Math.min(0, formData.net_variations || 0),
+        netVariations: formData.net_variations || 0,
+        fluctuationClaimAmount: formData.fluctuation_claim_amount || 0,
+        provisionalSumsAdjustment: formData.provisional_sums_adjustment || 0,
+        primeCostAdjustment: formData.prime_cost_adjustment || 0,
+        dayworksAmount: 0,
+        liquidatedDamagesDeduction: formData.liquidated_damages_deduction || 0,
+        otherSetoffs: formData.other_setoffs || 0,
+        grossFinalAccountSum: grossFinalSum,
+        totalPreviousPayments: formData.total_previous_payments || 0,
+        retentionReleased: formData.retention_released || 0,
+        balanceDueContractor: netBalanceDue,
+        status: formData.status || 'Draft',
+        preparedBy: formData.qs_signoff_name || 'Consulting Quantity Surveyor (NIQS)',
+        date: new Date().toLocaleDateString('en-GB')
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to export Final Account PDF.');
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
 
   const handleSave = async () => {
     try {
@@ -173,6 +209,21 @@ export const FinalAccountSheet: React.FC<FinalAccountSheetProps> = ({
                 <span>{isSaving ? 'Saving...' : 'Save Statement'}</span>
               </>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleExportPdf}
+            disabled={isExportingPdf}
+            className="px-3.5 py-1.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold inline-flex items-center space-x-1.5 transition cursor-pointer shadow-2xs disabled:opacity-50"
+            title="Download Official Final Account PDF"
+          >
+            {isExportingPdf ? (
+              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <FileText className="w-3.5 h-3.5" />
+            )}
+            <span>{isExportingPdf ? 'Exporting...' : 'Export PDF'}</span>
           </button>
 
           <button

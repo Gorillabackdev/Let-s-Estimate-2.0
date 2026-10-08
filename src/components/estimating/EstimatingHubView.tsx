@@ -14,14 +14,14 @@ import {
   Sliders,
   DollarSign,
   Ruler,
-  BookOpen
+  FileText,
+  HeartHandshake
 } from 'lucide-react';
 import { EstimatingSubView, Project, BoqItem, StandardRate } from '../../types';
 import { formatNaira } from '../../utils/format';
 import { BoqTable } from '../BoqTable';
-import { ManualTakeoffWorkspace } from './ManualTakeoffWorkspace';
-import { QsAssistantPanel } from './QsAssistantPanel';
 import { MarketRatesEngine } from './MarketRatesEngine';
+import { CalculatorsHubView, TemplateBoqItem } from '../calculators/CalculatorsHubView';
 
 interface EstimatingHubViewProps {
   project?: Project | null;
@@ -35,7 +35,18 @@ interface EstimatingHubViewProps {
   onDeleteBoqItem: (index: number) => void;
   onApplyMarketRates: () => void;
   onExportExcel: () => void;
+  onExportPdf?: () => void;
   onImportBoq?: () => void;
+  onApplyBulkToBoq?: (
+    items: TemplateBoqItem[],
+    options?: {
+      targetProjectId?: string;
+      createAsNewProject?: boolean;
+      newProjectTitle?: string;
+      newProjectLocation?: string;
+      newProjectType?: string;
+    }
+  ) => Promise<void> | void;
 }
 
 export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
@@ -50,13 +61,21 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
   onDeleteBoqItem,
   onApplyMarketRates,
   onExportExcel,
+  onExportPdf,
   onImportBoq,
+  onApplyBulkToBoq,
 }) => {
-  const [activeSubView, setActiveSubView] = useState<EstimatingSubView>(initialSubView);
+  const [activeSubView, setActiveSubView] = useState<EstimatingSubView>(
+    initialSubView === 'estimate' || (initialSubView as any) === 'qs-assistant' ? 'boq' : initialSubView
+  );
 
   useEffect(() => {
     if (initialSubView) {
-      setActiveSubView(initialSubView);
+      if (initialSubView === 'estimate' || (initialSubView as any) === 'qs-assistant') {
+        setActiveSubView('boq');
+      } else {
+        setActiveSubView(initialSubView);
+      }
     }
   }, [initialSubView]);
 
@@ -125,10 +144,8 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
             { id: 'boq', label: 'BOQ & Estimates', icon: FileSpreadsheet, badge: items.length },
             { id: 'rates', label: 'Market Rates Engine', icon: TrendingUp },
             { id: 'takeoff', label: 'AI Quantity Takeoff', icon: Sparkles },
-            { id: 'manual-takeoff', label: 'Manual Takeoff Workspace', icon: Ruler },
             { id: 'analysis', label: 'Rate Analysis', icon: Calculator },
-            { id: 'qs-assistant', label: 'QS Assistant & BESMM4', icon: BookOpen },
-            { id: 'estimate', label: 'Cost Estimate Summary', icon: DollarSign },
+            { id: 'budgeting', label: 'Project Budgeting / NGO', icon: HeartHandshake },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeSubView === tab.id;
@@ -164,16 +181,19 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
         </div>
       </div>
 
-      {/* SUBVIEW 1: BOQ & ESTIMATES TABLE */}
+      {/* SUBVIEW 1: BOQ & ESTIMATES TABLE WITH INTEGRATED FINAL COST SUMMARY */}
       {activeSubView === 'boq' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <BoqTable
+            project={project}
             items={items}
             onUpdateItem={onUpdateBoqItem}
             onAddItem={onAddBoqItem}
             onDeleteItem={onDeleteBoqItem}
             onApplyMarketRates={onApplyMarketRates}
             onImportBoq={onImportBoq}
+            onExportExcel={onExportExcel}
+            onExportPdf={onExportPdf}
           />
         </div>
       )}
@@ -368,102 +388,26 @@ export const EstimatingHubView: React.FC<EstimatingHubViewProps> = ({
         </div>
       )}
 
-      {/* SUBVIEW: MANUAL TAKEOFF WORKSPACE */}
-      {activeSubView === 'manual-takeoff' && project && (
-        <div className="space-y-4">
-          <ManualTakeoffWorkspace
-            project={project}
-            onAddBoqItem={onAddBoqItem}
-            onUpdateBoqItem={onUpdateBoqItem}
-            onDeleteBoqItem={onDeleteBoqItem}
-            onApplyMarketRates={onApplyMarketRates}
-            onImportBoq={onImportBoq}
-            onUpdateProjectMeasurements={(measurements) => {
-              if (onUpdateProject) {
-                onUpdateProject({ manual_measurements: measurements });
-              }
-            }}
-          />
-        </div>
-      )}
-
-      {/* SUBVIEW: QS ASSISTANT & BESMM4 KNOWLEDGE */}
-      {activeSubView === 'qs-assistant' && (
-        <div className="space-y-4">
-          <QsAssistantPanel
-            project={project}
-            onApplyRecommendation={(rec) => {
+      {/* 8. Project Budgeting / NGO Workspace */}
+      {activeSubView === 'budgeting' && (
+        <div className="pt-2">
+          <CalculatorsHubView
+            activeProject={project || undefined}
+            projects={projects}
+            initialSubView="budgeting"
+            onApplyBulkToBoq={onApplyBulkToBoq}
+            onApplyToBoq={(calcItem) => {
               onAddBoqItem({
-                item: rec.item,
-                description: rec.description,
-                unit: rec.unit,
-                rate: rec.rate,
-                qty: rec.qty,
-                amount: rec.qty * rec.rate,
-                section: rec.section,
+                item: calcItem.item,
+                description: calcItem.description,
+                qty: calcItem.qty,
+                unit: calcItem.unit,
+                rate: calcItem.rate || 0,
+                amount: calcItem.amount || ((calcItem.qty || 1) * (calcItem.rate || 0)),
+                section: calcItem.section || 'Project Outreach Budget'
               });
-              setActiveSubView('boq');
             }}
           />
-        </div>
-      )}
-
-      {/* SUBVIEW 3: COST ESTIMATE SUMMARY */}
-      {activeSubView === 'estimate' && (
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900">Comprehensive Cost Estimate Model</h3>
-              <p className="text-xs text-slate-500">Deterministic project cost arithmetic including terrain multiplier and tax schedule.</p>
-            </div>
-            <button
-              type="button"
-              onClick={onExportExcel}
-              className="px-3.5 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold inline-flex items-center space-x-1.5"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export Tender Summary</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
-            <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-              <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">Direct Trade Breakdown</h4>
-              <div className="flex justify-between py-1 border-b border-slate-200">
-                <span>Net Subtotal (Trade Works):</span>
-                <span className="font-bold">{formatNaira(project?.subtotal || 0)}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200">
-                <span>Profit &amp; Overheads ({project?.po_percent || 15}%):</span>
-                <span className="font-bold">{formatNaira(project?.po_amount || 0)}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200">
-                <span>Terrain &amp; Swamp Premium:</span>
-                <span className="font-bold">+{project?.swamp_premium_percent || 0}%</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-200">
-                <span>Value Added Tax (7.5% Nigerian VAT):</span>
-                <span className="font-bold">{formatNaira(project?.vat_amount || 0)}</span>
-              </div>
-            </div>
-
-            <div className="p-6 bg-emerald-50/80 rounded-2xl border border-emerald-200 flex flex-col justify-between">
-              <div>
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block">Total Tender Sum (Gross)</span>
-                <span className="text-3xl font-black text-emerald-950 mt-1 block">
-                  {formatNaira(project?.grand_total || 0)}
-                </span>
-                <p className="text-xs text-emerald-800 mt-2">
-                  Complete commercial offer incorporating all trade sections, contractor overheads, regional freight indexing, and statutory VAT.
-                </p>
-              </div>
-
-              <div className="pt-4 mt-4 border-t border-emerald-200 flex items-center space-x-2 text-[11px] text-emerald-900 font-semibold">
-                <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-                <span>Formulated in accordance with NIQS Practice Guidelines</span>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 

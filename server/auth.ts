@@ -524,7 +524,7 @@ export async function ensureDefaultUser(database: Database): Promise<UserRecord>
       hash,
       salt,
       'Emmanuel Isaac, MYQSF',
-      '+234 803 123 4567',
+      '',
       'Registered Quantity Surveyor (MYQSF)',
       'Niger Delta Cost Consultants',
       'Principal Cost Consultant & Master Admin',

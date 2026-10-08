@@ -27,7 +27,9 @@ import {
   DollarSign,
   Truck,
   FolderPlus,
-  History
+  History,
+  Target,
+  Compass
 } from 'lucide-react';
 import { Project, AppGlobalView } from '../../types';
 import { formatNaira } from '../../utils/format';
@@ -38,6 +40,8 @@ import { safeFetchJson } from '../../utils/api';
 
 // High fidelity construction photography assets
 import HERO_CONSTRUCTION_IMG from '../../assets/images/construction_hero_crane_1790509965704.jpg';
+import COMMERCIAL_BLDG_IMG from '../../assets/images/commercial_office_thumb_1790516762276.jpg';
+import DUPLEX_BLDG_IMG from '../../assets/images/luxury_duplex_thumb_1790516776093.jpg';
 import HOSTEL_THUMB_IMG from '../../assets/images/hostel_building_thumb_1790509978576.jpg';
 import BUNGALOW_THUMB_IMG from '../../assets/images/bungalow_project_thumb_1790509991341.jpg';
 import CLINIC_THUMB_IMG from '../../assets/images/community_clinic_thumb_1790510005065.jpg';
@@ -228,22 +232,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div id="redesigned-dashboard" className="space-y-6 max-w-[1400px] mx-auto pb-12">
       
       {/* ========================================================================= */}
-      {/* 1. WELCOME HERO BANNER                                                    */}
+      {/* 1. WELCOME HERO BANNER (Horizontal integrated building & crane visual)    */}
       {/* ========================================================================= */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#d9edf7] via-[#e2f1fa] to-[#d6ebf8] border border-blue-100/80 p-6 sm:p-8 lg:p-10 shadow-xs">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#d9edf7] via-[#e2f1f9] to-[#d3eaf7] border border-blue-200/70 p-6 sm:p-8 lg:p-9 shadow-xs min-h-[195px] flex items-center">
         
-        {/* Background Construction Graphic Overlay on right side */}
-        <div className="absolute right-0 top-0 bottom-0 w-1/2 lg:w-5/12 hidden md:block overflow-hidden pointer-events-none select-none">
-          <div className="absolute inset-0 bg-gradient-to-r from-[#e2f1fa] via-transparent to-transparent z-10" />
-          <img
-            src={HERO_CONSTRUCTION_IMG}
-            alt="Construction Crane and Building"
-            className="w-full h-full object-cover object-center opacity-85 mix-blend-multiply"
+        {/* Right: Integrated Construction Crane & Building Visual seamlessly fading into banner */}
+        <div className="absolute right-0 top-0 bottom-0 w-full sm:w-2/3 md:w-1/2 lg:w-5/12 pointer-events-none overflow-hidden select-none">
+          <img 
+            src={HERO_CONSTRUCTION_IMG} 
+            alt="Active Building Construction Site with Tower Crane" 
+            className="w-full h-full object-cover object-center"
             referrerPolicy="no-referrer"
           />
+          {/* Smooth horizontal gradient fade on the left edge into the sky blue banner */}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#d9edf7] via-[#d9edf7]/60 to-transparent" />
         </div>
 
-        {/* Content Container */}
+        {/* Left: Content Container */}
         <div className="relative z-10 max-w-xl">
           {/* Pill Badge */}
           <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-emerald-100/90 text-emerald-900 border border-emerald-300 text-xs font-bold mb-3 shadow-2xs">
@@ -299,26 +304,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
             <button
               type="button"
-              onClick={() => {
-                if (onOpenTakeoff) onOpenTakeoff();
-                else onNavigate('estimating', 'takeoff');
-              }}
-              className="inline-flex items-center space-x-1.5 px-3 py-2.5 rounded-xl bg-white/70 hover:bg-white text-slate-700 text-xs font-semibold border border-slate-300/70 shadow-2xs transition-all duration-150 cursor-pointer active:scale-95 hidden sm:inline-flex"
+              onClick={() => onNavigate('smart-takeoff')}
+              className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-950 text-xs font-bold border border-emerald-300 shadow-2xs transition-all duration-150 cursor-pointer active:scale-95"
+              title="Open Smart Takeoff Studio with Multi-page PDF Takeoffs"
             >
-              <Play className="w-3 h-3 text-slate-500 fill-slate-500" />
-              <span>Watch Demo</span>
+              <Compass className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Smart Takeoff Studio</span>
             </button>
           </div>
-        </div>
-
-        {/* Floating Callout Card on Right (as in reference image) */}
-        <div className="hidden lg:flex absolute right-8 bottom-6 z-20 bg-white/95 backdrop-blur-xs p-3.5 rounded-xl border border-slate-200/90 shadow-md items-center space-x-3 max-w-[260px]">
-          <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
-            <Building2 className="w-5 h-5 text-emerald-600" />
-          </div>
-          <p className="text-[11px] font-semibold text-slate-800 leading-snug">
-            Save time, reduce cost, win more projects.
-          </p>
         </div>
 
       </div>
@@ -517,12 +510,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </div>
 
-          {/* B. QUICK ACTIONS: Create Estimate, BTL Estimator, AI Plan to BOQ, Market Rates, Suppliers, My BOQs, Certificates */}
+          {/* B. QUICK ACTIONS: Create Estimate, BTL Estimator, AI Plan to BOQ, Smart Takeoff, Market Rates, Suppliers, My BOQs, Certificates */}
           <div>
             <h2 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">
               Quick Actions
             </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-2.5 sm:gap-3">
               
               {/* 1. Create Estimate */}
               <button
@@ -593,7 +586,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </button>
 
-              {/* 4. Market Rates */}
+              {/* 4. Smart Takeoff Studio */}
+              <button
+                type="button"
+                onClick={() => onNavigate('smart-takeoff')}
+                className="bg-white hover:bg-emerald-50/50 border border-slate-200/80 hover:border-emerald-300 rounded-xl p-3 text-left transition-all duration-150 shadow-2xs group cursor-pointer flex flex-col justify-between"
+              >
+                <div>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                    <Compass className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="mt-2 text-xs font-bold text-slate-900 group-hover:text-emerald-900 truncate">
+                    Smart Takeoff
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5 truncate">
+                    Multi-page PDF &amp; AI
+                  </div>
+                </div>
+                <div className="mt-2 text-slate-400 group-hover:text-emerald-700 transition-colors">
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </div>
+              </button>
+
+              {/* 5. Market Rates */}
               <button
                 type="button"
                 onClick={() => onNavigate('materials')}
@@ -615,7 +630,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </button>
 
-              {/* 5. Suppliers */}
+              {/* 6. Suppliers */}
               <button
                 type="button"
                 onClick={() => onNavigate('suppliers')}
@@ -637,7 +652,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </button>
 
-              {/* 6. My BOQs */}
+              {/* 7. My BOQs */}
               <button
                 type="button"
                 onClick={() => onNavigate('estimating', 'boq')}
@@ -659,7 +674,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               </button>
 
-              {/* 7. Certificates */}
+              {/* 8. Certificates */}
               <button
                 type="button"
                 onClick={() => onNavigate('controls', 'certificates')}

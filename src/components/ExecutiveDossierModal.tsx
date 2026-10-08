@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Briefcase, Printer, CheckCircle2, ShieldCheck, Download, 
-  Building2, TrendingUp, Package, Scale, Award, X, AlertTriangle 
+  Building2, TrendingUp, Package, Scale, Award, X, AlertTriangle, FileText
 } from 'lucide-react';
 import { Project, ExecutiveDossier } from '../types';
+import { exportExecutiveDossierPdf } from '../utils/specializedPdfExport';
 
 interface ExecutiveDossierModalProps {
   isOpen: boolean;
@@ -47,6 +48,33 @@ export const ExecutiveDossierModal: React.FC<ExecutiveDossierModalProps> = ({
     }
   };
 
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  const handleExportPdf = async () => {
+    try {
+      setExportingPdf(true);
+      await exportExecutiveDossierPdf({
+        projectName,
+        clientName: dossier?.project?.client_name,
+        location: dossier?.project?.location,
+        contractSum: dossier?.summary?.grandTotal || 0,
+        netWorks: dossier?.summary?.subtotal || 0,
+        profitOverheads: (dossier?.summary?.grandTotal || 0) * 0.15,
+        vat: (dossier?.summary?.grandTotal || 0) * 0.075,
+        grossTenderSum: dossier?.summary?.grandTotal || 0,
+        tradeSummary: dossier?.boqTrades?.map(t => ({
+          trade: t.section,
+          amount: Number(t.totalAmount ?? (t as any).amount ?? 0),
+          percentage: Number(t.percentage ?? (t as any).percent ?? 0),
+        })) || []
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to export Executive Cost Dossier PDF.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -82,11 +110,24 @@ export const ExecutiveDossierModal: React.FC<ExecutiveDossierModalProps> = ({
 
           <div className="flex items-center space-x-2">
             <button
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white border border-emerald-400/50 transition flex items-center space-x-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+              title="Download Official Executive Dossier PDF"
+            >
+              {exportingPdf ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5" />
+              )}
+              <span>{exportingPdf ? 'Exporting...' : 'Export PDF'}</span>
+            </button>
+            <button
               onClick={handlePrint}
-              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-800 hover:bg-emerald-700 text-white border border-emerald-600 transition flex items-center space-x-1.5"
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition flex items-center space-x-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print / PDF Dossier</span>
+              <span>Print</span>
             </button>
             <button
               onClick={onClose}

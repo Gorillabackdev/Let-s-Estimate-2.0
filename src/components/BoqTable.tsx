@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { BoqItem, BESMM4_SECTIONS } from '../types';
 import { formatNaira, formatNumber } from '../utils/format';
 import { FormattedNumberInput } from './common/FormattedNumberInput';
@@ -13,7 +13,10 @@ import {
   FileSpreadsheet,
   X,
   Pencil,
-  Check
+  Check,
+  Printer,
+  Download,
+  ShieldCheck
 } from 'lucide-react';
 
 interface BoqTableProps {
@@ -24,6 +27,19 @@ interface BoqTableProps {
   onApplyMarketRates: () => void;
   onViewOnDrawing?: (item: BoqItem) => void;
   onImportBoq?: () => void;
+  onExportExcel?: () => void;
+  onExportPdf?: () => void;
+  project?: {
+    id?: string;
+    title?: string;
+    subtotal?: number;
+    po_percent?: number;
+    po_amount?: number;
+    swamp_premium_percent?: number;
+    vat_percent?: number;
+    vat_amount?: number;
+    grand_total?: number;
+  } | null;
 }
 
 // BESMM4 Standard Nigerian Trade Presets
@@ -260,6 +276,9 @@ export const BoqTable: React.FC<BoqTableProps> = ({
   onApplyMarketRates,
   onViewOnDrawing,
   onImportBoq,
+  onExportExcel,
+  onExportPdf,
+  project = null,
 }) => {
   const [selectedSection, setSelectedSection] = useState<string>('All');
   const [showPresetDropdown, setShowPresetDropdown] = useState(false);
@@ -286,6 +305,32 @@ export const BoqTable: React.FC<BoqTableProps> = ({
 
   // Calculate grand subtotal of all items
   const grandBillSubtotal = safeItems.reduce((sum, item) => sum + ((item?.qty || 0) * (item?.rate || 0)), 0);
+
+  // Trade Section Breakdown for Cost Summary
+  const sectionBreakdown = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const it of safeItems) {
+      const sec = it.section || 'General Works';
+      const cost = Number(it.qty || 0) * Number(it.rate || 0);
+      map.set(sec, (map.get(sec) || 0) + cost);
+    }
+    return Array.from(map.entries())
+      .map(([section, amount]) => ({
+        section,
+        amount,
+        percentage: grandBillSubtotal > 0 ? (amount / grandBillSubtotal) * 100 : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+  }, [safeItems, grandBillSubtotal]);
+
+  const poPercent = Number(project?.po_percent ?? 15);
+  const poAmount = project?.po_amount ?? (grandBillSubtotal * (poPercent / 100));
+  const swampPercent = Number(project?.swamp_premium_percent ?? 0);
+  const swampAmount = (grandBillSubtotal + poAmount) * (swampPercent / 100);
+  const subtotalBeforeVat = grandBillSubtotal + poAmount + swampAmount;
+  const vatPercent = Number(project?.vat_percent ?? 7.5);
+  const vatAmount = project?.vat_amount ?? (subtotalBeforeVat * (vatPercent / 100));
+  const finalTenderSum = project?.grand_total ?? (subtotalBeforeVat + vatAmount);
 
   // Calculate current filtered section subtotal
   const filteredSubtotal = filteredIndices.reduce((sum, { item }) => sum + ((item?.qty || 0) * (item?.rate || 0)), 0);
@@ -320,7 +365,8 @@ export const BoqTable: React.FC<BoqTableProps> = ({
   };
 
   return (
-    <div id="boq-table-card" className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+    <div className="space-y-6">
+      <div id="boq-table-card" className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       
       {/* Table Header Controls */}
       <div className="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/80">
@@ -399,6 +445,34 @@ export const BoqTable: React.FC<BoqTableProps> = ({
             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
             <span>Apply Market Rates</span>
           </button>
+
+          {/* Export Excel (.xlsx) */}
+          {onExportExcel && (
+            <button
+              id="export-excel-boq-table-btn"
+              type="button"
+              onClick={onExportExcel}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-800 hover:bg-emerald-900 text-white shadow-2xs transition active:scale-95 cursor-pointer"
+              title="Download standard 3-tab BESMM4 Excel workbook (.xlsx)"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-200" />
+              <span>Export Excel</span>
+            </button>
+          )}
+
+          {/* Export PDF (.pdf) */}
+          {onExportPdf && (
+            <button
+              id="export-pdf-boq-table-btn"
+              type="button"
+              onClick={onExportPdf}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-700 hover:bg-rose-800 text-white shadow-2xs transition active:scale-95 cursor-pointer"
+              title="Download official certified Nigerian Bill of Quantities PDF (.pdf)"
+            >
+              <FileText className="w-3.5 h-3.5 text-rose-200" />
+              <span>Export PDF</span>
+            </button>
+          )}
 
           {/* Add Row Button */}
           <button
@@ -786,6 +860,144 @@ export const BoqTable: React.FC<BoqTableProps> = ({
           Amount = Quantity × Unit Rate (₦)
         </span>
       </div>
+    </div>
+
+    {/* ========================================================================= */}
+    {/* FINAL COST ESTIMATE & COMMERCIAL SUMMARY (INTEGRATED AT BOTTOM OF BOQ)    */}
+    {/* ========================================================================= */}
+    <div id="boq-cost-estimate-summary" className="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-xs space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-3">
+        <div>
+          <div className="flex items-center space-x-2">
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200">
+              Commercial Summary
+            </span>
+            <span className="text-[10px] text-slate-500 font-medium">
+              NIQS Standard Commercial Recap
+            </span>
+          </div>
+          <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-1">
+            Final Cost Estimate &amp; Commercial Summary
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Comprehensive project arithmetic: direct trade subtotals, contractor markups, terrain adjustments, and statutory VAT schedule.
+          </p>
+        </div>
+
+        <div className="flex items-center space-x-2 shrink-0">
+          {onExportExcel && (
+            <button
+              type="button"
+              onClick={onExportExcel}
+              className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold inline-flex items-center space-x-1.5 transition cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export Excel</span>
+            </button>
+          )}
+          {onExportPdf && (
+            <button
+              type="button"
+              onClick={onExportPdf}
+              className="px-3.5 py-2 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold inline-flex items-center space-x-1.5 transition cursor-pointer shadow-xs"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Export PDF</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 text-xs">
+        {/* Column 1: Trade Section Recap */}
+        <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+            <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
+              Direct Trade Breakdown
+            </h4>
+            <span className="text-[10px] text-slate-500 font-mono">{sectionBreakdown.length} sections</span>
+          </div>
+          <div className="max-h-48 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-200/60">
+            {sectionBreakdown.length === 0 ? (
+              <div className="py-6 text-center text-slate-400 text-xs">
+                No bill items added yet.
+              </div>
+            ) : (
+              sectionBreakdown.map((sec, i) => (
+                <div key={i} className="pt-1.5 flex items-center justify-between text-xs">
+                  <span className="text-slate-700 truncate max-w-[160px]" title={sec.section}>
+                    {sec.section}
+                  </span>
+                  <div className="text-right font-mono">
+                    <span className="font-bold text-slate-900 mr-2">{formatNaira(sec.amount)}</span>
+                    <span className="text-[10px] text-emerald-700 font-semibold">{sec.percentage.toFixed(1)}%</span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Column 2: Commercial Multipliers */}
+        <div className="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200 flex flex-col justify-between">
+          <div>
+            <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] pb-2 border-b border-slate-200">
+              Commercial Multipliers &amp; VAT
+            </h4>
+            <div className="space-y-2 pt-2">
+              <div className="flex justify-between py-1 border-b border-slate-200">
+                <span className="text-slate-600">Net Direct Subtotal (Trade Works):</span>
+                <span className="font-bold font-mono text-slate-900">{formatNaira(grandBillSubtotal)}</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-200">
+                <span className="text-slate-600">Profit &amp; Overheads ({poPercent}%):</span>
+                <span className="font-bold font-mono text-emerald-800">+{formatNaira(poAmount)}</span>
+              </div>
+              {swampPercent > 0 && (
+                <div className="flex justify-between py-1 border-b border-slate-200">
+                  <span className="text-slate-600">Terrain &amp; Swamp Premium (+{swampPercent}%):</span>
+                  <span className="font-bold font-mono text-amber-800">+{formatNaira(swampAmount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between py-1 border-b border-slate-200">
+                <span className="text-slate-600">Value Added Tax ({vatPercent}% Nigerian VAT):</span>
+                <span className="font-bold font-mono text-slate-900">+{formatNaira(vatAmount)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="text-[10px] text-slate-500 pt-2 border-t border-slate-200 flex items-center justify-between">
+            <span>Bill Items: <strong>{safeItems.length}</strong></span>
+            <span>Currency: <strong>NGN (₦)</strong></span>
+          </div>
+        </div>
+
+        {/* Column 3: Total Tender Sum Card */}
+        <div className="p-6 bg-emerald-50/90 rounded-2xl border border-emerald-200 flex flex-col justify-between shadow-2xs">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block">
+                Total Tender Sum (Gross)
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-800 text-emerald-100 font-bold">
+                All-Inclusive
+              </span>
+            </div>
+            <span className="text-3xl font-black text-emerald-950 font-mono mt-1 block tracking-tight">
+              {formatNaira(finalTenderSum)}
+            </span>
+            <p className="text-xs text-emerald-800 mt-2 leading-relaxed">
+              Complete commercial tender incorporating all direct trade sections, contractor overheads, regional freight indexing, and statutory VAT.
+            </p>
+          </div>
+
+          <div className="pt-4 mt-4 border-t border-emerald-200 flex items-center space-x-2 text-[11px] text-emerald-900 font-semibold">
+            <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+            <span>Formulated in accordance with NIQS Practice Guidelines</span>
+          </div>
+        </div>
+      </div>
+    </div>
 
       {/* BOQ EVIDENCE INSPECTOR MODAL */}
       {evidenceModalItem && (

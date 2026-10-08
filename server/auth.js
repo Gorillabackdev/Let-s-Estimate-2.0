@@ -358,7 +358,7 @@ async function ensureDefaultUser(database) {
       hash,
       salt,
       "Emmanuel Isaac, MYQSF",
-      "+234 803 123 4567",
+      "",
       "Registered Quantity Surveyor (MYQSF)",
       "Niger Delta Cost Consultants",
       "Principal Cost Consultant & Master Admin",
@@ -378,7 +378,6 @@ async function ensureDefaultUser(database) {
       "QS-MASTER-KEY-2026-EMMANUEL-ADMIN"
     ]
   );
-  database.run(`UPDATE projects SET user_id = ? WHERE id = 'sample-hostel-ph'`, [userId]);
   saveDbToDisk();
   return await getUserById(userId);
 }

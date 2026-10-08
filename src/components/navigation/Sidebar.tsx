@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   LayoutGrid, 
   Folder, 
-  PlusCircle, 
   Sparkles, 
   Database, 
   FileSpreadsheet, 
@@ -24,8 +23,6 @@ import {
   Layers,
   AlertTriangle,
   Ruler,
-  Upload,
-  Sliders,
   GitBranch,
   TrendingUp,
   Scale,
@@ -33,7 +30,8 @@ import {
   FileCheck2,
   HelpCircle,
   BookOpen,
-  DollarSign
+  DollarSign,
+  Compass
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { AppGlobalView, Project } from '../../types';
@@ -133,18 +131,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     if (
       currentView === 'estimating' || 
-      (currentView === 'calculators' && (currentSubView === 'btl' || currentSubView === 'measured'))
+      currentView === 'smart-takeoff' ||
+      currentView === 'calculators'
     ) {
       setOpenGroups(prev => prev.estimating ? prev : { ...prev, estimating: true });
     } else if (currentView === 'controls' || currentView === 'documents' || currentView === 'team') {
       setOpenGroups(prev => prev.controls ? prev : { ...prev, controls: true });
     } else if (currentView === 'materials' || currentView === 'suppliers') {
       setOpenGroups(prev => prev.procurement ? prev : { ...prev, procurement: true });
-    } else if (
-      currentView === 'calculators' && 
-      (!currentSubView || ['budgeting', 'outreach', 'construction', 'civil', 'structural', 'qs', 'general_aids', 'conversion'].includes(currentSubView))
-    ) {
-      setOpenGroups(prev => prev.calculators ? prev : { ...prev, calculators: true });
     }
   }, [currentView, currentSubView]);
 
@@ -165,20 +159,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
       onClick: () => handleNav('projects'),
       badge: projectsCount > 0 ? projectsCount : undefined,
     },
+    {
+      id: 'smart-takeoff-studio',
+      label: 'Smart Takeoff Studio',
+      icon: Compass,
+      isActive: currentView === 'smart-takeoff',
+      onClick: () => handleNav('smart-takeoff'),
+    },
   ];
 
   // Section 2: Estimating & Takeoffs
   const estimatingItems = [
-    {
-      id: 'create-estimate',
-      label: 'New Project Estimate',
-      icon: PlusCircle,
-      isActive: false,
-      onClick: () => {
-        if (onNewProject) onNewProject();
-        else handleNav('projects');
-      },
-    },
     {
       id: 'ai-plan-to-boq',
       label: 'AI Plan Takeoff',
@@ -187,45 +178,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       onClick: () => handleNav('estimating', 'takeoff'),
     },
     {
-      id: 'manual-takeoff',
-      label: 'Manual Drawing Takeoff',
-      icon: Ruler,
-      isActive: currentView === 'estimating' && currentSubView === 'manual-takeoff',
-      onClick: () => {
-        if (onOpenManualTakeoff) onOpenManualTakeoff();
-        else handleNav('estimating', 'manual-takeoff');
-      },
-    },
-    {
       id: 'my-boqs',
       label: 'My BOQs & Worksheets',
       icon: FileSpreadsheet,
       isActive: currentView === 'estimating' && (!currentSubView || currentSubView === 'boq'),
       onClick: () => handleNav('estimating', 'boq'),
-    },
-    {
-      id: 'import-boq',
-      label: 'Import BOQ (Excel / CSV)',
-      icon: Upload,
-      isActive: false,
-      onClick: () => {
-        if (onOpenBoqImport) onOpenBoqImport();
-        else handleNav('estimating', 'boq');
-      },
-    },
-    {
-      id: 'cost-summary',
-      label: 'Cost Estimate Summary',
-      icon: DollarSign,
-      isActive: currentView === 'estimating' && currentSubView === 'estimate',
-      onClick: () => handleNav('estimating', 'estimate'),
-    },
-    {
-      id: 'qs-assistant',
-      label: 'QS Assistant & BESMM4',
-      icon: BookOpen,
-      isActive: currentView === 'estimating' && currentSubView === 'qs-assistant',
-      onClick: () => handleNav('estimating', 'qs-assistant'),
     },
     {
       id: 'btl-estimator',
@@ -242,18 +199,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       onClick: () => handleNav('calculators', 'measured'),
     },
     {
-      id: 'specs-questionnaire',
-      label: 'Specs Questionnaire',
-      icon: Sliders,
-      isActive: false,
-      onClick: () => {
-        if (onOpenQuestionnaire) onOpenQuestionnaire();
-        else handleNav('estimating', 'boq');
-      },
+      id: 'project-budgeting-ngo',
+      label: 'Project Budgeting & NGO',
+      icon: HeartHandshake,
+      isActive: (currentView === 'estimating' && currentSubView === 'budgeting') || (currentView === 'calculators' && (currentSubView === 'budgeting' || currentSubView === 'outreach' || currentSubView === 'general_aids' || currentSubView === 'conversion')),
+      onClick: () => handleNav('estimating', 'budgeting'),
     },
   ];
 
-  // Section 3: Project Controls & Contracts
+  // Section 3: Projects and Cost Controls
   const controlsItems = [
     {
       id: 'valuations',
@@ -362,45 +316,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Truck,
       isActive: currentView === 'suppliers',
       onClick: () => handleNav('suppliers'),
-    },
-  ];
-
-  // Section 5: Quick Calculators & QS Aids
-  const calculatorItems = [
-    {
-      id: 'calc-concrete',
-      label: 'Concrete & Mix Design',
-      icon: Building2,
-      isActive: currentView === 'calculators' && (currentSubView === 'construction' || (!currentSubView && currentView === 'calculators')),
-      onClick: () => handleNav('calculators', 'construction'),
-    },
-    {
-      id: 'calc-civil',
-      label: 'Civil Earthworks',
-      icon: Layers,
-      isActive: currentView === 'calculators' && currentSubView === 'civil',
-      onClick: () => handleNav('calculators', 'civil'),
-    },
-    {
-      id: 'calc-structural',
-      label: 'Structural Rebar Aids',
-      icon: AlertTriangle,
-      isActive: currentView === 'calculators' && currentSubView === 'structural',
-      onClick: () => handleNav('calculators', 'structural'),
-    },
-    {
-      id: 'calc-qs',
-      label: 'QS Quantity Conversions',
-      icon: Calculator,
-      isActive: currentView === 'calculators' && currentSubView === 'qs',
-      onClick: () => handleNav('calculators', 'qs'),
-    },
-    {
-      id: 'calc-outreach',
-      label: 'Community & Health Outreach',
-      icon: HeartHandshake,
-      isActive: currentView === 'calculators' && (currentSubView === 'budgeting' || currentSubView === 'outreach'),
-      onClick: () => handleNav('calculators', 'budgeting'),
     },
   ];
 
@@ -547,19 +462,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
 
-          {/* 3. Group: PROJECT CONTROLS & CONTRACTS */}
+          {/* 3. Group: PROJECTS AND COST CONTROLS */}
           <div className="pt-1">
             {!isCollapsed ? (
               <button
                 type="button"
                 onClick={() => toggleGroup('controls')}
-                className="w-full flex items-center justify-between px-2 py-1 text-[11px] font-bold text-slate-400 hover:text-slate-200 uppercase tracking-wider transition cursor-pointer group"
+                className="w-full flex items-center justify-between px-2 py-1 text-slate-400 hover:text-slate-200 transition cursor-pointer group"
               >
-                <span className="flex items-center gap-1.5">
-                  <Receipt className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-200" />
-                  <span>Project Controls</span>
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <Receipt className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-200 shrink-0" />
+                  <span className="text-[9.5px] font-bold uppercase tracking-tight whitespace-nowrap">Projects and Cost Controls</span>
                 </span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 text-slate-500 group-hover:text-slate-300 ${
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 text-slate-500 group-hover:text-slate-300 shrink-0 ${
                   openGroups.controls ? 'rotate-0' : '-rotate-90'
                 }`} />
               </button>
@@ -633,59 +548,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       title={isCollapsed ? item.label : undefined}
                       className={`
                         w-full flex items-center rounded-xl text-xs font-semibold transition-all duration-150 group cursor-pointer
-                        ${isCollapsed ? 'justify-center p-3' : 'space-x-2.5 px-2.5 py-1.5'}
-                        ${active 
-                          ? 'bg-emerald-600 text-white font-bold shadow-xs' 
-                          : 'text-slate-300 hover:text-white hover:bg-[#132835]'
-                        }
-                      `}
-                    >
-                      <Icon className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-105 ${
-                        active ? 'text-white' : 'text-slate-400 group-hover:text-slate-200'
-                      }`} />
-                      {!isCollapsed && (
-                        <span className="truncate">{item.label}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* 5. Group: QUICK CALCULATORS & QS AIDS */}
-          <div className="pt-1">
-            {!isCollapsed ? (
-              <button
-                type="button"
-                onClick={() => toggleGroup('calculators')}
-                className="w-full flex items-center justify-between px-2 py-1 text-[11px] font-bold text-slate-400 hover:text-slate-200 uppercase tracking-wider transition cursor-pointer group"
-              >
-                <span className="flex items-center gap-1.5">
-                  <Calculator className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-200" />
-                  <span>Quick Calculators</span>
-                </span>
-                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 text-slate-500 group-hover:text-slate-300 ${
-                  openGroups.calculators ? 'rotate-0' : '-rotate-90'
-                }`} />
-              </button>
-            ) : (
-              <div className="h-px bg-slate-800 my-2" />
-            )}
-
-            {(openGroups.calculators || isCollapsed) && (
-              <div className={`mt-1 space-y-1 ${!isCollapsed ? 'pl-2 border-l border-slate-800/80 ml-2' : ''}`}>
-                {calculatorItems.map((item) => {
-                  const Icon = item.icon;
-                  const active = item.isActive;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={item.onClick}
-                      title={isCollapsed ? item.label : undefined}
-                      className={`
-                        w-full flex items-center rounded-xl text-xs font-semibold transition-all duration-150 group cursor-pointer text-left
                         ${isCollapsed ? 'justify-center p-3' : 'space-x-2.5 px-2.5 py-1.5'}
                         ${active 
                           ? 'bg-emerald-600 text-white font-bold shadow-xs' 

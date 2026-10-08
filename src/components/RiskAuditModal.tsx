@@ -19,6 +19,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { ProjectFluctuation, ValueEngineeringProposal, CostRiskAuditResult, BoqItem } from '../types';
+import { exportRiskAuditPdf } from '../utils/specializedPdfExport';
 
 interface RiskAuditModalProps {
   isOpen: boolean;
@@ -172,6 +173,48 @@ export const RiskAuditModal: React.FC<RiskAuditModalProps> = ({
     }
   };
 
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  const handleExportPdf = async () => {
+    try {
+      setExportingPdf(true);
+      await exportRiskAuditPdf({
+        projectName,
+        location: projectLocation,
+        originalContractSum: projectTotal,
+        multiplier: liveMultiplier,
+        claimableSum: liveClaimableSum,
+        revisedContractSum: revisedContractSum,
+        parameters: {
+          fixedElement: formData.fixed_element,
+          cementWeight: formData.cement_weight,
+          rebarWeight: formData.rebar_weight,
+          dieselWeight: formData.diesel_weight,
+          labourWeight: formData.labour_weight,
+          baseCementPrice: formData.base_cement_price,
+          currentCementPrice: formData.current_cement_price,
+          baseRebarPrice: formData.base_rebar_price,
+          currentRebarPrice: formData.current_rebar_price,
+          baseDieselPrice: formData.base_diesel_price,
+          currentDieselPrice: formData.current_diesel_price,
+          baseLabourRate: formData.base_labour_rate,
+          currentLabourRate: formData.current_labour_rate,
+        },
+        valueEngineeringItems: auditResult?.valueEngineeringProposals?.map(p => ({
+          trade: p.trade,
+          currentSpec: p.originalSpecification,
+          alternativeSpec: p.proposedAlternative,
+          potentialSavings: p.potentialSavingsNaira,
+          riskLevel: p.riskLevel,
+        })) || []
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to export Cost Risk & Fluctuation Audit PDF.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -200,6 +243,19 @@ export const RiskAuditModal: React.FC<RiskAuditModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg border border-emerald-400/40 transition shadow-2xs cursor-pointer disabled:opacity-50"
+              title="Download Official Cost Risk & Fluctuation Audit PDF"
+            >
+              {exportingPdf ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5" />
+              )}
+              <span>{exportingPdf ? 'Exporting...' : 'Export PDF'}</span>
+            </button>
             <button
               onClick={onClose}
               className="p-1.5 text-emerald-200 hover:text-white hover:bg-white/10 rounded-lg transition"

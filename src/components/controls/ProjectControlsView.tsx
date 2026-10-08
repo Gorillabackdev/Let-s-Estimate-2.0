@@ -647,13 +647,13 @@ export const ProjectControlsView: React.FC<ProjectControlsViewProps> = ({
         <div>
           <div className="flex items-center space-x-2">
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-              Project Cost Controls &amp; Contract Administration
+              Projects and Cost Controls
             </h1>
             <button
               type="button"
               onClick={() => setShowExplanation(!showExplanation)}
               className="p-1.5 text-slate-400 hover:text-emerald-700 rounded-lg hover:bg-emerald-50 transition cursor-pointer"
-              title="How does Project Control work?"
+              title="How do Projects and Cost Controls work?"
             >
               <HelpCircle className="w-4 h-4 text-emerald-700" />
             </button>
@@ -713,7 +713,7 @@ export const ProjectControlsView: React.FC<ProjectControlsViewProps> = ({
             <div className="flex items-center space-x-2">
               <ShieldCheck className="w-4 h-4 text-amber-400" />
               <h3 className="font-extrabold text-sm text-white">
-                How Quantity Surveying Project Controls Work in Practice
+                How Quantity Surveying Projects and Cost Controls Work in Practice
               </h3>
             </div>
             <button

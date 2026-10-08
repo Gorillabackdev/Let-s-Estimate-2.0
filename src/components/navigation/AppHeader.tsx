@@ -109,11 +109,9 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
       { name: 'BTL Estimator (2-Tab Traceable Take-Off)', cat: 'Take-Off & BTL', view: 'calculators' },
       { name: 'Market Rates & BESMM4 Material Index', cat: 'Market Rates', view: 'materials' },
       { name: 'Building Material Suppliers Directory', cat: 'Suppliers', view: 'suppliers' },
-      { name: 'Concrete Volume Calculator', cat: 'Construction', view: 'calculators' },
-      { name: 'Sandcrete Block Estimator', cat: 'Masonry', view: 'calculators' },
-      { name: 'Reinforcement Steel Bar Takeoff', cat: 'Structural', view: 'calculators' },
+      { name: 'Project Budgeting & NGO Outreach', cat: 'Estimating & Takeoffs', view: 'estimating', subView: 'budgeting' },
       { name: 'BESMM4 Rate Builder Engine', cat: 'Rates', view: 'materials' },
-      { name: 'Interim Valuations & Payment Certificates', cat: 'Contracts', view: 'controls', subView: 'certificates' },
+      { name: 'Interim Valuations & Payment Certificates', cat: 'Projects and Cost Controls', view: 'controls', subView: 'certificates' },
       { name: 'AI Plan to BOQ Drawing Vision', cat: 'AI Vision', view: 'estimating', subView: 'takeoff' },
     ].filter(c => c.name.toLowerCase().includes(normalizedQuery) || c.cat.toLowerCase().includes(normalizedQuery));
 

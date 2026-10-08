@@ -27,7 +27,9 @@ import {
   FileText,
   Clock,
   Briefcase,
-  FolderPlus
+  FolderPlus,
+  Box,
+  Filter
 } from 'lucide-react';
 import { Project, BoqItem } from '../../types';
 import { formatNaira, formatNumber } from '../../utils/format';
@@ -1215,6 +1217,11 @@ export const BtlEstimator: React.FC<BtlEstimatorProps> = ({
     const secTotal = secItems.reduce((acc, it) => acc + (it.totalCost || 0), 0);
     const secName = BTL_SECTIONS.find(s => s.key === secKey)?.name || secKey;
 
+    if (secItems.length === 0) {
+      showToast(`No checked items in ${secName} to export.`);
+      return;
+    }
+
     const exportPayload = {
       section: secName,
       exportedAt: new Date().toISOString(),
@@ -1248,15 +1255,26 @@ export const BtlEstimator: React.FC<BtlEstimatorProps> = ({
 
     // Direct Integration with Project BOQ if available
     if (onApplyBulkToBoq) {
-      const boqRows = secItems.map(it => ({
-        item: it.name,
-        description: it.description,
-        qty: it.calculatedQty || it.qty || 1,
-        unit: it.unit,
-        rate: it.unitRate || Math.round((it.totalCost || 0) / (it.calculatedQty || 1)),
-        amount: it.totalCost || 0,
-        section: BTL_SECTIONS.find(s => s.key === secKey)?.besmmTrade || 'Superstructure'
-      }));
+      const boqRows = secItems.map(it => {
+        let secTrade = BTL_SECTIONS.find(s => s.key === secKey)?.besmmTrade || 'Superstructure';
+        const lower = (it.name || '').toLowerCase();
+        if (lower.includes('blockwork') || lower.includes('sandcrete')) {
+          secTrade = 'Masonry & Blockwork';
+        } else if (secKey === 'preliminaries') {
+          secTrade = 'Bill No. 1: Preliminaries & General Conditions';
+        } else if (secKey === 'substructure') {
+          secTrade = 'Substructure';
+        }
+        return {
+          item: it.name,
+          description: it.description,
+          qty: it.calculatedQty || it.qty || 1,
+          unit: it.unit,
+          rate: it.unitRate || Math.round((it.totalCost || 0) / (it.calculatedQty || 1)),
+          amount: it.totalCost || 0,
+          section: secTrade
+        };
+      });
 
       await onApplyBulkToBoq(boqRows, {
         targetProjectId: activeProject?.id,
@@ -1264,7 +1282,60 @@ export const BtlEstimator: React.FC<BtlEstimatorProps> = ({
       });
     }
 
-    showToast("Section exported to BOQ");
+    showToast(`${secName} exported to BOQ (${secItems.length} items)`);
+  };
+
+  const handleSelectOnlyBlockwork = () => {
+    setItems(prev => prev.map(it => {
+      const lower = (it.name || '').toLowerCase();
+      const isBw = lower.includes('blockwork') || lower.includes('sandcrete');
+      return { ...it, checked: isBw };
+    }));
+    showToast('Ticked ONLY blockwork items across all sections (all other trades unchecked).');
+  };
+
+  const handleUncheckAll = () => {
+    setItems(prev => prev.map(it => ({ ...it, checked: false })));
+    showToast('Unchecked all checklist items.');
+  };
+
+  const handleCheckAll = () => {
+    setItems(prev => prev.map(it => ({ ...it, checked: true })));
+    showToast('Checked all checklist items.');
+  };
+
+  const tickedBlockworkItems = useMemo(() => {
+    return items.filter(it => it.checked && ((it.name || '').toLowerCase().includes('blockwork') || (it.name || '').toLowerCase().includes('sandcrete')));
+  }, [items]);
+
+  const handleExportAllBlockworkToBoq = async (asNewProject: boolean = false) => {
+    if (tickedBlockworkItems.length === 0) {
+      showToast('No blockwork items are currently ticked.');
+      return;
+    }
+    if (onApplyBulkToBoq) {
+      const boqRows = tickedBlockworkItems.map(it => ({
+        item: it.name,
+        description: it.description,
+        qty: it.calculatedQty || it.qty || 1,
+        unit: it.unit,
+        rate: it.unitRate || Math.round((it.totalCost || 0) / (it.calculatedQty || 1)),
+        amount: it.totalCost || 0,
+        section: 'Masonry & Blockwork'
+      }));
+
+      await onApplyBulkToBoq(boqRows, {
+        targetProjectId: asNewProject ? undefined : activeProject?.id,
+        createAsNewProject: asNewProject,
+        newProjectTitle: `Blockwork Takeoff & Schedule (${new Date().toLocaleDateString('en-GB')})`,
+        newProjectLocation: activeProject?.location || 'Lagos, Nigeria',
+        newProjectType: 'Residential'
+      });
+
+      showToast(asNewProject 
+        ? `Created new dedicated BOQ with ${boqRows.length} blockwork items!` 
+        : `Exported ${boqRows.length} blockwork items to active BOQ under "Masonry & Blockwork"!`);
+    }
   };
 
   // Standard BESMM4 Presets for Quick 1-Click Preliminaries Addition
@@ -1546,6 +1617,64 @@ export const BtlEstimator: React.FC<BtlEstimatorProps> = ({
 
         </div>
 
+      </div>
+
+      {/* Scope & Trade Filter Toolbar */}
+      <div className="bg-white rounded-xl border border-slate-200 p-3.5 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mr-1">
+            <Filter className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Trade Scope:</span>
+          </span>
+          <button
+            type="button"
+            onClick={handleSelectOnlyBlockwork}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-400 hover:bg-amber-500 text-slate-950 transition shadow-2xs flex items-center space-x-1.5 cursor-pointer"
+            title="Tick ONLY blockwork items across all sections and untick all others"
+          >
+            <Box className="w-3.5 h-3.5 text-slate-950" />
+            <span>Select Only Blockwork (Untick Others)</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleUncheckAll}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+            title="Untick all items across all sections"
+          >
+            <span>Uncheck All</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleCheckAll}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition cursor-pointer"
+            title="Check all items across all sections"
+          >
+            <span>Check All</span>
+          </button>
+        </div>
+
+        {tickedBlockworkItems.length > 0 && (
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={() => handleExportAllBlockworkToBoq(false)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-800 hover:bg-emerald-700 text-white transition shadow-2xs flex items-center space-x-1.5 cursor-pointer"
+              title="Append all ticked blockwork items to current active project BOQ"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Add Blockwork to Active BOQ ({tickedBlockworkItems.length})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExportAllBlockworkToBoq(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white transition shadow-2xs flex items-center space-x-1.5 cursor-pointer"
+              title="Create a brand new isolated BOQ project containing ONLY this blockwork"
+            >
+              <FolderPlus className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Create New Project (Blockwork Only)</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ========================================================================= */}

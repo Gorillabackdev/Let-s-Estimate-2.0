@@ -859,7 +859,8 @@ export type AppGlobalView =
   | 'suppliers'
   | 'materials'
   | 'admin'
-  | 'admin-portal';
+  | 'admin-portal'
+  | 'smart-takeoff';
 
 export type EstimatingSubView = 
   | 'boq' 
@@ -867,8 +868,8 @@ export type EstimatingSubView =
   | 'manual-takeoff'
   | 'rates' 
   | 'analysis' 
-  | 'qs-assistant'
-  | 'estimate';
+  | 'estimate'
+  | 'budgeting';
 
 export type ProjectControlsSubView = 
   | 'budget' 

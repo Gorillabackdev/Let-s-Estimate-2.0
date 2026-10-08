@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { Project, ProjectFinalAccount } from '../types';
 import { safeFetchJson } from '../utils/api';
+import { exportFinalAccountPdf } from '../utils/specializedPdfExport';
 
 interface FinalAccountModalProps {
   isOpen: boolean;
@@ -113,6 +114,41 @@ export const FinalAccountModal: React.FC<FinalAccountModalProps> = ({
     setData(updated);
   };
 
+  const [exportingPdf, setExportingPdf] = useState(false);
+
+  const handleExportPdf = async () => {
+    try {
+      setExportingPdf(true);
+      await exportFinalAccountPdf({
+        projectName: project.title,
+        clientName: project.client_name,
+        location: project.location,
+        contractorName: 'Lead Building Contractor',
+        originalContractSum: data?.original_contract_sum || 0,
+        approvedVariationsAdditions: data?.approved_variations_additions || 0,
+        approvedVariationsOmissions: data?.approved_variations_omissions || 0,
+        netVariations: data?.net_variations || 0,
+        fluctuationClaimAmount: data?.fluctuation_claim_amount || 0,
+        provisionalSumsAdjustment: data?.provisional_sums_adjustment || 0,
+        primeCostAdjustment: data?.prime_cost_adjustment || 0,
+        dayworksAmount: data?.dayworks_amount || 0,
+        liquidatedDamagesDeduction: data?.liquidated_damages_deduction || 0,
+        otherSetoffs: data?.other_setoffs || 0,
+        grossFinalAccountSum: data?.gross_final_account_sum || 0,
+        totalPreviousPayments: data?.total_previous_payments || 0,
+        retentionReleased: data?.retention_released || 0,
+        balanceDueContractor: data?.balance_due_contractor || 0,
+        status: data?.status || 'Draft',
+        preparedBy: 'Emmanuel Isaac, MYQSF (Registered QS)',
+        date: new Date().toLocaleDateString('en-GB')
+      });
+    } catch (err: any) {
+      alert(err.message || 'Failed to export Final Account Statement PDF.');
+    } finally {
+      setExportingPdf(false);
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -148,11 +184,24 @@ export const FinalAccountModal: React.FC<FinalAccountModalProps> = ({
 
           <div className="flex items-center space-x-2">
             <button
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 text-white border border-emerald-500 transition flex items-center space-x-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+              title="Download Official Final Account PDF"
+            >
+              {exportingPdf ? (
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <FileText className="w-3.5 h-3.5" />
+              )}
+              <span>{exportingPdf ? 'Exporting...' : 'Export PDF'}</span>
+            </button>
+            <button
               onClick={handlePrint}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition flex items-center space-x-1.5"
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 transition flex items-center space-x-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print / PDF</span>
+              <span>Print</span>
             </button>
             <button
               onClick={onClose}

@@ -94,8 +94,27 @@ import {
 import type { AuthRequest } from './server/auth.js';
 import { performAiTakeoff, estimateFromDescription, analyzeBoqItems, auditValueEngineeringAndRisks } from './server/ai.js';
 import { runDrawingTakeoffPipeline } from './server/takeoffPipeline.js';
-import { generateExcelBuffer, generatePdfBuffer, generateUserGuidePdfBuffer, calculateMaterialRequirements } from './server/export.js';
-import type { ExportData } from './server/export.js';
+import {
+  generateExcelBuffer,
+  generatePdfBuffer,
+  generateUserGuidePdfBuffer,
+  calculateMaterialRequirements,
+  generateCashFlowPdfBuffer,
+  generateTenderComparisonPdfBuffer,
+  generateRiskAuditPdfBuffer,
+  generateFinalAccountPdfBuffer,
+  generateExecutiveDossierPdfBuffer,
+  generateValuationCertificatePdfBuffer,
+} from './server/export.js';
+import type {
+  ExportData,
+  CashFlowPdfData,
+  TenderComparisonPdfData,
+  RiskAuditPdfData,
+  FinalAccountPdfData,
+  ExecutiveDossierPdfData,
+  ValuationCertificatePdfData,
+} from './server/export.js';
 import { getRateLibrary, getUserCustomRates, saveUserCustomRate, deleteUserCustomRate, updateUserCustomRate } from './server/rates.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from './server/email.js';
 import {
@@ -1411,6 +1430,120 @@ app.post('/api/export/pdf', async (req: Request, res: Response) => {
   }
 });
 
+// 3.1 Cash Flow Forecast & S-Curve PDF Export
+app.post('/api/export/cash-flow-pdf', async (req: Request, res: Response) => {
+  try {
+    const data: CashFlowPdfData = req.body;
+    if (!data || !data.projectName) {
+      res.status(400).json({ error: 'Missing required cash flow forecast data.' });
+      return;
+    }
+    const buffer = await generateCashFlowPdfBuffer(data);
+    const safeTitle = (data.projectName || 'Cash_Flow_Forecast').replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_CashFlow_SCurve.pdf"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Cash Flow PDF export error:', error);
+    res.status(500).json({ error: 'Failed to generate Cash Flow PDF: ' + error.message });
+  }
+});
+
+// 3.2 Subcontractor Tender & Bidder Comparison PDF Export
+app.post('/api/export/tender-comparison-pdf', async (req: Request, res: Response) => {
+  try {
+    const data: TenderComparisonPdfData = req.body;
+    if (!data || !data.projectName || !Array.isArray(data.bidders)) {
+      res.status(400).json({ error: 'Missing required tender comparison data.' });
+      return;
+    }
+    const buffer = await generateTenderComparisonPdfBuffer(data);
+    const safeTitle = (data.projectName || 'Tender_Evaluation').replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Tender_Comparison.pdf"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Tender Comparison PDF export error:', error);
+    res.status(500).json({ error: 'Failed to generate Tender Comparison PDF: ' + error.message });
+  }
+});
+
+// 3.3 FIDIC 70 Cost Risk & Fluctuation Audit PDF Export
+app.post('/api/export/risk-audit-pdf', async (req: Request, res: Response) => {
+  try {
+    const data: RiskAuditPdfData = req.body;
+    if (!data || !data.projectName || !data.parameters) {
+      res.status(400).json({ error: 'Missing required risk & fluctuation audit data.' });
+      return;
+    }
+    const buffer = await generateRiskAuditPdfBuffer(data);
+    const safeTitle = (data.projectName || 'Cost_Risk_Audit').replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Risk_Fluctuation_Audit.pdf"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Risk Audit PDF export error:', error);
+    res.status(500).json({ error: 'Failed to generate Risk Audit PDF: ' + error.message });
+  }
+});
+
+// 3.4 Final Account & Contract Closeout Statement PDF Export
+app.post('/api/export/final-account-pdf', async (req: Request, res: Response) => {
+  try {
+    const data: FinalAccountPdfData = req.body;
+    if (!data || !data.projectName) {
+      res.status(400).json({ error: 'Missing required final account closeout data.' });
+      return;
+    }
+    const buffer = await generateFinalAccountPdfBuffer(data);
+    const safeTitle = (data.projectName || 'Final_Account').replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Final_Account_Closeout.pdf"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Final Account PDF export error:', error);
+    res.status(500).json({ error: 'Failed to generate Final Account PDF: ' + error.message });
+  }
+});
+
+// 3.5 Executive Cost Dossier PDF Export
+app.post('/api/export/executive-dossier-pdf', async (req: Request, res: Response) => {
+  try {
+    const data: ExecutiveDossierPdfData = req.body;
+    if (!data || !data.projectName) {
+      res.status(400).json({ error: 'Missing required executive cost dossier data.' });
+      return;
+    }
+    const buffer = await generateExecutiveDossierPdfBuffer(data);
+    const safeTitle = (data.projectName || 'Executive_Dossier').replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Executive_Cost_Dossier.pdf"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Executive Dossier PDF export error:', error);
+    res.status(500).json({ error: 'Failed to generate Executive Dossier PDF: ' + error.message });
+  }
+});
+
+// 3.6 Interim Payment Certificate (IPC) PDF Export
+app.post('/api/export/valuation-certificate-pdf', async (req: Request, res: Response) => {
+  try {
+    const data: ValuationCertificatePdfData = req.body;
+    if (!data || !data.valuationNumber) {
+      res.status(400).json({ error: 'Missing required valuation certificate data.' });
+      return;
+    }
+    const buffer = await generateValuationCertificatePdfBuffer(data);
+    const safeTitle = (data.valuationNumber || 'IPC').replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_Certificate.pdf"`);
+    res.send(buffer);
+  } catch (error: any) {
+    console.error('Valuation Certificate PDF export error:', error);
+    res.status(500).json({ error: 'Failed to generate Valuation Certificate PDF: ' + error.message });
+  }
+});
+
 // 3b. Download User Guide & Manual PDF for new users
 app.get('/api/guide/pdf', async (req: Request, res: Response) => {
   try {
@@ -1418,13 +1551,18 @@ app.get('/api/guide/pdf', async (req: Request, res: Response) => {
     const queryPhone = typeof req.query.phone === 'string' ? req.query.phone.trim() : '';
 
     let contactEmail = queryEmail || 'estimatewithisaac@gmail.com';
-    let whatsappPhone = queryPhone || '';
+    let whatsappPhone = '';
     let leadQsName = 'Emmanuel Isaac, MYQSF';
+
+    // Only allow verified non-placeholder phone numbers
+    if (queryPhone && !queryPhone.includes('123 4567') && !queryPhone.includes('000 0000') && !queryPhone.includes('0000000')) {
+      whatsappPhone = queryPhone;
+    }
 
     try {
       const user = await getUserByEmail(contactEmail);
       if (user) {
-        if (!whatsappPhone && user.phone) {
+        if (!whatsappPhone && user.phone && !user.phone.includes('123 4567') && !user.phone.includes('000 0000') && !user.phone.includes('0000000')) {
           whatsappPhone = user.phone;
         }
         if (user.full_name) {
@@ -1997,7 +2135,7 @@ app.post('/api/rates/import-from-boq', optionalAuth, async (req: AuthRequest, re
 // PHASE 5: MATERIAL PROCUREMENT & SITE BUDGET API
 // ========================================================================
 
-// 14d. Calculate material procurement requirements from project BOQ
+// 14d. Calculate material procurement requirements from project BOQ (with trade section filtering)
 app.get('/api/projects/:id/materials', async (req: Request, res: Response) => {
   try {
     const project = await getProjectById(req.params.id);
@@ -2006,11 +2144,24 @@ app.get('/api/projects/:id/materials', async (req: Request, res: Response) => {
       return;
     }
 
-    const summary = calculateMaterialRequirements(project.items || []);
+    const allItems = project.items || [];
+    const sectionFilter = typeof req.query.section === 'string' ? req.query.section.trim() : '';
+    const itemsToProcess = (sectionFilter && sectionFilter.toLowerCase() !== 'all')
+      ? allItems.filter(it => (it.section || '').toLowerCase().includes(sectionFilter.toLowerCase()))
+      : allItems;
+
+    const summary = calculateMaterialRequirements(itemsToProcess);
+    const sections = Array.from(new Set(allItems.map(it => (it.section || '').trim()).filter(Boolean)));
+
     res.json({
       success: true,
       projectId: project.id,
       projectTitle: project.title,
+      projectTotal: project.grand_total || project.subtotal || 0,
+      boqItemsCount: itemsToProcess.length,
+      totalBoqItemsCount: allItems.length,
+      activeSection: sectionFilter || 'all',
+      sections,
       summary
     });
   } catch (error: any) {
@@ -2986,7 +3137,7 @@ async function startServer() {
 
   // Check if running in production mode
   const distPath = path.join(process.cwd(), 'dist');
-  const isProduction = process.env.NODE_ENV === 'production' || (fs.existsSync(path.join(distPath, 'index.html')) && process.env.npm_lifecycle_event !== 'dev');
+  const isProduction = process.env.NODE_ENV === 'production';
 
   if (!isProduction) {
     const vite = await createViteServer({
