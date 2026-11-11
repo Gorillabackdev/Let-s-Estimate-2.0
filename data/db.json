@@ -1,0 +1,347 @@
+{
+  "users": {
+    "usr_emmanuel": {
+      "id": "usr_emmanuel",
+      "email": "emmanuelisaac888@gmail.com",
+      "password": "password123",
+      "full_name": "Emmanuel Isaac",
+      "role": "Lead Quantity Surveyor & Director",
+      "company": "Let's Estimate Engineering Consult",
+      "phone": "+234 815 151 2100",
+      "state": "Lagos",
+      "currency": "NGN",
+      "measurement_system": "Metric",
+      "tier": "lifetime_license",
+      "is_verified": true,
+      "is_admin": true,
+      "created_at": "2026-10-26T14:53:03.586Z",
+      "subscription": {
+        "tier": "lifetime_license",
+        "isTrial": false,
+        "trialExpired": false,
+        "trialDaysRemaining": 30,
+        "status": "active",
+        "expiresAt": "2099-12-31T23:59:59.000Z"
+      }
+    },
+    "usr_emmanuel_email": {
+      "id": "usr_emmanuel",
+      "email": "emmanuelisaac888@gmail.com",
+      "password": "password123",
+      "full_name": "Emmanuel Isaac",
+      "role": "Lead Quantity Surveyor & Director",
+      "company": "Let's Estimate Engineering Consult",
+      "phone": "+234 815 151 2100",
+      "state": "Lagos",
+      "currency": "NGN",
+      "measurement_system": "Metric",
+      "tier": "lifetime_license",
+      "is_verified": true,
+      "is_admin": true,
+      "created_at": "2026-10-26T14:53:03.586Z",
+      "subscription": {
+        "tier": "lifetime_license",
+        "isTrial": false,
+        "trialExpired": false,
+        "trialDaysRemaining": 30,
+        "status": "active",
+        "expiresAt": "2099-12-31T23:59:59.000Z"
+      }
+    }
+  },
+  "tokens": {
+    "tok_2a231b0180791cbc56693e07c9ba656cb3dcbc4c6e5f307a": "usr_emmanuel",
+    "tok_03327612c4aafc1f2709bd2d8786e6ee0a28182863c96cd5": "usr_emmanuel"
+  },
+  "projects": [
+    {
+      "id": "proj_lekki_dual_carriageway",
+      "title": "Lekki-Epe Expressway Dual Carriageway (4-Lane with Concrete Median & Drainage)",
+      "type": "Civil Infrastructure & Roadworks",
+      "location": "Lekki-Epe Corridor, Lagos State",
+      "smm_standard": "CESMM4 / FMW&H Volume 1",
+      "status": "Active Estimate",
+      "client": "Federal Ministry of Works / Lagos State MOT",
+      "contractor": "Julius Berger / Hitech Construction",
+      "currency": "NGN",
+      "length_km": 18.5,
+      "carriageway_width_m": 14.6,
+      "pavement_type": "Heavy-Duty Flexible Asphalt (50mm Wearing + 60mm Binder)",
+      "po_percent": 15,
+      "vat_percent": 7.5,
+      "subtotal": 14250000000,
+      "po_amount": 2137500000,
+      "vat_amount": 1068750000,
+      "grand_total": 17456250000,
+      "created_at": "2026-09-15T08:00:00.000Z",
+      "updated_at": "2026-10-26T14:53:03.587Z",
+      "image_url": "/assets/infrastructure_thumb.jpg",
+      "items": [
+        {
+          "id": "item-1",
+          "item_code": "E110",
+          "description": "Site Clearance & Topsoil Stripping (150mm average depth)",
+          "unit": "m2",
+          "quantity": 270100,
+          "unit_rate": 650,
+          "total_cost": 175565000,
+          "bill_class": "Class E: Earthworks"
+        },
+        {
+          "id": "item-2",
+          "item_code": "E220",
+          "description": "Bulk Excavation in unsuitable clay materials and disposal",
+          "unit": "m3",
+          "quantity": 85000,
+          "unit_rate": 4200,
+          "total_cost": 357000000,
+          "bill_class": "Class E: Earthworks"
+        },
+        {
+          "id": "item-3",
+          "item_code": "R110",
+          "description": "Natural Laterite Sub-base Course (200mm compacted thickness, CBR > 30%)",
+          "unit": "m3",
+          "quantity": 54020,
+          "unit_rate": 14500,
+          "total_cost": 783290000,
+          "bill_class": "Class R: Roads & Pavings"
+        },
+        {
+          "id": "item-4",
+          "item_code": "R210",
+          "description": "Crushed Granite Stone Base (150mm compacted, 0-40mm graded CBR > 80%)",
+          "unit": "m3",
+          "quantity": 40515,
+          "unit_rate": 32000,
+          "total_cost": 1296480000,
+          "bill_class": "Class R: Roads & Pavings"
+        },
+        {
+          "id": "item-5",
+          "item_code": "R310",
+          "description": "Dense Bituminous Macadam (DBM) Binder Course 60mm compacted thickness",
+          "unit": "m2",
+          "quantity": 270100,
+          "unit_rate": 18500,
+          "total_cost": 4996850000,
+          "bill_class": "Class R: Roads & Pavings"
+        },
+        {
+          "id": "item-6",
+          "item_code": "R410",
+          "description": "Asphaltic Concrete Wearing Course 50mm compacted (0-14mm aggregates)",
+          "unit": "m2",
+          "quantity": 270100,
+          "unit_rate": 19800,
+          "total_cost": 5347980000,
+          "bill_class": "Class R: Roads & Pavings"
+        },
+        {
+          "id": "item-7",
+          "item_code": "F110",
+          "description": "Reinforced Concrete Trapezoidal Drainage Channel (Grade C25/30)",
+          "unit": "m",
+          "quantity": 37000,
+          "unit_rate": 34950,
+          "total_cost": 1293150000,
+          "bill_class": "Class F: Concrete"
+        }
+      ]
+    },
+    {
+      "id": "proj_dangote_cdu_101",
+      "title": "Dangote Refinery Crude Distillation Unit (CDU-101) & Piping Spools",
+      "type": "Refinery & Petrochemical Process Plant",
+      "location": "Lekki Free Trade Zone, Lagos State",
+      "smm_standard": "ASME B31.3 / API 650 / POMI",
+      "status": "AFC - In Progress",
+      "client": "Dangote Oil Refining Company (DORC)",
+      "contractor": "EPC Consortium",
+      "currency": "USD",
+      "po_percent": 12,
+      "vat_percent": 7.5,
+      "subtotal": 48600000,
+      "po_amount": 5832000,
+      "vat_amount": 3645000,
+      "grand_total": 58077000,
+      "created_at": "2026-08-10T09:30:00.000Z",
+      "updated_at": "2026-10-26T14:53:03.587Z",
+      "image_url": "/assets/refinery_module_thumb.jpg",
+      "items": [
+        {
+          "id": "ref-1",
+          "item_code": "PIP-CS-01",
+          "description": "Carbon Steel Seamless Pipe ASTM A106 Gr B 8\" Sch 40 (Supply & Erection)",
+          "unit": "m",
+          "quantity": 4200,
+          "unit_rate": 310,
+          "total_cost": 1302000,
+          "bill_class": "Piping - Carbon Steel"
+        },
+        {
+          "id": "ref-2",
+          "item_code": "PIP-SS-02",
+          "description": "Stainless Steel Pipe ASTM A312 TP316L 6\" Sch 40S (Pickled & Passivated)",
+          "unit": "m",
+          "quantity": 2800,
+          "unit_rate": 680,
+          "total_cost": 1904000,
+          "bill_class": "Piping - Stainless Steel"
+        },
+        {
+          "id": "ref-3",
+          "item_code": "VLV-GT-03",
+          "description": "API 600 Cast Steel Gate Valve Class 300 8\" Flanged RF (Trim 8 Hardfaced)",
+          "unit": "No",
+          "quantity": 185,
+          "unit_rate": 3850,
+          "total_cost": 712250,
+          "bill_class": "Valves & In-Line Equipment"
+        },
+        {
+          "id": "ref-4",
+          "item_code": "TNK-API-04",
+          "description": "API 650 Welded Storage Tank 60m Diameter (Shell Plates ASTM A516 Gr 70)",
+          "unit": "No",
+          "quantity": 4,
+          "unit_rate": 4250000,
+          "total_cost": 17000000,
+          "bill_class": "Storage Tanks & Columns"
+        },
+        {
+          "id": "ref-5",
+          "item_code": "EQP-COL-05",
+          "description": "Atmospheric Distillation Column Tray Internals (48 Valve Trays Hastelloy)",
+          "unit": "Item",
+          "quantity": 1,
+          "unit_rate": 8500000,
+          "total_cost": 8500000,
+          "bill_class": "Process Columns"
+        }
+      ]
+    },
+    {
+      "id": "proj_luxury_duplex",
+      "title": "4-Bedroom Contemporary Luxury Duplex with Penthouse",
+      "type": "Building & Residential",
+      "location": "Banana Island, Ikoyi, Lagos",
+      "smm_standard": "NIQS BESMM4 / NRM2",
+      "status": "Approved",
+      "client": "Private Developer",
+      "contractor": "Prime Build Properties Ltd",
+      "currency": "NGN",
+      "po_percent": 15,
+      "vat_percent": 7.5,
+      "subtotal": 285000000,
+      "po_amount": 42750000,
+      "vat_amount": 21375000,
+      "grand_total": 349125000,
+      "created_at": "2026-10-01T10:00:00.000Z",
+      "updated_at": "2026-10-26T14:53:03.587Z",
+      "image_url": "/assets/luxury_duplex_thumb_1790516776093-CMQ2-s3Q.jpg",
+      "items": [
+        {
+          "id": "bld-1",
+          "item_code": "SUB-01",
+          "description": "Reinforced Concrete Raft Foundation (Grade C30/37)",
+          "unit": "m3",
+          "quantity": 145,
+          "unit_rate": 185000,
+          "total_cost": 26825000,
+          "bill_class": "Substructure"
+        },
+        {
+          "id": "bld-2",
+          "item_code": "FRM-02",
+          "description": "Reinforced Concrete Frame: Columns, Beams & Suspended Slabs",
+          "unit": "m3",
+          "quantity": 210,
+          "unit_rate": 210000,
+          "total_cost": 44100000,
+          "bill_class": "Superstructure Frame"
+        },
+        {
+          "id": "bld-3",
+          "item_code": "BLK-03",
+          "description": "225mm Vibrated Sandcrete Blockwork in cement mortar (1:4)",
+          "unit": "m2",
+          "quantity": 1850,
+          "unit_rate": 11500,
+          "total_cost": 21275000,
+          "bill_class": "Blockwork"
+        },
+        {
+          "id": "bld-4",
+          "item_code": "FIN-04",
+          "description": "Porcelain Floor Tiling (600x1200mm Spanish Polished Marble Finish)",
+          "unit": "m2",
+          "quantity": 680,
+          "unit_rate": 28000,
+          "total_cost": 19040000,
+          "bill_class": "Finishes"
+        },
+        {
+          "id": "bld-5",
+          "item_code": "MEP-05",
+          "description": "Complete MEP Engineering Installation (Concealed conduit, panel boards, sanitary)",
+          "unit": "Item",
+          "quantity": 1,
+          "unit_rate": 54000000,
+          "total_cost": 54000000,
+          "bill_class": "Services"
+        }
+      ]
+    }
+  ],
+  "rates": [],
+  "activities": [
+    {
+      "id": "act-1",
+      "title": "Project Created",
+      "description": "Lekki-Epe Dual Carriageway workspace initialized with CESMM4 takeoff.",
+      "timestamp": "2026-10-26T13:53:03.587Z",
+      "user": "Emmanuel Isaac"
+    },
+    {
+      "id": "act-2",
+      "title": "Refinery EPC Takeoff",
+      "description": "P&ID takeoff generated 4,200m ASTM A106 carbon steel piping schedule.",
+      "timestamp": "2026-10-26T12:53:03.587Z",
+      "user": "Emmanuel Isaac"
+    }
+  ],
+  "sessions": [
+    {
+      "id": "sess-1",
+      "ip": "127.0.0.1",
+      "browser": "Chrome / Desktop",
+      "location": "Lagos, Nigeria",
+      "lastActive": "2026-10-26T14:53:03.587Z",
+      "current": true
+    }
+  ],
+  "loginHistory": [
+    {
+      "id": "log-1793184027663",
+      "ip": "127.0.0.1",
+      "userAgent": "curl/7.88.1",
+      "timestamp": "2026-10-28T10:40:27.664Z",
+      "status": "Success"
+    },
+    {
+      "id": "log-1793026387952",
+      "ip": "127.0.0.1",
+      "userAgent": "curl/7.88.1",
+      "timestamp": "2026-10-26T14:53:07.953Z",
+      "status": "Success"
+    },
+    {
+      "id": "log-1",
+      "ip": "127.0.0.1",
+      "userAgent": "Chrome 130 (Windows/Mac/Linux)",
+      "timestamp": "2026-10-26T14:53:03.587Z",
+      "status": "Success"
+    }
+  ]
+}

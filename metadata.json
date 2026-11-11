@@ -1,6 +1,6 @@
 {
-  "name": "Let's Estimate",
-  "description": "AI-powered estimating, BOQ generation, measurement, rates management, valuations, certificates, and Quantity Surveying cost-management SaaS for construction professionals. Brand: Estimate with Isaac.",
+  "name": "Let's Estimate - Construction & Civil Cost Estimating Studio",
+  "description": "Multi-standard construction cost estimating studio with civil works, refinery EPC, and international template library.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
